@@ -74,10 +74,6 @@ function Dashboard({ go }) {
         </table>
       </div>
 
-      <p className="roadmap">
-        On the roadmap: PM checklists with signed copies · contractor job cards ·
-        permit-to-work records · role-based access · mobile field mode.
-      </p>
     </>
   )
 }
@@ -274,7 +270,7 @@ function LogBook() {
           </div>
         </div>
       ))}
-      <p className="roadmap">Demo note: new entries are not persisted. The full version keeps a signed, tamper-evident shift log.</p>
+      <p className="roadmap">Demo note: new entries are not persisted.</p>
     </>
   )
 }
@@ -373,7 +369,7 @@ function Spares() {
       </div>
       <p className="roadmap">
         Minimum levels per OEM recommended-spares lists. Items below minimum with no PR are the
-        action list — raise a proposal from the Procurement tab. Issue/receive movements land in v0.2.
+        action list — raise a proposal from the Procurement tab.
       </p>
     </>
   )
@@ -513,7 +509,6 @@ function Checksheet({ kind, a1, a2 }) {
           <div><span className="cs-line">{filled?.approvedBy}</span><label>Approved by</label></div>
         </div>
       </div>
-      <p className="roadmap">v0.4 adds digital fill-in with technician sign-off and scanned-copy upload against the work order.</p>
     </>
   )
 }
@@ -531,6 +526,7 @@ function TagSheet() {
         {ASSETS.map((a) => (
           <div className="tag" key={a.code}>
             <QR value={assetUrl(a.code)} size={140} />
+            <div className="scan-cap">Scan for history</div>
             <div className="nm">{a.name}</div>
             <span className="code">{a.code}</span>
             <div className="org">AMPS · DEMO PLANT</div>

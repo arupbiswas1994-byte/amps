@@ -146,8 +146,18 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 .btn:hover { filter: brightness(1.08); }
 .tags { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
 .tag {
-  background: var(--surface); border: 1.5px dashed #d6d3d1; border-radius: 10px;
-  padding: 16px 12px 12px; text-align: center;
+  position: relative;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 18px 12px 12px; text-align: center;
+}
+.tag::before, .tag::after {
+  content: ''; position: absolute; width: 14px; height: 14px;
+}
+.tag::before { top: 7px; left: 7px; border-top: 2px solid var(--accent); border-left: 2px solid var(--accent); border-top-left-radius: 4px; }
+.tag::after { bottom: 7px; right: 7px; border-bottom: 2px solid var(--accent); border-right: 2px solid var(--accent); border-bottom-right-radius: 4px; }
+.scan-cap {
+  font-size: 9px; font-weight: 650; letter-spacing: 0.22em; text-transform: uppercase;
+  color: var(--accent); margin-top: 9px;
 }
 .tag .nm { font-size: 11.5px; color: var(--ink-2); margin-top: 8px; line-height: 1.35; }
 .tag .code { font-size: 14px; margin-top: 4px; display: block; }
