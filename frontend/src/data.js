@@ -36,10 +36,15 @@ export const PM_SCHEDULES = [
 ]
 
 export const JOB_CARDS = [
-  { id: 'JC-104', asset: 'HTP-0002', type: 'inspection', status: 'open', title: 'IR test before re-energizing feeder', openedAt: d(0), closedAt: null, issuedTo: 'Testing Wing (E&M)', findings: null },
-  { id: 'JC-103', asset: 'MTR-0002', type: 'breakdown', status: 'assigned', title: 'DE bearing seized — replacement', openedAt: d(-2), closedAt: null, issuedTo: 'M/s ElectroMech Services (AMC)', findings: null },
-  { id: 'JC-102', asset: 'CRN-0001', type: 'preventive', status: 'done', title: 'Monthly brake & limit-switch inspection', openedAt: d(-6), closedAt: d(-5), issuedTo: 'M/s CraneCare Services (AMC)', findings: 'Brake pads within wear limit; LS2 limit switch adjusted.' },
-  { id: 'JC-101', asset: 'TRF-0001', type: 'preventive', status: 'verified', title: 'Half-yearly oil BDV test', openedAt: d(-36), closedAt: d(-34), issuedTo: 'M/s PowerTest Labs', findings: 'BDV 62 kV — within limits.' },
+  { id: 'JC-104', asset: 'HTP-0002', type: 'inspection', status: 'open', title: 'IR test before re-energizing feeder', openedAt: d(0), closedAt: null, issuedTo: 'Testing Wing (E&M)', findings: null,
+    desc: 'Conduct insulation resistance (IR) test of the 33 kV outgoing feeder panel before re-energizing. Record HV–E, HV–LV and LV–E values with PI ratio and submit readings on the enclosed checksheet.' },
+  { id: 'JC-103', asset: 'MTR-0002', type: 'breakdown', status: 'assigned', title: 'DE bearing seized — replacement', openedAt: d(-2), closedAt: null, issuedTo: 'M/s ElectroMech Services (AMC)', findings: null,
+    desc: 'Dismantle drive-end bearing of the 22 kW ventilation fan motor (seized), replace with new 6312-C3, check shaft journal, align and give trial run. Return the acknowledged card with the replaced-part bill.' },
+  { id: 'JC-102', asset: 'CRN-0001', type: 'preventive', status: 'done', title: 'Monthly brake & limit-switch inspection', openedAt: d(-6), closedAt: d(-5), issuedTo: 'M/s CraneCare Services (AMC)', findings: 'Brake pads within wear limit; LS2 limit switch adjusted.', ackBy: 'CraneCare site technician',
+    desc: 'Carry out monthly brake and limit-switch inspection of the 10 T EOT crane hoist per OEM checklist. Adjust or replace as required; submit filled checksheet with the acknowledged card.', docs: [] },
+  { id: 'JC-101', asset: 'TRF-0001', type: 'preventive', status: 'verified', title: 'Half-yearly oil BDV test', openedAt: d(-36), closedAt: d(-34), issuedTo: 'M/s PowerTest Labs', findings: 'BDV 62 kV — within limits.', ackBy: 'PowerTest field engineer',
+    desc: 'Draw oil sample from the transformer bottom sampling valve and conduct BDV test per IS 6792. Submit test report and filled checksheet; top up oil if conservator level is low.',
+    docs: ['BDV test report (agency format, as submitted)', 'Service bill'] },
 ]
 
 export const SPECS = {

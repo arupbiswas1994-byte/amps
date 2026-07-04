@@ -153,9 +153,10 @@ function AssetDetail({ code }) {
             {wos.length === 0 ? <p className="dim">No job cards.</p> : wos.map((w) => (
               <div className="wo" key={w.id}>
                 <div className="row1">
-                  <span className="code">{w.id}</span>
+                  <a className="code jc-link" href={`#/jobcard/${w.id}`}>{w.id}</a>
                   <span className="t">{w.title}</span>
                   <WoChip status={w.status} />
+                  <a className="mini-btn muted" href={`#/jobcard/${w.id}`}>Job card</a>
                   {CHECKSHEET_RESULTS[w.id] && (
                     <a className="mini-btn" href={`#/checksheet/wo/${w.id}`}>Checksheet ✓</a>
                   )}
@@ -457,6 +458,110 @@ function ProposalLetter({ prId }) {
   )
 }
 
+/* ---------- job card (official document) ---------- */
+
+function JobCard({ jcId }) {
+  const w = JOB_CARDS.find((x) => x.id === jcId)
+  if (!w) return <p>Job card not found. <a className="crumb" href="#/">← Register</a></p>
+  const asset = ASSETS.find((x) => x.code === w.asset)
+  const done = w.status === 'done' || w.status === 'verified'
+  const cs = CHECKSHEET_RESULTS[w.id]
+  return (
+    <>
+      <div className="sheet-bar">
+        <a className="crumb" style={{ margin: 0 }} href={`#/asset/${asset.code}`}>← {asset.code}</a>
+        <button className="btn" onClick={() => window.print()}>Print job card</button>
+        <p>{done ? 'Completed — returned with technician acknowledgement.' : 'Issued copy — hand over to the executing department / agency.'}</p>
+      </div>
+
+      <div className="osheet">
+        <div className="os-top">
+          <div className="os-brand">
+            <div className="os-org"><span className="bolt">⚡</span>AMPS</div>
+            <div className="os-dept">Maintenance Department<br />Demo Plant</div>
+          </div>
+          <div className="os-title">
+            <div className="os-t1">Job Card</div>
+            <div className="os-t2">{w.title}</div>
+          </div>
+          <div className="os-qr">
+            <QR value={assetUrl(asset.code)} size={72} />
+            <div className="os-qr-cap">Scan for asset history</div>
+          </div>
+        </div>
+
+        <div className="os-doc">
+          <span>Job card no.: <b className="code">{w.id}</b> · Format AMPS/JC-01 · Rev 00</span>
+          <span>{done ? <b className="os-locked">Status: COMPLETED · LOCKED 🔒</b> : `Status: ${w.status.toUpperCase()}`}</span>
+          <span>Page 1 of 1</span>
+        </div>
+
+        <table className="os-details">
+          <tbody>
+            <tr>
+              <td><label>Asset code</label><b className="code">{w.asset}</b></td>
+              <td><label>Asset</label>{asset.name}</td>
+              <td><label>Location</label>{asset.location}</td>
+              <td><label>Job type</label>{cap(w.type)}</td>
+            </tr>
+            <tr>
+              <td><label>Issued to</label>{w.issuedTo}</td>
+              <td><label>Date of issue</label>{fmtDate(w.openedAt)}</td>
+              <td><label>Date of completion</label>{w.closedAt ? fmtDate(w.closedAt) : ''}</td>
+              <td><label>Enclosures</label>{(() => {
+                const docs = w.docs ?? []
+                if (!cs && docs.length === 0) return <span className="dim">— none on file —</span>
+                return <span>
+                  {cs && <a href={`#/checksheet/wo/${w.id}`} className="jc-encl">Dept. checksheet ✓</a>}
+                  {docs.map((d2, i) => <span key={i}>{(cs || i > 0) && ' · '}{d2}</span>)}
+                </span>
+              })()}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div className="os-remarks">
+          <label>Job details / work required</label>
+          <p>{w.desc}</p>
+        </div>
+
+        <div className="os-remarks" style={{ borderTop: '1px solid #a8a29e' }}>
+          <label>Completion report / findings</label>
+          {w.findings ? <p>{w.findings}</p> : <><span className="os-rule" /><span className="os-rule" /></>}
+        </div>
+
+        <table className="os-signs">
+          <tbody>
+            <tr>
+              <td>
+                <span className="os-sign-space">Sr. Engineer (E)</span>
+                <label>Issued by</label>
+                <span className="os-date">Date: {fmtDate(w.openedAt)}</span>
+              </td>
+              <td>
+                <span className="os-sign-space">{done ? w.ackBy : ''}</span>
+                <label>Executed &amp; acknowledged by (agency)</label>
+                <span className="os-date">Date: {w.closedAt ? fmtDate(w.closedAt) : '__________'}</span>
+              </td>
+              <td>
+                <span className="os-sign-space">{w.status === 'verified' ? 'R. Das (Supervisor)' : ''}</span>
+                <label>Verified by</label>
+                <span className="os-date">Date: {w.status === 'verified' ? fmtDate(w.closedAt) : '__________'}</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div className="os-foot">
+          Generated by AMPS — Asset Maintenance &amp; Preventive Scheduling · Format AMPS/JC-01 Rev 00
+        </div>
+      </div>
+
+      {done && <p className="roadmap">🔒 Completed job cards are locked with their enclosures. Agency reports and bills come in the agency's own format and are filed as submitted — only the departmental checksheet follows the AMPS format.</p>}
+    </>
+  )
+}
+
 /* ---------- maintenance checksheet ---------- */
 
 function Checksheet({ kind, a1, a2 }) {
@@ -644,6 +749,7 @@ export default function App() {
   const assetMatch = route.match(/^\/asset\/(.+)$/)
   const letterMatch = route.match(/^\/procurement\/([^/]+)\/letter$/)
   const csMatch = route.match(/^\/checksheet\/(wo|pm)\/([^/]+)(?:\/(.+))?$/)
+  const jcMatch = route.match(/^\/jobcard\/(.+)$/)
 
   return (
     <div className="shell">
@@ -661,6 +767,7 @@ export default function App() {
       {assetMatch ? <AssetDetail code={assetMatch[1]} />
         : letterMatch ? <ProposalLetter prId={letterMatch[1]} />
         : csMatch ? <Checksheet kind={csMatch[1]} a1={csMatch[2]} a2={csMatch[3]} />
+        : jcMatch ? <JobCard jcId={jcMatch[1]} />
         : route === '/planner' ? <Planner />
         : route === '/log' ? <LogBook />
         : route === '/failures' ? <Failures />
