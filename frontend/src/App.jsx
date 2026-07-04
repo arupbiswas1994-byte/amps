@@ -61,14 +61,14 @@ function Dashboard({ go }) {
               return (
                 <tr key={a.code} tabIndex={0} onClick={() => go(`/asset/${a.code}`)}
                     onKeyDown={(e) => e.key === 'Enter' && go(`/asset/${a.code}`)}>
-                  <td className="code">{a.code}</td>
-                  <td>{a.name}</td>
-                  <td className="dim">{a.cls}</td>
-                  <td className="dim">{a.location}</td>
-                  <td><StatusChip status={a.status} /></td>
-                  <td className="dim dt">{pm ? fmtDate(pm.nextDue) : '—'}</td>
-                  <td>{pm ? <DueChip nextDue={pm.nextDue} /> : <span className="dim">—</span>}</td>
-                  <td>{(() => {
+                  <td className="code" data-l="Code">{a.code}</td>
+                  <td data-l="Asset">{a.name}</td>
+                  <td className="dim" data-l="Class">{a.cls}</td>
+                  <td className="dim" data-l="Location">{a.location}</td>
+                  <td data-l="Status"><StatusChip status={a.status} /></td>
+                  <td className="dim dt" data-l="Next PM">{pm ? fmtDate(pm.nextDue) : '—'}</td>
+                  <td data-l="PM state">{pm ? <DueChip nextDue={pm.nextDue} /> : <span className="dim">—</span>}</td>
+                  <td data-l="Records">{(() => {
                     const n = completedChecksheets(a.code).length
                     return n ? <span className="rec-count" title={`${n} completed checksheet${n > 1 ? 's' : ''}`}>✓ {n}</span> : <span className="dim">—</span>
                   })()}</td>
@@ -127,11 +127,11 @@ function AssetDetail({ code }) {
                   <tbody>
                     {pms.map((p) => (
                       <tr key={p.task} style={{ cursor: 'default' }}>
-                        <td>{p.task}</td>
-                        <td className="dim">{p.frequency}</td>
-                        <td className="dim dt">{fmtDate(p.lastDone)}</td>
-                        <td className="dt">{fmtDate(p.nextDue)}</td>
-                        <td><DueChip nextDue={p.nextDue} /></td>
+                        <td data-l="Task">{p.task}</td>
+                        <td className="dim" data-l="Frequency">{p.frequency}</td>
+                        <td className="dim dt" data-l="Last done">{fmtDate(p.lastDone)}</td>
+                        <td className="dt" data-l="Next due">{fmtDate(p.nextDue)}</td>
+                        <td data-l="State"><DueChip nextDue={p.nextDue} /></td>
                         <td className="cs-cell">
                           {(() => {
                             const rec = completedChecksheets(a.code).find((r) => r.task === p.task)
@@ -222,7 +222,7 @@ function Planner() {
                   return (
                     <a key={j} href={`#/asset/${p.asset}`} className={`cal-item${overdue ? ' late' : ''}`}
                        title={`${p.asset} — ${p.task} (${p.frequency})`}>
-                      <b>{p.asset}</b> {p.task}
+                      <b>{p.asset}</b> <span className="cal-task">{p.task}</span>
                     </a>
                   )
                 })}
@@ -320,15 +320,15 @@ function Failures() {
             {FAILURES.map((f) => (
               <tr key={f.id} tabIndex={0} onClick={() => { location.hash = `/asset/${f.asset}` }}
                   onKeyDown={(e) => e.key === 'Enter' && (location.hash = `/asset/${f.asset}`)}>
-                <td className="code">{f.id}</td>
-                <td className="code">{f.asset}</td>
-                <td className="dim dt">{fmtDate(f.started)} {fmtTime(f.started)}</td>
-                <td className="dim dt">{f.restored ? `${fmtDate(f.restored)} ${fmtTime(f.restored)}` : '—'}</td>
-                <td className="dt">{durationHrs(f)} h</td>
-                <td>{f.restored
+                <td className="code" data-l="ID">{f.id}</td>
+                <td className="code" data-l="Asset">{f.asset}</td>
+                <td className="dim dt" data-l="Occurred">{fmtDate(f.started)} {fmtTime(f.started)}</td>
+                <td className="dim dt" data-l="Restored">{f.restored ? `${fmtDate(f.restored)} ${fmtTime(f.restored)}` : '—'}</td>
+                <td className="dt" data-l="Downtime">{durationHrs(f)} h</td>
+                <td data-l="State">{f.restored
                   ? <span className="chip w-done"><span className="dot" />Restored</span>
                   : <span className="chip d-overdue"><span className="dot" />Ongoing</span>}</td>
-                <td className="wrap-cell">{f.cause} <span className="dim">→ {f.remedy}</span></td>
+                <td className="wrap-cell" data-l="Cause">{f.cause} <span className="dim">→ {f.remedy}</span></td>
               </tr>
             ))}
           </tbody>
@@ -360,16 +360,16 @@ function Spares() {
               const low = sp.qty < sp.min
               return (
                 <tr key={sp.code} style={{ cursor: 'default' }} className={low ? 'row-low' : ''}>
-                  <td className="code">{sp.code}</td>
-                  <td>{sp.name}</td>
-                  <td className="dim">{sp.cls}</td>
-                  <td className="dim">{sp.bin}</td>
-                  <td className="dt"><b>{sp.qty}</b> {sp.unit}</td>
-                  <td className="dim dt">{sp.min} {sp.unit}</td>
-                  <td>{low
+                  <td className="code" data-l="Code">{sp.code}</td>
+                  <td data-l="Spare">{sp.name}</td>
+                  <td className="dim" data-l="For class">{sp.cls}</td>
+                  <td className="dim" data-l="Store / bin">{sp.bin}</td>
+                  <td className="dt" data-l="Stock"><b>{sp.qty}</b> {sp.unit}</td>
+                  <td className="dim dt" data-l="Min">{sp.min} {sp.unit}</td>
+                  <td data-l="Status">{low
                     ? <span className="chip d-overdue"><span className="dot" />Below min</span>
                     : <span className="chip w-done"><span className="dot" />In stock</span>}</td>
-                  <td>{sp.pr
+                  <td data-l="Linked PR">{sp.pr
                     ? <a className="pr-link" href="#/procurement"><span className="code">{sp.pr}</span> <StageChip stage={prStage(sp.pr)} /></a>
                     : <span className="dim">—</span>}</td>
                 </tr>
@@ -398,13 +398,13 @@ function Procurement() {
           <tbody>
             {PROCUREMENTS.map((p) => (
               <tr key={p.id} style={{ cursor: 'default' }}>
-                <td className="code">{p.id}</td>
-                <td className="wrap-cell">{p.item}<div className="sub-note">{p.note}</div></td>
-                <td className="dim">{p.qty}</td>
-                <td className="code">{p.asset}</td>
-                <td><StageChip stage={p.stage} /></td>
-                <td className="dim dt">{p.cost}</td>
-                <td className="dim dt">{fmtDate(p.requested)}</td>
+                <td className="code" data-l="PR no.">{p.id}</td>
+                <td className="wrap-cell" data-l="Item">{p.item}<div className="sub-note">{p.note}</div></td>
+                <td className="dim" data-l="Qty">{p.qty}</td>
+                <td className="code" data-l="For asset">{p.asset}</td>
+                <td data-l="Stage"><StageChip stage={p.stage} /></td>
+                <td className="dim dt" data-l="Est. cost">{p.cost}</td>
+                <td className="dim dt" data-l="Requested">{fmtDate(p.requested)}</td>
                 <td><a className="mini-btn" href={`#/procurement/${p.id}/letter`}>Draft letter</a></td>
               </tr>
             ))}

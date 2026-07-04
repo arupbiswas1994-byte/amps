@@ -20,6 +20,8 @@
 
 html { -webkit-text-size-adjust: 100%; }
 
+html, body { overflow-x: clip; }
+
 body {
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   background: var(--bg);
@@ -27,6 +29,8 @@ body {
   line-height: 1.5;
   font-size: 15px;
 }
+
+img, svg { max-width: 100%; }
 
 a { color: inherit; text-decoration: none; }
 
@@ -44,7 +48,7 @@ a { color: inherit; text-decoration: none; }
 .brand { font-size: 19px; font-weight: 650; letter-spacing: -0.01em; }
 .brand .bolt { color: var(--accent); margin-right: 2px; }
 .brand-sub { font-size: 12.5px; color: var(--ink-3); font-weight: 400; margin-left: 10px; letter-spacing: 0.01em; }
-.nav { display: flex; gap: 4px; margin-left: auto; }
+.nav { display: flex; flex-wrap: wrap; gap: 4px; margin-left: auto; }
 .nav a {
   font-size: 13.5px; color: var(--ink-2); padding: 5px 12px; border-radius: 99px;
 }
@@ -328,6 +332,52 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 }
 .foot a { color: inherit; }
 .foot a:hover { color: var(--ink-3); }
+
+/* ---- mobile: data tables become labeled cards (no horizontal scroll) ---- */
+@media (max-width: 680px) {
+  .tbl-wrap table, .tbl-wrap tbody, .tbl-wrap tr, .tbl-wrap td { display: block; width: 100%; }
+  .tbl-wrap thead { display: none; }
+  .tbl-wrap tr { padding: 10px 14px 12px; border-bottom: 1px solid var(--border); }
+  .tbl-wrap tr:last-child { border-bottom: none; }
+  .tbl-wrap td {
+    border: none; padding: 2.5px 0; white-space: normal;
+    display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap;
+  }
+  .tbl-wrap td[data-l]::before {
+    content: attr(data-l);
+    flex: 0 0 88px;
+    font-size: 10px; font-weight: 600; color: var(--ink-3);
+    text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .tbl-wrap .wrap-cell { min-width: 0; max-width: none; }
+  .tbl-wrap .sub-note { flex-basis: 100%; margin-top: 0; }
+  .cs-cell { padding-top: 8px; }
+
+  /* checksheet document adapts, stays a document */
+  .os-details, .os-details tbody, .os-details tr, .os-details td { display: block; width: 100%; }
+  .os-details td { border-left: none; border-right: none; border-top: none; }
+  .os-items { font-size: 11px; }
+  .os-items th, .os-items td { padding: 4px 5px; width: auto !important; }
+  .os-items th { font-size: 9px; letter-spacing: 0.02em; }
+  .os-input { width: 64px; min-width: 0; }
+  .cs-box { width: 15px; height: 15px; }
+  .os-signs, .os-signs tbody, .os-signs tr, .os-signs td { display: block; width: 100%; }
+  .os-signs td { border-left: none; border-right: none; border-top: 1px solid #a8a29e; }
+  .os-signs td:first-child { border-top: none; }
+  .os-sign-space { min-height: 34px; }
+}
+
+@media (max-width: 560px) {
+  .cal-task { display: none; }        /* planner shows asset codes only */
+  .cal-cell { min-height: 46px; padding: 4px; }
+  .cal-item { padding: 1px 3px; }
+  .bar-row { grid-template-columns: 84px 1fr 24px; gap: 8px; }
+  .bar-label, .bar-val { font-size: 12px; }
+  .letter { font-size: 13.5px; }
+  .kpis { gap: 8px; }
+  .tile { padding: 11px 13px 10px; }
+  .tile .v { font-size: 25px; }
+}
 
 /* ---- print: tag sheet + proposal letter ---- */
 @media print {
