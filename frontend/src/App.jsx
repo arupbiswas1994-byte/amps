@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import {
   ASSETS, PM_SCHEDULES, WORK_ORDERS, SPECS, LOG_ENTRIES, PROCUREMENTS, PROC_STAGES,
-  FAILURES, SPARES, spareStats, kpis, fmtDate, fmtTime, dueState, durationHrs,
-  failureStats, pmOccurrencesInMonth,
+  FAILURES, SPARES, spareStats, checksheetFor, CHECKSHEET_RESULTS, kpis, fmtDate,
+  fmtTime, dueState, durationHrs, failureStats, pmOccurrencesInMonth,
 } from './data.js'
 import QR, { assetUrl } from './qr.jsx'
 
@@ -122,7 +122,7 @@ function AssetDetail({ code }) {
             {pms.length === 0 ? <p className="dim">No PM schedules.</p> : (
               <div className="tbl-wrap">
                 <table>
-                  <thead><tr><th>Task</th><th>Frequency</th><th>Last done</th><th>Next due</th><th>State</th></tr></thead>
+                  <thead><tr><th>Task</th><th>Frequency</th><th>Last done</th><th>Next due</th><th>State</th><th></th></tr></thead>
                   <tbody>
                     {pms.map((p) => (
                       <tr key={p.task} style={{ cursor: 'default' }}>
@@ -131,6 +131,7 @@ function AssetDetail({ code }) {
                         <td className="dim dt">{fmtDate(p.lastDone)}</td>
                         <td className="dt">{fmtDate(p.nextDue)}</td>
                         <td><DueChip nextDue={p.nextDue} /></td>
+                        <td><a className="mini-btn" href={`#/checksheet/pm/${a.code}/${encodeURIComponent(p.task)}`}>Checksheet</a></td>
                       </tr>
                     ))}
                   </tbody>
@@ -147,6 +148,9 @@ function AssetDetail({ code }) {
                   <span className="code">{w.id}</span>
                   <span className="t">{w.title}</span>
                   <WoChip status={w.status} />
+                  {CHECKSHEET_RESULTS[w.id] && (
+                    <a className="mini-btn" href={`#/checksheet/wo/${w.id}`}>Checksheet ✓</a>
+                  )}
                 </div>
                 {w.findings && <div className="findings">{w.findings}</div>}
                 <div className="sub">
@@ -445,6 +449,75 @@ function ProposalLetter({ prId }) {
   )
 }
 
+/* ---------- maintenance checksheet ---------- */
+
+function Checksheet({ kind, a1, a2 }) {
+  // kind 'wo': a1 = WO id (filled) · kind 'pm': a1 = asset code, a2 = task (blank)
+  let asset, task, filled = null, wo = null
+  if (kind === 'wo') {
+    filled = CHECKSHEET_RESULTS[a1]
+    wo = WORK_ORDERS.find((w) => w.id === a1)
+    if (!filled || !wo) return <p>Checksheet not found. <a className="crumb" href="#/">← Register</a></p>
+    task = filled.task
+    asset = ASSETS.find((x) => x.code === wo.asset)
+  } else {
+    asset = ASSETS.find((x) => x.code === a1)
+    task = decodeURIComponent(a2)
+    if (!asset) return <p>Asset not found. <a className="crumb" href="#/">← Register</a></p>
+  }
+  const items = checksheetFor(task)
+  const pm = PM_SCHEDULES.find((p) => p.asset === asset.code && p.task === task)
+
+  return (
+    <>
+      <div className="sheet-bar">
+        <a className="crumb" style={{ margin: 0 }} href={`#/asset/${asset.code}`}>← {asset.code}</a>
+        <button className="btn" onClick={() => window.print()}>Print checksheet</button>
+        <p>{filled ? 'Completed record — as verified on the work order.' : 'Blank sheet — print, fill in the field, and file against the work order.'}</p>
+      </div>
+
+      <div className="card cs">
+        <div className="cs-head">
+          <div>
+            <div className="cs-title">Maintenance Checksheet — {task}</div>
+            <div className="cs-sub">
+              <span><b className="code">{asset.code}</b> · {asset.name}</span>
+              <span>{asset.location} · Demo Plant</span>
+              {pm && <span>Frequency: {pm.frequency}</span>}
+              {filled && wo ? <span>Ref: {wo.id} · done {fmtDate(wo.closedAt)}</span> : <span>Ref: WO-____ · date ____</span>}
+            </div>
+          </div>
+          <span className={filled ? 'chip w-verified' : 'chip d-due_soon'}>
+            <span className="dot" />{filled ? 'Completed' : 'Blank'}
+          </span>
+        </div>
+        <div className="tbl-wrap">
+          <table>
+            <thead><tr><th style={{ width: 30 }}>#</th><th>Check item</th><th>Acceptance limit</th><th>Reading / result</th><th style={{ width: 60 }}>OK</th></tr></thead>
+            <tbody>
+              {items.map(([item, limit], i) => (
+                <tr key={i} style={{ cursor: 'default' }}>
+                  <td className="dim dt">{i + 1}</td>
+                  <td className="wrap-cell">{item}</td>
+                  <td className="dim">{limit}</td>
+                  <td className="dt">{filled ? <b>{filled.readings[i] ?? '—'}</b> : <span className="cs-blank" />}</td>
+                  <td>{filled ? <span className="cs-ok">✓</span> : <span className="cs-box" />}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="cs-signs">
+          <div><span className="cs-line">{filled?.doneBy}</span><label>Done by</label></div>
+          <div><span className="cs-line">{filled?.checkedBy}</span><label>Checked by</label></div>
+          <div><span className="cs-line">{filled?.approvedBy}</span><label>Approved by</label></div>
+        </div>
+      </div>
+      <p className="roadmap">v0.4 adds digital fill-in with technician sign-off and scanned-copy upload against the work order.</p>
+    </>
+  )
+}
+
 /* ---------- QR tag sheet ---------- */
 
 function TagSheet() {
@@ -493,6 +566,7 @@ export default function App() {
 
   const assetMatch = route.match(/^\/asset\/(.+)$/)
   const letterMatch = route.match(/^\/procurement\/([^/]+)\/letter$/)
+  const csMatch = route.match(/^\/checksheet\/(wo|pm)\/([^/]+)(?:\/(.+))?$/)
 
   return (
     <div className="shell">
@@ -509,6 +583,7 @@ export default function App() {
 
       {assetMatch ? <AssetDetail code={assetMatch[1]} />
         : letterMatch ? <ProposalLetter prId={letterMatch[1]} />
+        : csMatch ? <Checksheet kind={csMatch[1]} a1={csMatch[2]} a2={csMatch[3]} />
         : route === '/planner' ? <Planner />
         : route === '/log' ? <LogBook />
         : route === '/failures' ? <Failures />

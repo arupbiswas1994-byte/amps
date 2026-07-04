@@ -105,6 +105,71 @@ export const FAILURES = [
   { id: 'F-07', asset: 'HTP-0001', started: t(-82, 17), restored: t(-82, 18), cause: '33 kV incomer tripped on grid disturbance', remedy: 'Supply restored on grid normalization; relays checked' },
 ]
 
+// Checksheet templates per PM task — items with acceptance limits.
+// Filled readings live on the work order (RESULTS below); a task without a
+// completed WO renders as a blank sheet to print and fill in the field.
+export const CHECKSHEET_TEMPLATES = {
+  'Oil BDV test': [
+    ['Oil sample drawn from bottom sampling valve', '—'],
+    ['Visual check — colour & clarity', 'Clear, no turbidity'],
+    ['Breakdown voltage (BDV)', '≥ 50 kV'],
+    ['Moisture / crackle test', 'No crackle'],
+    ['Sample bottle labelled & retained', '—'],
+    ['Oil level in conservator', 'Between marks'],
+  ],
+  'Brake & limit-switch inspection': [
+    ['Brake pad thickness', '≥ 5 mm'],
+    ['Brake holding test at rated load', 'No drift'],
+    ['LS1 — upper limit trip', 'Trips'],
+    ['LS2 — over-hoist backup trip', 'Trips'],
+    ['Pendant emergency stop', 'Opens main contactor'],
+    ['Hook safety latch', 'Intact'],
+  ],
+  'Battery & backup verification': [
+    ['UPS float voltage', '13.5–13.8 V/battery'],
+    ['Backup duration on mains fail', '≥ 15 min'],
+    ['Terminals cleaned & greased', '—'],
+    ['Mains-fail alarm at SCADA/panel', 'Reports'],
+  ],
+  'Contact resistance check': [
+    ['CRM — R phase', '≤ 50 µΩ'],
+    ['CRM — Y phase', '≤ 50 µΩ'],
+    ['CRM — B phase', '≤ 50 µΩ'],
+    ['Deviation from last measurement', '≤ 20%'],
+    ['Joint torque check', 'Per OEM chart'],
+  ],
+  'Insulation resistance (IR) test': [
+    ['IR — HV to earth', '≥ 1000 MΩ'],
+    ['IR — HV to LV', '≥ 1000 MΩ'],
+    ['IR — LV to earth', '≥ 100 MΩ'],
+    ['PI ratio (10 min / 1 min)', '≥ 1.5'],
+  ],
+}
+
+const GENERIC_CHECKSHEET = [
+  ['Visual inspection — no damage / hotspot / abnormal sound', '—'],
+  ['Cleaning of equipment & surroundings', '—'],
+  ['Fasteners & terminations checked', 'Torque per OEM'],
+  ['Safety devices / interlocks functional', 'Operates'],
+  ['Readings recorded in log book', '—'],
+]
+
+export const checksheetFor = (task) => CHECKSHEET_TEMPLATES[task] ?? GENERIC_CHECKSHEET
+
+// Filled checksheets for completed work orders: readings per template row.
+export const CHECKSHEET_RESULTS = {
+  'WO-101': {
+    task: 'Oil BDV test',
+    readings: ['Done', 'Clear', '62 kV', 'No crackle', 'Bottle T-114', 'Normal'],
+    doneBy: 'Technician A', checkedBy: 'R. Das (Supervisor)', approvedBy: 'Sr. Engineer (E)',
+  },
+  'WO-102': {
+    task: 'Brake & limit-switch inspection',
+    readings: ['7.5 mm', 'No drift', 'Trips OK', 'Trips (adjusted)', 'OK', 'Intact'],
+    doneBy: 'Technician B', checkedBy: 'R. Das (Supervisor)', approvedBy: 'Sr. Engineer (E)',
+  },
+}
+
 // ---- derived helpers ----
 
 export const fmtDate = (date) =>
