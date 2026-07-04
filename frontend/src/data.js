@@ -35,11 +35,11 @@ export const PM_SCHEDULES = [
   { asset: 'CRN-0001', task: 'Brake & limit-switch inspection', frequency: 'monthly', lastDone: d(-21), nextDue: d(9) },
 ]
 
-export const WORK_ORDERS = [
-  { id: 'WO-104', asset: 'HTP-0002', type: 'inspection', status: 'open', title: 'IR test before re-energizing feeder', openedAt: d(0), closedAt: null, assignedTo: null, findings: null },
-  { id: 'WO-103', asset: 'MTR-0002', type: 'breakdown', status: 'assigned', title: 'DE bearing seized — replacement', openedAt: d(-2), closedAt: null, assignedTo: 'Technician A', findings: null },
-  { id: 'WO-102', asset: 'CRN-0001', type: 'preventive', status: 'done', title: 'Monthly brake & limit-switch inspection', openedAt: d(-6), closedAt: d(-5), assignedTo: 'Technician B', findings: 'Brake pads within wear limit; LS2 limit switch adjusted.' },
-  { id: 'WO-101', asset: 'TRF-0001', type: 'preventive', status: 'verified', title: 'Half-yearly oil BDV test', openedAt: d(-36), closedAt: d(-34), assignedTo: 'Technician A', findings: 'BDV 62 kV — within limits.' },
+export const JOB_CARDS = [
+  { id: 'JC-104', asset: 'HTP-0002', type: 'inspection', status: 'open', title: 'IR test before re-energizing feeder', openedAt: d(0), closedAt: null, issuedTo: 'Testing Wing (E&M)', findings: null },
+  { id: 'JC-103', asset: 'MTR-0002', type: 'breakdown', status: 'assigned', title: 'DE bearing seized — replacement', openedAt: d(-2), closedAt: null, issuedTo: 'M/s ElectroMech Services (AMC)', findings: null },
+  { id: 'JC-102', asset: 'CRN-0001', type: 'preventive', status: 'done', title: 'Monthly brake & limit-switch inspection', openedAt: d(-6), closedAt: d(-5), issuedTo: 'M/s CraneCare Services (AMC)', findings: 'Brake pads within wear limit; LS2 limit switch adjusted.' },
+  { id: 'JC-101', asset: 'TRF-0001', type: 'preventive', status: 'verified', title: 'Half-yearly oil BDV test', openedAt: d(-36), closedAt: d(-34), issuedTo: 'M/s PowerTest Labs', findings: 'BDV 62 kV — within limits.' },
 ]
 
 export const SPECS = {
@@ -57,18 +57,18 @@ const hrs = 3600000
 const t = (dOff, h) => new Date(today.getTime() + dOff * day + (h - today.getHours()) * hrs)
 
 export const LOG_ENTRIES = [
-  { ts: t(0, 9), shift: 'A', author: 'S. Kumar', text: '33kV incomer load 42 A, all feeders normal. HTP-0002 kept isolated for IR test (WO-104).' },
+  { ts: t(0, 9), shift: 'A', author: 'S. Kumar', text: '33kV incomer load 42 A, all feeders normal. HTP-0002 kept isolated for IR test (JC-104).' },
   { ts: t(-1, 22), shift: 'C', author: 'A. Sen', text: 'Night round normal. Substation-1 battery charger float 122 V. Handover: nil pending.' },
   { ts: t(-1, 16), shift: 'B', author: 'R. Das', text: 'MTR-0002 replacement bearing followed up with stores — expected in 3 days (PR-2026-015). Bay ventilation running on standby fan.' },
   { ts: t(-1, 9), shift: 'A', author: 'S. Kumar', text: 'DG set test run 15 min — voltage/frequency OK. Diesel level 78%.' },
   { ts: t(-2, 21), shift: 'C', author: 'A. Sen', text: 'Workshop Bay-A lighting circuit MCB tripped once, reset, holding. To observe.' },
-  { ts: t(-2, 14), shift: 'B', author: 'R. Das', text: 'MTR-0002 abnormal noise reported by operator → isolated, breakdown WO-103 raised, DE bearing found seized.' },
-  { ts: t(-2, 9), shift: 'A', author: 'S. Kumar', text: 'Monthly brake inspection on CRN-0001 completed (WO-102). Brake pads within limit, LS2 adjusted.' },
+  { ts: t(-2, 14), shift: 'B', author: 'R. Das', text: 'MTR-0002 abnormal noise reported by operator → isolated, breakdown JC-103 raised, DE bearing found seized.' },
+  { ts: t(-2, 9), shift: 'A', author: 'S. Kumar', text: 'Monthly brake inspection on CRN-0001 completed (JC-102). Brake pads within limit, LS2 adjusted.' },
 ]
 
 export const PROCUREMENTS = [
   { id: 'PR-2026-016', item: 'VCB spring-charge motor (spare)', qty: '1 no.', asset: 'HTP-0001', stage: 'draft', requested: d(-1), cost: '—', note: 'Recommended spare per OEM list; none in stock.' },
-  { id: 'PR-2026-015', item: 'DE bearing 6312-C3 for 22 kW ventilation fan motor', qty: '2 nos.', asset: 'MTR-0002', stage: 'proposed', requested: d(-2), cost: '₹ 18,400 (est.)', note: 'Against breakdown WO-103; one for replacement, one for stock.', failure: 'F-02' },
+  { id: 'PR-2026-015', item: 'DE bearing 6312-C3 for 22 kW ventilation fan motor', qty: '2 nos.', asset: 'MTR-0002', stage: 'proposed', requested: d(-2), cost: '₹ 18,400 (est.)', note: 'Against breakdown JC-103; one for replacement, one for stock.', failure: 'F-02' },
   { id: 'PR-2026-014', item: 'Transformer oil, EHV grade — 200 L drums', qty: '2 drums', asset: 'TRF-0001', stage: 'ordered', requested: d(-18), cost: '₹ 52,000', note: 'Top-up + reserve ahead of half-yearly filtration.' },
   { id: 'PR-2026-013', item: 'SMF batteries 12 V / 26 Ah for PLC UPS', qty: '4 nos.', asset: 'PLC-0001', stage: 'received', requested: d(-32), cost: '₹ 14,800', note: 'Replaced after UPS battery failure (F-03).' },
   { id: 'PR-2026-012', item: 'Crane hoist brake pad set', qty: '2 sets', asset: 'CRN-0001', stage: 'approved', requested: d(-40), cost: '₹ 9,600', note: 'Preventive replacement stock for monthly inspections.' },
@@ -96,7 +96,7 @@ export function spareStats() {
 }
 
 export const FAILURES = [
-  { id: 'F-02', asset: 'MTR-0002', started: t(-2, 14), restored: null, cause: 'DE bearing seized — abnormal noise, motor isolated', remedy: 'Bearing replacement in progress (WO-103, PR-2026-015)' },
+  { id: 'F-02', asset: 'MTR-0002', started: t(-2, 14), restored: null, cause: 'DE bearing seized — abnormal noise, motor isolated', remedy: 'Bearing replacement in progress (JC-103, PR-2026-015)' },
   { id: 'F-03', asset: 'PLC-0001', started: t(-20, 11), restored: t(-20, 12), cause: 'UPS battery failure — PLC halted on supply dip', remedy: 'Batteries replaced (PR-2026-013); auto-restart verified' },
   { id: 'F-01', asset: 'HTP-0002', started: t(-35, 15), restored: t(-35, 18), cause: 'Feeder VCB tripped on over-current', remedy: 'Downstream cable fault isolated; relay reset after inspection' },
   { id: 'F-04', asset: 'CRN-0001', started: t(-48, 10), restored: t(-48, 12), cause: 'Hoist upper limit switch malfunction', remedy: 'LS replaced from stock; travel re-calibrated' },
@@ -158,21 +158,21 @@ export const checksheetFor = (task) => CHECKSHEET_TEMPLATES[task] ?? GENERIC_CHE
 
 // Filled checksheets for completed work orders: readings per template row.
 export const CHECKSHEET_RESULTS = {
-  'WO-101': {
+  'JC-101': {
     task: 'Oil BDV test',
     readings: ['Done', 'Clear', '62 kV', 'No crackle', 'Bottle T-114', 'Normal'],
-    doneBy: 'Technician A', checkedBy: 'R. Das (Supervisor)', approvedBy: 'Sr. Engineer (E)',
+    doneBy: 'M/s PowerTest Labs', checkedBy: 'R. Das (Supervisor)', approvedBy: 'Sr. Engineer (E)',
   },
-  'WO-102': {
+  'JC-102': {
     task: 'Brake & limit-switch inspection',
     readings: ['7.5 mm', 'No drift', 'Trips OK', 'Trips (adjusted)', 'OK', 'Intact'],
-    doneBy: 'Technician B', checkedBy: 'R. Das (Supervisor)', approvedBy: 'Sr. Engineer (E)',
+    doneBy: 'M/s CraneCare Services', checkedBy: 'R. Das (Supervisor)', approvedBy: 'Sr. Engineer (E)',
   },
 }
 
 export const completedChecksheets = (assetCode) =>
   Object.entries(CHECKSHEET_RESULTS)
-    .filter(([woId]) => WORK_ORDERS.find((w) => w.id === woId)?.asset === assetCode)
+    .filter(([woId]) => JOB_CARDS.find((w) => w.id === woId)?.asset === assetCode)
     .map(([woId, r]) => ({ woId, task: r.task }))
 
 // ---- derived helpers ----
@@ -229,6 +229,6 @@ export function kpis() {
   const overdue = PM_SCHEDULES.filter((p) => daysUntil(p.nextDue) < 0).length
   const dueSoon = PM_SCHEDULES.filter((p) => { const n = daysUntil(p.nextDue); return n >= 0 && n <= 7 }).length
   const compliance = Math.round(((PM_SCHEDULES.length - overdue) / PM_SCHEDULES.length) * 100)
-  const openWO = WORK_ORDERS.filter((w) => w.status === 'open' || w.status === 'assigned').length
-  return { assets: ASSETS.length, compliance, dueSoon, overdue, openWO }
+  const openJC = JOB_CARDS.filter((w) => w.status === 'open' || w.status === 'assigned').length
+  return { assets: ASSETS.length, compliance, dueSoon, overdue, openJC }
 }

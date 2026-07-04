@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
-  ASSETS, PM_SCHEDULES, WORK_ORDERS, SPECS, LOG_ENTRIES, PROCUREMENTS, PROC_STAGES,
+  ASSETS, PM_SCHEDULES, JOB_CARDS, SPECS, LOG_ENTRIES, PROCUREMENTS, PROC_STAGES,
   FAILURES, SPARES, spareStats, checksheetFor, CHECKSHEET_TEMPLATES, CHECKSHEET_RESULTS,
   completedChecksheets, kpis, fmtDate, fmtTime, dueState, durationHrs, failureStats,
   pmOccurrencesInMonth,
@@ -46,7 +46,7 @@ function Dashboard({ go }) {
         <div className="tile"><div className="v">{k.compliance}%</div><div className="k">PM compliance</div></div>
         <div className={k.dueSoon ? 'tile warn' : 'tile'}><div className="v">{k.dueSoon}</div><div className="k">PM due within 7 days</div></div>
         <div className={k.overdue ? 'tile alert' : 'tile'}><div className="v">{k.overdue}</div><div className="k">PM overdue</div></div>
-        <div className="tile"><div className="v">{k.openWO}</div><div className="k">Open work orders</div></div>
+        <div className="tile"><div className="v">{k.openJC}</div><div className="k">Open job cards</div></div>
       </div>
 
       <h2>Asset register</h2>
@@ -89,7 +89,7 @@ function AssetDetail({ code }) {
   const a = ASSETS.find((x) => x.code === code)
   if (!a) return <p>Asset not found. <a className="crumb" href="#/">← Back to register</a></p>
   const pms = PM_SCHEDULES.filter((p) => p.asset === code)
-  const wos = WORK_ORDERS.filter((w) => w.asset === code)
+  const wos = JOB_CARDS.filter((w) => w.asset === code)
   const specs = SPECS[code] ?? []
   return (
     <>
@@ -135,9 +135,10 @@ function AssetDetail({ code }) {
                         <td className="cs-cell">
                           {(() => {
                             const rec = completedChecksheets(a.code).find((r) => r.task === p.task)
-                            return rec && <a className="mini-btn" href={`#/checksheet/wo/${rec.woId}`}>Record ✓</a>
+                            return rec
+                              ? <a className="mini-btn" href={`#/checksheet/wo/${rec.woId}`}>Record ✓</a>
+                              : <a className="mini-btn muted" href={`#/checksheet/pm/${a.code}/${encodeURIComponent(p.task)}`}>Blank sheet</a>
                           })()}
-                          <a className="mini-btn muted" href={`#/checksheet/pm/${a.code}/${encodeURIComponent(p.task)}`}>New sheet</a>
                         </td>
                       </tr>
                     ))}
@@ -148,8 +149,8 @@ function AssetDetail({ code }) {
           </div>
 
           <div className="sect">
-            <h3>Work-order history</h3>
-            {wos.length === 0 ? <p className="dim">No work orders.</p> : wos.map((w) => (
+            <h3>Job cards — issued to departments / agencies</h3>
+            {wos.length === 0 ? <p className="dim">No job cards.</p> : wos.map((w) => (
               <div className="wo" key={w.id}>
                 <div className="row1">
                   <span className="code">{w.id}</span>
@@ -163,7 +164,7 @@ function AssetDetail({ code }) {
                 <div className="sub">
                   {w.type} · opened {fmtDate(w.openedAt)}
                   {w.closedAt && <> · closed {fmtDate(w.closedAt)}</>}
-                  {w.assignedTo && <> · {w.assignedTo}</>}
+                  {w.issuedTo && <> · issued to <b>{w.issuedTo}</b></>}
                 </div>
               </div>
             ))}
@@ -466,7 +467,7 @@ function Checksheet({ kind, a1, a2 }) {
   let asset, task, filled = null, wo = null
   if (kind === 'wo') {
     filled = CHECKSHEET_RESULTS[a1]
-    wo = WORK_ORDERS.find((w) => w.id === a1)
+    wo = JOB_CARDS.find((w) => w.id === a1)
     if (!filled || !wo) return <p>Checksheet not found. <a className="crumb" href="#/">← Register</a></p>
     task = filled.task
     asset = ASSETS.find((x) => x.code === wo.asset)
@@ -484,7 +485,7 @@ function Checksheet({ kind, a1, a2 }) {
       <div className="sheet-bar">
         <a className="crumb" style={{ margin: 0 }} href={`#/asset/${asset.code}`}>← {asset.code}</a>
         <button className="btn" onClick={() => window.print()}>Print checksheet</button>
-        <p>{filled ? 'Completed record — as verified on the work order.' : 'Blank sheet — print, fill in the field, and file against the work order.'}</p>
+        <p>{filled ? 'Completed record — as verified on the job card.' : 'Blank sheet — print, fill in the field, and file against the job card.'}</p>
       </div>
 
       <div className="osheet">
@@ -519,7 +520,7 @@ function Checksheet({ kind, a1, a2 }) {
             </tr>
             <tr>
               <td><label>Frequency</label>{pm ? pm.frequency : '—'}</td>
-              <td><label>Work order ref.</label>{filled && wo ? wo.id : ''}</td>
+              <td><label>Job card ref.</label>{filled && wo ? wo.id : ''}</td>
               <td><label>Date of maintenance</label>{filled && wo ? fmtDate(wo.closedAt) : ''}</td>
               <td><label>Next due</label>{pm ? fmtDate(pm.nextDue) : '—'}</td>
             </tr>
@@ -580,7 +581,7 @@ function Checksheet({ kind, a1, a2 }) {
       </div>
 
       {filled ? (
-        <p className="roadmap">🔒 This record is locked — verified and approved. Corrections require a fresh work order; the original stays on file.</p>
+        <p className="roadmap">🔒 This record is locked — verified and approved. Corrections require a fresh job card; the original stays on file.</p>
       ) : (
         <div className="cs-actions">
           <button className="btn muted" type="button" disabled title="Sign-off requires login — coming with user accounts">
