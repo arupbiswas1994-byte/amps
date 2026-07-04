@@ -212,13 +212,40 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 .chip.sh-B .dot { background: #4a3aa7; }
 .chip.sh-C .dot { background: var(--ink-3); }
 
-/* ---- failures ---- */
-.bars { padding: 14px 16px; }
-.bar-row { display: grid; grid-template-columns: 110px 1fr 28px; align-items: center; gap: 10px; padding: 5px 0; }
-.bar-label { font-size: 13px; color: var(--ink-2); }
-.bar-track { background: #f0efee; border-radius: 4px; height: 14px; overflow: hidden; }
+/* ---- failure analysis dashboard ---- */
+.viz-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 26px; }
+@media (max-width: 860px) { .viz-grid2 { grid-template-columns: 1fr; } }
+.viz-card { padding: 16px 18px 14px; }
+.viz-h { margin: 0 0 12px; display: flex; align-items: baseline; gap: 8px; }
+.viz-note { font-size: 11px; font-weight: 500; color: var(--ink-3); text-transform: none; letter-spacing: 0.01em; }
+.viz { width: 100%; height: auto; display: block; }
+.viz-grid { stroke: #f0efee; stroke-width: 1; }
+.viz-axis { stroke: #d6d3d1; stroke-width: 1; }
+.viz-bar-base { fill: #9ec5f4; }
+.viz-bar-cap { fill: #2a78d6; }
+.viz-zero { fill: #d6d3d1; }
+.viz-val { font-size: 12px; font-weight: 600; fill: var(--ink); font-variant-numeric: tabular-nums; }
+.viz-cat { font-size: 11px; fill: var(--ink-3); }
+.viz-insight { font-size: 12.5px; color: var(--ink-2); margin-top: 10px; line-height: 1.5; border-top: 1px solid #f0efee; padding-top: 9px; }
+
+.hbars { padding: 2px 0; }
+.bar-row { display: grid; grid-template-columns: 108px 1fr 44px; align-items: center; gap: 10px; padding: 5.5px 0; }
+.bar-label { font-size: 12.5px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-track { height: 12px; }
 .bar-fill { display: block; height: 100%; background: #2a78d6; border-radius: 0 4px 4px 0; }
-.bar-val { font-size: 13px; font-weight: 600; text-align: right; }
+.bar-fill.seq-0 { background: #1c5cab; }
+.bar-fill.seq-1 { background: #2a78d6; }
+.bar-fill.seq-2 { background: #5598e7; }
+.bar-fill.seq-3 { background: #86b6ef; }
+.bar-val { font-size: 12.5px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+
+.meter { height: 14px; background: #fdf1f1; border-radius: 7px; overflow: hidden; margin-top: 6px; }
+.meter-fill { display: block; height: 100%; background: #0ca30c; border-radius: 0 7px 7px 0; }
+.meter-legend { display: flex; gap: 18px; margin-top: 10px; font-size: 12.5px; color: var(--ink-2); }
+.lg-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+.lg-restored { background: #0ca30c; }
+.lg-ongoing { background: #d03b3b; }
+
 .wrap-cell { white-space: normal; min-width: 260px; max-width: 420px; font-size: 13px; }
 
 /* ---- procurement ---- */

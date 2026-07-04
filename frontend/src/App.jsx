@@ -3,7 +3,7 @@ import {
   ASSETS, PM_SCHEDULES, JOB_CARDS, SPECS, LOG_ENTRIES, PROCUREMENTS, PROC_STAGES,
   FAILURES, SPARES, spareStats, checksheetFor, CHECKSHEET_TEMPLATES, CHECKSHEET_RESULTS,
   completedChecksheets, kpis, fmtDate, fmtTime, dueState, durationHrs, failureStats,
-  pmOccurrencesInMonth,
+  failuresByMonth, classCountsAll, downtimeByAsset, recoveryStatus, pmOccurrencesInMonth,
 } from './data.js'
 import QR, { assetUrl } from './qr.jsx'
 
@@ -288,30 +288,121 @@ function LogBook() {
   )
 }
 
-/* ---------- failures & recovery ---------- */
+/* ---------- failures & recovery: analysis dashboard ---------- */
+
+function TrendChart({ data }) {
+  const W = 560, H = 170, PAD = { t: 18, r: 8, b: 24, l: 8 }
+  const max = Math.max(...data.map((m) => m.count), 1)
+  const iw = W - PAD.l - PAD.r
+  const ih = H - PAD.t - PAD.b
+  const bw = Math.min(34, (iw / data.length) * 0.5)
+  const x = (i) => PAD.l + (iw / data.length) * (i + 0.5)
+  const y = (v) => PAD.t + ih * (1 - v / max)
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="viz" role="img" aria-label="Failures per month">
+      {[...Array(max + 1)].map((_, g) => (
+        <line key={g} x1={PAD.l} x2={W - PAD.r} y1={y(g)} y2={y(g)} className="viz-grid" />
+      ))}
+      {data.map((m, i) => (
+        <g key={m.label}>
+          {m.count > 0 && (
+            <>
+              <rect x={x(i) - bw / 2} y={y(m.count)} width={bw} height={ih - (y(m.count) - PAD.t) + 0.5}
+                    rx={0} className="viz-bar-base" />
+              <rect x={x(i) - bw / 2} y={y(m.count)} width={bw} height={Math.min(8, ih * (m.count / max))}
+                    rx={4} className="viz-bar-cap" />
+              <text x={x(i)} y={y(m.count) - 6} className="viz-val" textAnchor="middle">{m.count}</text>
+            </>
+          )}
+          {m.count === 0 && <circle cx={x(i)} cy={y(0)} r={2} className="viz-zero" />}
+          <text x={x(i)} y={H - 6} className="viz-cat" textAnchor="middle">{m.label}</text>
+        </g>
+      ))}
+      <line x1={PAD.l} x2={W - PAD.r} y1={y(0)} y2={y(0)} className="viz-axis" />
+    </svg>
+  )
+}
+
+function HBar({ rows, unit, seq }) {
+  const max = rows[0]?.[1] ?? 1
+  return (
+    <div className="hbars">
+      {rows.map(([label, v], i) => (
+        <div className="bar-row" key={label}>
+          <span className="bar-label" title={label}>{label}</span>
+          <span className="bar-track">
+            <span className={`bar-fill${seq ? ` seq-${Math.min(3, i)}` : ''}`} style={{ width: `${Math.max((v / max) * 100, 2)}%` }} />
+          </span>
+          <span className="bar-val dt">{v}{unit}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 function Failures() {
-  const s = failureStats()
-  const classes = Object.entries(s.byClass).sort((a, b) => b[1] - a[1])
-  const max = classes[0]?.[1] ?? 1
+  const s = failureStats(90)
+  const trend = failuresByMonth(6)
+  const classes = classCountsAll()
+  const downtime = downtimeByAsset().slice(0, 5)
+  const rec = recoveryStatus()
+  const recPct = Math.round((rec.restored / (rec.restored + rec.ongoing)) * 100)
+
+  // computed insights, not decoration
+  const worstClass = classes[0]
+  const worstAsset = downtime[0]
+  const prev3 = trend.slice(0, 3).reduce((a, m) => a + m.count, 0)
+  const last3 = trend.slice(3).reduce((a, m) => a + m.count, 0)
+  const dir = last3 < prev3 ? 'down' : last3 > prev3 ? 'up' : 'flat'
+
   return (
     <>
       <div className="kpis">
         <div className="tile"><div className="v">{s.total}</div><div className="k">Failures — last 90 days</div></div>
         <div className={s.ongoing ? 'tile alert' : 'tile'}><div className="v">{s.ongoing}</div><div className="k">Ongoing breakdowns</div></div>
-        <div className="tile"><div className="v">{s.downtime} h</div><div className="k">Total downtime</div></div>
+        <div className="tile"><div className="v">{s.downtime} h</div><div className="k">Downtime — 90 days</div></div>
         <div className="tile"><div className="v">{s.mttr} h</div><div className="k">Mean time to recover</div></div>
+        <div className="tile"><div className="v">{recPct}%</div><div className="k">Recovery rate — 6 months</div></div>
       </div>
 
-      <h2>Failures by asset class</h2>
-      <div className="card bars">
-        {classes.map(([cls, n]) => (
-          <div className="bar-row" key={cls}>
-            <span className="bar-label">{cls}</span>
-            <span className="bar-track"><span className="bar-fill" style={{ width: `${(n / max) * 100}%` }} /></span>
-            <span className="bar-val dt">{n}</span>
+      <div className="viz-grid2">
+        <section className="card viz-card">
+          <h2 className="viz-h">Failures per month <span className="viz-note">last 6 months</span></h2>
+          <TrendChart data={trend} />
+          <p className="viz-insight">
+            {dir === 'down' && <>Trend improving — {last3} failures in the last 3 months vs {prev3} in the previous 3.</>}
+            {dir === 'up' && <>Trend worsening — {last3} failures in the last 3 months vs {prev3} in the previous 3.</>}
+            {dir === 'flat' && <>Steady — {last3} failures in each of the last two quarters.</>}
+          </p>
+        </section>
+
+        <section className="card viz-card">
+          <h2 className="viz-h">Recovery status <span className="viz-note">6 months</span></h2>
+          <div className="meter" role="img" aria-label={`${rec.restored} restored, ${rec.ongoing} ongoing`}>
+            <span className="meter-fill" style={{ width: `${recPct}%` }} />
           </div>
-        ))}
+          <div className="meter-legend">
+            <span><span className="lg-dot lg-restored" />Restored · {rec.restored}</span>
+            <span><span className="lg-dot lg-ongoing" />Ongoing · {rec.ongoing}</span>
+          </div>
+          <p className="viz-insight">
+            {rec.ongoing === 0
+              ? 'All recorded failures stand restored.'
+              : `${rec.ongoing} breakdown${rec.ongoing > 1 ? 's' : ''} still open — oldest: ${FAILURES.filter((f) => !f.restored).map((f) => f.asset).join(', ')}.`}
+          </p>
+        </section>
+
+        <section className="card viz-card">
+          <h2 className="viz-h">Failures by asset class <span className="viz-note">6 months</span></h2>
+          <HBar rows={classes} unit="" />
+          <p className="viz-insight">{worstClass[0]} leads with {worstClass[1]} failures — focus class for the next PM review.</p>
+        </section>
+
+        <section className="card viz-card">
+          <h2 className="viz-h">Downtime by asset <span className="viz-note">top 5 · hours</span></h2>
+          <HBar rows={downtime} unit=" h" seq />
+          <p className="viz-insight">{worstAsset[0]} accounts for {worstAsset[1]} h — the availability bottleneck.</p>
+        </section>
       </div>
 
       <h2>Failure &amp; recovery log</h2>

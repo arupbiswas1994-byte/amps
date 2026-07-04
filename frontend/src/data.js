@@ -108,6 +108,11 @@ export const FAILURES = [
   { id: 'F-05', asset: 'LTP-0001', started: t(-61, 9), restored: t(-61, 10), cause: 'Bus PT fuse blown — metering lost', remedy: 'Fuse replaced; PT secondary wiring checked' },
   { id: 'F-06', asset: 'TRF-0001', started: t(-75, 8), restored: t(-75, 12), cause: 'Buchholz alarm — precautionary shutdown', remedy: 'Gas sample tested inert; no internal fault; normalized' },
   { id: 'F-07', asset: 'HTP-0001', started: t(-82, 17), restored: t(-82, 18), cause: '33 kV incomer tripped on grid disturbance', remedy: 'Supply restored on grid normalization; relays checked' },
+  { id: 'F-08', asset: 'LTP-0001', started: t(-95, 10), restored: t(-95, 12), cause: 'ACB tripped on earth fault — outgoing feeder 7', remedy: 'Faulty cable section isolated and repaired' },
+  { id: 'F-09', asset: 'CRN-0001', started: t(-110, 15), restored: t(-110, 16), cause: 'LT motor overload trip during long travel', remedy: 'Overload relay reset; drive checked, no repeat' },
+  { id: 'F-10', asset: 'PLC-0001', started: t(-128, 9), restored: t(-128, 10), cause: 'Modbus comm loss to bay devices', remedy: 'Loose RS-485 termination re-crimped' },
+  { id: 'F-11', asset: 'HTP-0001', started: t(-150, 11), restored: t(-150, 14), cause: 'VCB failed to close — spring charge motor fault', remedy: 'Spring-charge motor serviced; spare recommended (SP-003)' },
+  { id: 'F-12', asset: 'MTR-0001', started: t(-170, 13), restored: t(-170, 14), cause: 'High vibration alarm at DE bearing', remedy: 'Bearing re-greased; vibration normalized' },
 ]
 
 // Checksheet templates per PM task — items with acceptance limits.
@@ -200,17 +205,51 @@ export const fmtTime = (date) =>
 export const durationHrs = (f) =>
   Math.round(((f.restored ?? today) - f.started) / hrs * 10) / 10
 
-export function failureStats() {
-  const restored = FAILURES.filter((f) => f.restored)
-  const ongoing = FAILURES.length - restored.length
-  const downtime = Math.round(FAILURES.reduce((s, f) => s + durationHrs(f), 0))
+export function failureStats(windowDays = 90) {
+  const win = FAILURES.filter((f) => f.started >= d(-windowDays))
+  const restored = win.filter((f) => f.restored)
+  const ongoing = win.length - restored.length
+  const downtime = Math.round(win.reduce((s, f) => s + durationHrs(f), 0))
   const mttr = Math.round(restored.reduce((s, f) => s + durationHrs(f), 0) / restored.length * 10) / 10
+  const byClass = {}
+  win.forEach((f) => {
+    const cls = ASSETS.find((a) => a.code === f.asset)?.cls ?? '?'
+    byClass[cls] = (byClass[cls] ?? 0) + 1
+  })
+  return { total: win.length, ongoing, downtime, mttr, byClass }
+}
+
+export function failuresByMonth(nMonths = 6) {
+  const out = []
+  for (let i = nMonths - 1; i >= 0; i--) {
+    const m = new Date(today.getFullYear(), today.getMonth() - i, 1)
+    const next = new Date(today.getFullYear(), today.getMonth() - i + 1, 1)
+    out.push({
+      label: m.toLocaleDateString('en-GB', { month: 'short' }),
+      count: FAILURES.filter((f) => f.started >= m && f.started < next).length,
+    })
+  }
+  return out
+}
+
+export function classCountsAll() {
   const byClass = {}
   FAILURES.forEach((f) => {
     const cls = ASSETS.find((a) => a.code === f.asset)?.cls ?? '?'
     byClass[cls] = (byClass[cls] ?? 0) + 1
   })
-  return { total: FAILURES.length, ongoing, downtime, mttr, byClass }
+  return Object.entries(byClass).sort((a, b) => b[1] - a[1])
+}
+
+export function downtimeByAsset() {
+  const byAsset = {}
+  FAILURES.forEach((f) => { byAsset[f.asset] = Math.round(((byAsset[f.asset] ?? 0) + durationHrs(f)) * 10) / 10 })
+  return Object.entries(byAsset).sort((a, b) => b[1] - a[1])
+}
+
+export function recoveryStatus() {
+  const restored = FAILURES.filter((f) => f.restored).length
+  return { restored, ongoing: FAILURES.length - restored }
 }
 
 // Project PM occurrences onto a month grid (frequency-stepped from nextDue).
