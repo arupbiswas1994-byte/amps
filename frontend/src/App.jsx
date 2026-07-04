@@ -49,7 +49,7 @@ function Dashboard({ go }) {
         <div className="tile"><div className="v">{k.openJC}</div><div className="k">Open job cards</div></div>
       </div>
 
-      <h2>Asset register</h2>
+      <h2>Assets</h2>
       <div className="card tbl-wrap">
         <table>
           <thead>
@@ -87,13 +87,13 @@ function Dashboard({ go }) {
 
 function AssetDetail({ code }) {
   const a = ASSETS.find((x) => x.code === code)
-  if (!a) return <p>Asset not found. <a className="crumb" href="#/">← Back to register</a></p>
+  if (!a) return <p>Asset not found. <a className="crumb" href="#/">← Back to assets</a></p>
   const pms = PM_SCHEDULES.filter((p) => p.asset === code)
   const wos = JOB_CARDS.filter((w) => w.asset === code)
   const specs = SPECS[code] ?? []
   return (
     <>
-      <a className="crumb" href="#/">← Asset register</a>
+      <a className="crumb" href="#/">← Assets</a>
       <div className="detail-grid">
         <div className="card">
           <div className="detail-head">
@@ -581,7 +581,7 @@ function ProposalLetter({ prId }) {
 
 function JobCard({ jcId }) {
   const w = JOB_CARDS.find((x) => x.id === jcId)
-  if (!w) return <p>Job card not found. <a className="crumb" href="#/">← Register</a></p>
+  if (!w) return <p>Job card not found. <a className="crumb" href="#/">← Assets</a></p>
   const asset = ASSETS.find((x) => x.code === w.asset)
   const done = w.status === 'done' || w.status === 'verified'
   const cs = CHECKSHEET_RESULTS[w.id]
@@ -692,13 +692,13 @@ function Checksheet({ kind, a1, a2 }) {
   if (kind === 'wo') {
     filled = CHECKSHEET_RESULTS[a1]
     wo = JOB_CARDS.find((w) => w.id === a1)
-    if (!filled || !wo) return <p>Checksheet not found. <a className="crumb" href="#/">← Register</a></p>
+    if (!filled || !wo) return <p>Checksheet not found. <a className="crumb" href="#/">← Assets</a></p>
     task = filled.task
     asset = ASSETS.find((x) => x.code === wo.asset)
   } else {
     asset = ASSETS.find((x) => x.code === a1)
     task = decodeURIComponent(a2)
-    if (!asset) return <p>Asset not found. <a className="crumb" href="#/">← Register</a></p>
+    if (!asset) return <p>Asset not found. <a className="crumb" href="#/">← Assets</a></p>
   }
   const items = checksheetFor(task)
   const pm = PM_SCHEDULES.find((p) => p.asset === asset.code && p.task === task)
@@ -847,7 +847,7 @@ function TagSheet() {
 const routeFromHash = () => location.hash.replace(/^#/, '') || '/'
 
 const NAV = [
-  ['/', 'Register'],
+  ['/', 'Assets'],
   ['/planner', 'Planner'],
   ['/log', 'Log book'],
   ['/failures', 'Failures'],
