@@ -184,6 +184,8 @@ function AssetDetail({ code }) {
 
 /* ---------- monthly planner ---------- */
 
+const FREQ_BADGE = { monthly: 'M', quarterly: 'Q', 'half-yearly': 'HY', yearly: 'Y' }
+
 function Planner() {
   const now = new Date()
   const [ym, setYm] = useState([now.getFullYear(), now.getMonth()])
@@ -197,6 +199,15 @@ function Planner() {
   const isThisMonth = year === now.getFullYear() && month === now.getMonth()
   const shift = (n) => setYm(([y, m]) => { const d2 = new Date(y, m + n, 1); return [d2.getFullYear(), d2.getMonth()] })
 
+  // the list a planner opens this page for: overdue work carried forward
+  const carried = PM_SCHEDULES
+    .map((p) => ({ ...p, over: -Math.ceil((p.nextDue - now) / 86400000) }))
+    .filter((p) => p.over > 0)
+    .sort((a, b) => b.over - a.over)
+
+  const monthItems = Object.values(occ).flat()
+  const busiest = Object.entries(occ).sort((a, b) => b[1].length - a[1].length)[0]
+
   return (
     <>
       <div className="plan-bar">
@@ -207,6 +218,23 @@ function Planner() {
           <button className="pbtn" onClick={() => shift(1)} aria-label="Next month">→</button>
         </div>
       </div>
+
+      {carried.length > 0 && (
+        <div className="plan-carry">
+          <span className="plan-carry-t">⚠ Carried forward — overdue</span>
+          {carried.map((p) => (
+            <a key={p.asset + p.task} href={`#/asset/${p.asset}`} className="plan-carry-item">
+              <b className="code">{p.asset}</b> {p.task} <span className="pc-days">{p.over}d</span>
+            </a>
+          ))}
+        </div>
+      )}
+
+      <p className="plan-sum">
+        <b>{monthItems.length}</b> scheduled task{monthItems.length !== 1 ? 's' : ''} in {monthName.split(' ')[0]}
+        {busiest && busiest[1].length > 1 && <> · busiest day <b className="dt">{String(busiest[0]).padStart(2, '0')} {monthName.split(' ')[0]}</b> ({busiest[1].length} tasks)</>}
+        {isThisMonth && carried.length > 0 && <> · <span className="pc-red">{carried.length} overdue carried forward</span></>}
+      </p>
       <div className="card cal">
         <div className="cal-head">
           {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d2) => <div key={d2}>{d2}</div>)}
@@ -224,7 +252,7 @@ function Planner() {
                   return (
                     <a key={j} href={`#/asset/${p.asset}`} className={`cal-item${overdue ? ' late' : ''}`}
                        title={`${p.asset} — ${p.task} (${p.frequency})`}>
-                      <b>{p.asset}</b> <span className="cal-task">{p.task}</span>
+                      <i className="cal-freq">{FREQ_BADGE[p.frequency]}</i> <b>{p.asset}</b> <span className="cal-task">{p.task}</span>
                     </a>
                   )
                 })}
@@ -233,7 +261,7 @@ function Planner() {
           })}
         </div>
       </div>
-      <p className="roadmap">Planned dates are projected from each task's frequency. Red = overdue. Click a task to open the asset.</p>
+      <p className="roadmap">Planned dates are projected from each task's frequency (M / Q / HY / Y). Red = overdue. Click a task to open the asset.</p>
     </>
   )
 }
