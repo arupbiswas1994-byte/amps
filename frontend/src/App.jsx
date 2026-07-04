@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
-import { ASSETS, PM_SCHEDULES, WORK_ORDERS, kpis, fmtDate, dueState } from './data.js'
+import {
+  ASSETS, PM_SCHEDULES, WORK_ORDERS, SPECS, LOG_ENTRIES, PROCUREMENTS, PROC_STAGES,
+  FAILURES, kpis, fmtDate, fmtTime, dueState, durationHrs, failureStats, pmOccurrencesInMonth,
+} from './data.js'
 import QR, { assetUrl } from './qr.jsx'
 
 const STATUS_LABEL = {
@@ -18,18 +21,22 @@ const DueChip = ({ nextDue }) => {
   return <span className={`chip d-${s.key}`}><span className="dot" />{s.label}</span>
 }
 
+const cap = (s) => s[0].toUpperCase() + s.slice(1)
+
 const WoChip = ({ status }) => (
-  <span className={`chip w-${status}`}><span className="dot" />{status[0].toUpperCase() + status.slice(1)}</span>
+  <span className={`chip w-${status}`}><span className="dot" />{cap(status)}</span>
+)
+
+const StageChip = ({ stage }) => (
+  <span className={`chip p-${stage}`}><span className="dot" />{cap(stage)}</span>
 )
 
 /* ---------- dashboard ---------- */
 
 function Dashboard({ go }) {
   const k = kpis()
-  const nextPM = (code) => {
-    const due = PM_SCHEDULES.filter((p) => p.asset === code).sort((a, b) => a.nextDue - b.nextDue)[0]
-    return due ?? null
-  }
+  const nextPM = (code) =>
+    PM_SCHEDULES.filter((p) => p.asset === code).sort((a, b) => a.nextDue - b.nextDue)[0] ?? null
   return (
     <>
       <div className="kpis">
@@ -65,17 +72,23 @@ function Dashboard({ go }) {
           </tbody>
         </table>
       </div>
+
+      <p className="roadmap">
+        On the roadmap: PM checklists with signed copies · important-spares register with
+        min-stock alerts · permit-to-work records · role-based access · mobile field mode.
+      </p>
     </>
   )
 }
 
 /* ---------- asset detail ---------- */
 
-function AssetDetail({ code, go }) {
+function AssetDetail({ code }) {
   const a = ASSETS.find((x) => x.code === code)
   if (!a) return <p>Asset not found. <a className="crumb" href="#/">← Back to register</a></p>
   const pms = PM_SCHEDULES.filter((p) => p.asset === code)
   const wos = WORK_ORDERS.filter((w) => w.asset === code)
+  const specs = SPECS[code] ?? []
   return (
     <>
       <a className="crumb" href="#/">← Asset register</a>
@@ -91,6 +104,17 @@ function AssetDetail({ code, go }) {
               <StatusChip status={a.status} />
             </div>
           </div>
+
+          {specs.length > 0 && (
+            <div className="sect">
+              <h3>Specifications</h3>
+              <dl className="specs">
+                {specs.map(([k, v]) => (
+                  <div key={k}><dt>{k}</dt><dd>{v}</dd></div>
+                ))}
+              </dl>
+            </div>
+          )}
 
           <div className="sect">
             <h3>Preventive maintenance</h3>
@@ -144,6 +168,234 @@ function AssetDetail({ code, go }) {
   )
 }
 
+/* ---------- monthly planner ---------- */
+
+function Planner() {
+  const now = new Date()
+  const [ym, setYm] = useState([now.getFullYear(), now.getMonth()])
+  const [year, month] = ym
+  const occ = pmOccurrencesInMonth(year, month)
+  const first = new Date(year, month, 1)
+  const startPad = (first.getDay() + 6) % 7 // Monday-first
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const cells = [...Array(startPad).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)]
+  const monthName = first.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+  const isThisMonth = year === now.getFullYear() && month === now.getMonth()
+  const shift = (n) => setYm(([y, m]) => { const d2 = new Date(y, m + n, 1); return [d2.getFullYear(), d2.getMonth()] })
+
+  return (
+    <>
+      <div className="plan-bar">
+        <h2 style={{ margin: 0 }}>Maintenance planner</h2>
+        <div className="plan-nav">
+          <button className="pbtn" onClick={() => shift(-1)} aria-label="Previous month">←</button>
+          <span className="plan-month dt">{monthName}</span>
+          <button className="pbtn" onClick={() => shift(1)} aria-label="Next month">→</button>
+        </div>
+      </div>
+      <div className="card cal">
+        <div className="cal-head">
+          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d2) => <div key={d2}>{d2}</div>)}
+        </div>
+        <div className="cal-grid">
+          {cells.map((dayNum, i) => {
+            if (dayNum === null) return <div key={`p${i}`} className="cal-cell pad" />
+            const items = occ[dayNum] ?? []
+            const isToday = isThisMonth && dayNum === now.getDate()
+            return (
+              <div key={dayNum} className={`cal-cell${isToday ? ' today' : ''}`}>
+                <span className="cal-day dt">{dayNum}</span>
+                {items.map((p, j) => {
+                  const overdue = p.due < now && !(p.due.toDateString() === now.toDateString())
+                  return (
+                    <a key={j} href={`#/asset/${p.asset}`} className={`cal-item${overdue ? ' late' : ''}`}
+                       title={`${p.asset} — ${p.task} (${p.frequency})`}>
+                      <b>{p.asset}</b> {p.task}
+                    </a>
+                  )
+                })}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+      <p className="roadmap">Planned dates are projected from each task's frequency. Red = overdue. Click a task to open the asset.</p>
+    </>
+  )
+}
+
+/* ---------- daily log book ---------- */
+
+function LogBook() {
+  const [entries, setEntries] = useState(LOG_ENTRIES)
+  const [text, setText] = useState('')
+  const [shift, setShift] = useState('A')
+  const add = (e) => {
+    e.preventDefault()
+    if (!text.trim()) return
+    setEntries([{ ts: new Date(), shift, author: 'Duty Engineer', text: text.trim() }, ...entries])
+    setText('')
+  }
+  const byDay = entries.reduce((m, en) => {
+    const k = en.ts.toDateString()
+    ;(m[k] ??= []).push(en)
+    return m
+  }, {})
+  return (
+    <>
+      <h2>Daily log book</h2>
+      <form className="log-form card" onSubmit={add}>
+        <select value={shift} onChange={(e) => setShift(e.target.value)} aria-label="Shift">
+          {['A', 'B', 'C'].map((s) => <option key={s}>{s}</option>)}
+        </select>
+        <input value={text} onChange={(e) => setText(e.target.value)}
+               placeholder="New log entry — readings, events, handover notes…" />
+        <button className="btn" type="submit">Add entry</button>
+      </form>
+      {Object.entries(byDay).map(([dayKey, list]) => (
+        <div key={dayKey} className="log-day">
+          <h3 className="log-date dt">{fmtDate(new Date(dayKey))}</h3>
+          <div className="card">
+            {list.map((en, i) => (
+              <div className="log-entry" key={i}>
+                <div className="log-meta">
+                  <span className="dt">{fmtTime(en.ts)}</span>
+                  <span className={`chip sh-${en.shift}`}><span className="dot" />Shift {en.shift}</span>
+                  <span className="dim">{en.author}</span>
+                </div>
+                <div className="log-text">{en.text}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+      <p className="roadmap">Demo note: new entries are not persisted. The full version keeps a signed, tamper-evident shift log.</p>
+    </>
+  )
+}
+
+/* ---------- failures & recovery ---------- */
+
+function Failures() {
+  const s = failureStats()
+  const classes = Object.entries(s.byClass).sort((a, b) => b[1] - a[1])
+  const max = classes[0]?.[1] ?? 1
+  return (
+    <>
+      <div className="kpis">
+        <div className="tile"><div className="v">{s.total}</div><div className="k">Failures — last 90 days</div></div>
+        <div className={s.ongoing ? 'tile alert' : 'tile'}><div className="v">{s.ongoing}</div><div className="k">Ongoing breakdowns</div></div>
+        <div className="tile"><div className="v">{s.downtime} h</div><div className="k">Total downtime</div></div>
+        <div className="tile"><div className="v">{s.mttr} h</div><div className="k">Mean time to recover</div></div>
+      </div>
+
+      <h2>Failures by asset class</h2>
+      <div className="card bars">
+        {classes.map(([cls, n]) => (
+          <div className="bar-row" key={cls}>
+            <span className="bar-label">{cls}</span>
+            <span className="bar-track"><span className="bar-fill" style={{ width: `${(n / max) * 100}%` }} /></span>
+            <span className="bar-val dt">{n}</span>
+          </div>
+        ))}
+      </div>
+
+      <h2>Failure &amp; recovery log</h2>
+      <div className="card tbl-wrap">
+        <table>
+          <thead><tr><th>ID</th><th>Asset</th><th>Occurred</th><th>Restored</th><th>Downtime</th><th>State</th><th>Cause → remedy</th></tr></thead>
+          <tbody>
+            {FAILURES.map((f) => (
+              <tr key={f.id} tabIndex={0} onClick={() => { location.hash = `/asset/${f.asset}` }}
+                  onKeyDown={(e) => e.key === 'Enter' && (location.hash = `/asset/${f.asset}`)}>
+                <td className="code">{f.id}</td>
+                <td className="code">{f.asset}</td>
+                <td className="dim dt">{fmtDate(f.started)} {fmtTime(f.started)}</td>
+                <td className="dim dt">{f.restored ? `${fmtDate(f.restored)} ${fmtTime(f.restored)}` : '—'}</td>
+                <td className="dt">{durationHrs(f)} h</td>
+                <td>{f.restored
+                  ? <span className="chip w-done"><span className="dot" />Restored</span>
+                  : <span className="chip d-overdue"><span className="dot" />Ongoing</span>}</td>
+                <td className="wrap-cell">{f.cause} <span className="dim">→ {f.remedy}</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  )
+}
+
+/* ---------- procurement ---------- */
+
+function Procurement() {
+  return (
+    <>
+      <h2>Procurement tracker</h2>
+      <div className="card tbl-wrap">
+        <table>
+          <thead><tr><th>PR no.</th><th>Item</th><th>Qty</th><th>For asset</th><th>Stage</th><th>Est. cost</th><th>Requested</th><th></th></tr></thead>
+          <tbody>
+            {PROCUREMENTS.map((p) => (
+              <tr key={p.id} style={{ cursor: 'default' }}>
+                <td className="code">{p.id}</td>
+                <td className="wrap-cell">{p.item}<div className="sub-note">{p.note}</div></td>
+                <td className="dim">{p.qty}</td>
+                <td className="code">{p.asset}</td>
+                <td><StageChip stage={p.stage} /></td>
+                <td className="dim dt">{p.cost}</td>
+                <td className="dim dt">{fmtDate(p.requested)}</td>
+                <td><a className="mini-btn" href={`#/procurement/${p.id}/letter`}>Draft letter</a></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="stage-legend">
+        {PROC_STAGES.map((st) => <StageChip key={st} stage={st} />)}
+      </div>
+      <p className="roadmap">Tracking + proposal drafting only — approvals and purchase orders stay with the existing office process.</p>
+    </>
+  )
+}
+
+function ProposalLetter({ prId }) {
+  const p = PROCUREMENTS.find((x) => x.id === prId)
+  if (!p) return <p>Not found. <a className="crumb" href="#/procurement">← Procurement</a></p>
+  const a = ASSETS.find((x) => x.code === p.asset)
+  const f = p.failure ? FAILURES.find((x) => x.id === p.failure) : null
+  return (
+    <>
+      <div className="sheet-bar">
+        <a className="crumb" style={{ margin: 0 }} href="#/procurement">← Procurement</a>
+        <button className="btn" onClick={() => window.print()}>Print letter</button>
+        <p>Auto-drafted from the asset record — edit after export as needed.</p>
+      </div>
+      <div className="card letter">
+        <p className="l-right dt">Ref: AMPS/{p.id}<br />Date: {fmtDate(new Date())}</p>
+        <p>To,<br />The Senior Manager (Procurement)<br />Demo Plant</p>
+        <p className="l-sub"><b>Subject: Proposal for procurement of {p.item} — {p.qty}</b></p>
+        <p>Respected Sir,</p>
+        <p>
+          It is proposed to procure <b>{p.item}</b> ({p.qty}) for <b>{p.asset} — {a?.name}</b> installed
+          at {a?.location}, Demo Plant.
+        </p>
+        {f && (
+          <p>
+            The requirement arises from breakdown <b>{f.id}</b> dated {fmtDate(f.started)} ({f.cause.toLowerCase()}),
+            with downtime of {durationHrs(f)} hours{f.restored ? '' : ' and still continuing'}. Early procurement is
+            requested to restore normal operation and to hold one unit as critical spare.
+          </p>
+        )}
+        {!f && <p>{p.note} The item is required to maintain preventive-maintenance readiness for this equipment.</p>}
+        {p.cost !== '—' && <p>Estimated cost: <b>{p.cost}</b>.</p>}
+        <p>Submitted for your kind approval, please.</p>
+        <p className="l-sign">Yours faithfully,<br /><br />Maintenance Department<br />Demo Plant</p>
+      </div>
+    </>
+  )
+}
+
 /* ---------- QR tag sheet ---------- */
 
 function TagSheet() {
@@ -171,6 +423,15 @@ function TagSheet() {
 
 const routeFromHash = () => location.hash.replace(/^#/, '') || '/'
 
+const NAV = [
+  ['/', 'Register'],
+  ['/planner', 'Planner'],
+  ['/log', 'Log book'],
+  ['/failures', 'Failures'],
+  ['/procurement', 'Procurement'],
+  ['/tags', 'QR tags'],
+]
+
 export default function App() {
   const [route, setRoute] = useState(routeFromHash)
   useEffect(() => {
@@ -181,6 +442,7 @@ export default function App() {
   const go = (r) => { location.hash = r }
 
   const assetMatch = route.match(/^\/asset\/(.+)$/)
+  const letterMatch = route.match(/^\/procurement\/([^/]+)\/letter$/)
 
   return (
     <div className="shell">
@@ -189,12 +451,18 @@ export default function App() {
           <span className="brand-sub">Asset Maintenance &amp; Preventive Scheduling</span>
         </a>
         <nav className="nav">
-          <a href="#/" className={route === '/' ? 'active' : ''}>Register</a>
-          <a href="#/tags" className={route === '/tags' ? 'active' : ''}>QR tags</a>
+          {NAV.map(([path, label]) => (
+            <a key={path} href={`#${path}`} className={route === path ? 'active' : ''}>{label}</a>
+          ))}
         </nav>
       </header>
 
-      {assetMatch ? <AssetDetail code={assetMatch[1]} go={go} />
+      {assetMatch ? <AssetDetail code={assetMatch[1]} />
+        : letterMatch ? <ProposalLetter prId={letterMatch[1]} />
+        : route === '/planner' ? <Planner />
+        : route === '/log' ? <LogBook />
+        : route === '/failures' ? <Failures />
+        : route === '/procurement' ? <Procurement />
         : route === '/tags' ? <TagSheet />
         : <Dashboard go={go} />}
 

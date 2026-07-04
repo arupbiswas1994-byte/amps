@@ -42,6 +42,50 @@ export const WORK_ORDERS = [
   { id: 'WO-101', asset: 'TRF-0001', type: 'preventive', status: 'verified', title: 'Half-yearly oil BDV test', openedAt: d(-36), closedAt: d(-34), assignedTo: 'Technician A', findings: 'BDV 62 kV — within limits.' },
 ]
 
+export const SPECS = {
+  'TRF-0001': [['Rating', '2.5 MVA'], ['Voltage ratio', '33 / 0.415 kV'], ['Vector group', 'Dyn11'], ['Cooling', 'ONAN'], ['% impedance', '6.2%'], ['Oil quantity', '1850 L'], ['Tap range', '±5% in 2.5% steps']],
+  'HTP-0001': [['Type', 'VCB, indoor'], ['Rated current', '1250 A'], ['Breaking capacity', '25 kA / 3 s'], ['O/C pickup', '110% In'], ['E/F pickup', '20% In'], ['Control supply', '110 V DC']],
+  'HTP-0002': [['Type', 'VCB, indoor'], ['Rated current', '800 A'], ['Breaking capacity', '25 kA / 3 s'], ['O/C pickup', '105% In'], ['Control supply', '110 V DC']],
+  'LTP-0001': [['Busbar rating', '4000 A'], ['Short-circuit rating', '50 kA / 1 s'], ['Incomer', 'ACB 4000 A EDO'], ['Outgoing feeders', '12']],
+  'PLC-0001': [['CPU', 'LX-500 series'], ['I/O count', '128 DI / 64 DO / 32 AI'], ['Backup', 'UPS 1 kVA, 30 min'], ['Comm', 'Modbus TCP + RS-485']],
+  'MTR-0001': [['Rating', '75 kW / 100 HP'], ['Speed', '2960 RPM'], ['FLC', '132 A @ 415 V'], ['Frame', '280M'], ['Bearings', 'DE 6320-C3 / NDE 6316-C3']],
+  'CRN-0001': [['SWL', '10 T'], ['Span', '18 m'], ['Hoist motor', '15 kW'], ['LT / CT speed', '20 / 15 m/min'], ['Brake', 'EM disc, 2×']],
+  'MTR-0002': [['Rating', '22 kW / 30 HP'], ['Speed', '1470 RPM'], ['FLC', '41 A @ 415 V'], ['Frame', '180L'], ['Bearings', 'DE 6312-C3 / NDE 6310-C3']],
+}
+
+const hrs = 3600000
+const t = (dOff, h) => new Date(today.getTime() + dOff * day + (h - today.getHours()) * hrs)
+
+export const LOG_ENTRIES = [
+  { ts: t(0, 9), shift: 'A', author: 'S. Kumar', text: '33kV incomer load 42 A, all feeders normal. HTP-0002 kept isolated for IR test (WO-104).' },
+  { ts: t(-1, 22), shift: 'C', author: 'A. Sen', text: 'Night round normal. Substation-1 battery charger float 122 V. Handover: nil pending.' },
+  { ts: t(-1, 16), shift: 'B', author: 'R. Das', text: 'MTR-0002 replacement bearing followed up with stores — expected in 3 days (PR-2026-015). Bay ventilation running on standby fan.' },
+  { ts: t(-1, 9), shift: 'A', author: 'S. Kumar', text: 'DG set test run 15 min — voltage/frequency OK. Diesel level 78%.' },
+  { ts: t(-2, 21), shift: 'C', author: 'A. Sen', text: 'Workshop Bay-A lighting circuit MCB tripped once, reset, holding. To observe.' },
+  { ts: t(-2, 14), shift: 'B', author: 'R. Das', text: 'MTR-0002 abnormal noise reported by operator → isolated, breakdown WO-103 raised, DE bearing found seized.' },
+  { ts: t(-2, 9), shift: 'A', author: 'S. Kumar', text: 'Monthly brake inspection on CRN-0001 completed (WO-102). Brake pads within limit, LS2 adjusted.' },
+]
+
+export const PROCUREMENTS = [
+  { id: 'PR-2026-016', item: 'VCB spring-charge motor (spare)', qty: '1 no.', asset: 'HTP-0001', stage: 'draft', requested: d(-1), cost: '—', note: 'Recommended spare per OEM list; none in stock.' },
+  { id: 'PR-2026-015', item: 'DE bearing 6312-C3 for 22 kW ventilation fan motor', qty: '2 nos.', asset: 'MTR-0002', stage: 'proposed', requested: d(-2), cost: '₹ 18,400 (est.)', note: 'Against breakdown WO-103; one for replacement, one for stock.', failure: 'F-02' },
+  { id: 'PR-2026-014', item: 'Transformer oil, EHV grade — 200 L drums', qty: '2 drums', asset: 'TRF-0001', stage: 'ordered', requested: d(-18), cost: '₹ 52,000', note: 'Top-up + reserve ahead of half-yearly filtration.' },
+  { id: 'PR-2026-013', item: 'SMF batteries 12 V / 26 Ah for PLC UPS', qty: '4 nos.', asset: 'PLC-0001', stage: 'received', requested: d(-32), cost: '₹ 14,800', note: 'Replaced after UPS battery failure (F-03).' },
+  { id: 'PR-2026-012', item: 'Crane hoist brake pad set', qty: '2 sets', asset: 'CRN-0001', stage: 'approved', requested: d(-40), cost: '₹ 9,600', note: 'Preventive replacement stock for monthly inspections.' },
+]
+
+export const PROC_STAGES = ['draft', 'proposed', 'approved', 'ordered', 'received']
+
+export const FAILURES = [
+  { id: 'F-02', asset: 'MTR-0002', started: t(-2, 14), restored: null, cause: 'DE bearing seized — abnormal noise, motor isolated', remedy: 'Bearing replacement in progress (WO-103, PR-2026-015)' },
+  { id: 'F-03', asset: 'PLC-0001', started: t(-20, 11), restored: t(-20, 12), cause: 'UPS battery failure — PLC halted on supply dip', remedy: 'Batteries replaced (PR-2026-013); auto-restart verified' },
+  { id: 'F-01', asset: 'HTP-0002', started: t(-35, 15), restored: t(-35, 18), cause: 'Feeder VCB tripped on over-current', remedy: 'Downstream cable fault isolated; relay reset after inspection' },
+  { id: 'F-04', asset: 'CRN-0001', started: t(-48, 10), restored: t(-48, 12), cause: 'Hoist upper limit switch malfunction', remedy: 'LS replaced from stock; travel re-calibrated' },
+  { id: 'F-05', asset: 'LTP-0001', started: t(-61, 9), restored: t(-61, 10), cause: 'Bus PT fuse blown — metering lost', remedy: 'Fuse replaced; PT secondary wiring checked' },
+  { id: 'F-06', asset: 'TRF-0001', started: t(-75, 8), restored: t(-75, 12), cause: 'Buchholz alarm — precautionary shutdown', remedy: 'Gas sample tested inert; no internal fault; normalized' },
+  { id: 'F-07', asset: 'HTP-0001', started: t(-82, 17), restored: t(-82, 18), cause: '33 kV incomer tripped on grid disturbance', remedy: 'Supply restored on grid normalization; relays checked' },
+]
+
 // ---- derived helpers ----
 
 export const fmtDate = (date) =>
@@ -54,6 +98,42 @@ export function dueState(nextDue) {
   if (n < 0) return { key: 'overdue', label: `Overdue ${-n}d` }
   if (n <= 7) return { key: 'due_soon', label: `Due in ${n}d` }
   return { key: 'ok', label: 'On schedule' }
+}
+
+export const fmtTime = (date) =>
+  date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+
+export const durationHrs = (f) =>
+  Math.round(((f.restored ?? today) - f.started) / hrs * 10) / 10
+
+export function failureStats() {
+  const restored = FAILURES.filter((f) => f.restored)
+  const ongoing = FAILURES.length - restored.length
+  const downtime = Math.round(FAILURES.reduce((s, f) => s + durationHrs(f), 0))
+  const mttr = Math.round(restored.reduce((s, f) => s + durationHrs(f), 0) / restored.length * 10) / 10
+  const byClass = {}
+  FAILURES.forEach((f) => {
+    const cls = ASSETS.find((a) => a.code === f.asset)?.cls ?? '?'
+    byClass[cls] = (byClass[cls] ?? 0) + 1
+  })
+  return { total: FAILURES.length, ongoing, downtime, mttr, byClass }
+}
+
+// Project PM occurrences onto a month grid (frequency-stepped from nextDue).
+const FREQ_DAYS = { monthly: 30, quarterly: 91, 'half-yearly': 182, yearly: 365 }
+export function pmOccurrencesInMonth(year, month) {
+  const out = {}
+  for (const p of PM_SCHEDULES) {
+    let due = new Date(p.nextDue)
+    for (let i = 0; i < 24 && due <= new Date(year, month + 1, 1); i++) {
+      if (due.getFullYear() === year && due.getMonth() === month) {
+        const key = due.getDate()
+        ;(out[key] ??= []).push({ ...p, due })
+      }
+      due = new Date(due.getTime() + FREQ_DAYS[p.frequency] * day)
+    }
+  }
+  return out
 }
 
 export function kpis() {
