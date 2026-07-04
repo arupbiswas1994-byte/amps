@@ -219,6 +219,11 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 .chip.p-ordered .dot { background: #4a3aa7; }
 .chip.p-received .dot { background: var(--good); }
 
+/* ---- spares ---- */
+.row-low { background: #fffbfa; }
+.pr-link { display: inline-flex; align-items: center; gap: 6px; }
+.pr-link:hover .code { color: var(--accent); }
+
 /* ---- proposal letter ---- */
 .letter { padding: 36px 44px; max-width: 720px; font-size: 14.5px; line-height: 1.7; }
 .letter p { margin-bottom: 14px; }

@@ -76,6 +76,25 @@ export const PROCUREMENTS = [
 
 export const PROC_STAGES = ['draft', 'proposed', 'approved', 'ordered', 'received']
 
+export const SPARES = [
+  { code: 'SP-001', name: 'DE bearing 6312-C3', cls: 'Motor', bin: 'Store-1 / R2-B4', qty: 0, min: 2, unit: 'nos.', pr: 'PR-2026-015' },
+  { code: 'SP-002', name: 'DE bearing 6320-C3', cls: 'Motor', bin: 'Store-1 / R2-B5', qty: 1, min: 1, unit: 'nos.', pr: null },
+  { code: 'SP-003', name: 'VCB spring-charge motor', cls: 'HT Panel', bin: 'Store-1 / R1-A2', qty: 0, min: 1, unit: 'nos.', pr: 'PR-2026-016' },
+  { code: 'SP-004', name: 'Crane hoist brake pad set', cls: 'Crane Hoist', bin: 'Store-2 / R4-C1', qty: 2, min: 2, unit: 'sets', pr: 'PR-2026-012' },
+  { code: 'SP-005', name: 'SMF battery 12 V / 26 Ah', cls: 'PLC', bin: 'Store-1 / R3-A1', qty: 4, min: 4, unit: 'nos.', pr: null },
+  { code: 'SP-006', name: 'HT fuse link 33 kV', cls: 'HT Panel', bin: 'Store-1 / R1-A4', qty: 6, min: 4, unit: 'nos.', pr: null },
+  { code: 'SP-007', name: 'PT secondary fuse 2 A', cls: 'LT Panel', bin: 'Store-1 / R1-B1', qty: 3, min: 6, unit: 'nos.', pr: null },
+  { code: 'SP-008', name: 'Transformer oil, EHV grade', cls: 'Transformer', bin: 'Oil store', qty: 400, min: 600, unit: 'L', pr: 'PR-2026-014' },
+  { code: 'SP-009', name: 'Power contactor 95 A', cls: 'LT Panel', bin: 'Store-1 / R1-B3', qty: 2, min: 1, unit: 'nos.', pr: null },
+  { code: 'SP-010', name: 'Hoist limit switch', cls: 'Crane Hoist', bin: 'Store-2 / R4-C2', qty: 1, min: 2, unit: 'nos.', pr: null },
+]
+
+export function spareStats() {
+  const below = SPARES.filter((s) => s.qty < s.min)
+  const covered = below.filter((s) => s.pr).length
+  return { items: SPARES.length, below: below.length, uncovered: below.length - covered }
+}
+
 export const FAILURES = [
   { id: 'F-02', asset: 'MTR-0002', started: t(-2, 14), restored: null, cause: 'DE bearing seized — abnormal noise, motor isolated', remedy: 'Bearing replacement in progress (WO-103, PR-2026-015)' },
   { id: 'F-03', asset: 'PLC-0001', started: t(-20, 11), restored: t(-20, 12), cause: 'UPS battery failure — PLC halted on supply dip', remedy: 'Batteries replaced (PR-2026-013); auto-restart verified' },

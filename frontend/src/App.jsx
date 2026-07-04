@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import {
   ASSETS, PM_SCHEDULES, WORK_ORDERS, SPECS, LOG_ENTRIES, PROCUREMENTS, PROC_STAGES,
-  FAILURES, kpis, fmtDate, fmtTime, dueState, durationHrs, failureStats, pmOccurrencesInMonth,
+  FAILURES, SPARES, spareStats, kpis, fmtDate, fmtTime, dueState, durationHrs,
+  failureStats, pmOccurrencesInMonth,
 } from './data.js'
 import QR, { assetUrl } from './qr.jsx'
 
@@ -74,8 +75,8 @@ function Dashboard({ go }) {
       </div>
 
       <p className="roadmap">
-        On the roadmap: PM checklists with signed copies · important-spares register with
-        min-stock alerts · permit-to-work records · role-based access · mobile field mode.
+        On the roadmap: PM checklists with signed copies · contractor job cards ·
+        permit-to-work records · role-based access · mobile field mode.
       </p>
     </>
   )
@@ -326,6 +327,54 @@ function Failures() {
   )
 }
 
+/* ---------- spares & stock ---------- */
+
+function Spares() {
+  const s = spareStats()
+  const prStage = (id) => PROCUREMENTS.find((p) => p.id === id)?.stage
+  return (
+    <>
+      <div className="kpis">
+        <div className="tile"><div className="v">{s.items}</div><div className="k">Spare line items</div></div>
+        <div className={s.below ? 'tile alert' : 'tile'}><div className="v">{s.below}</div><div className="k">Below minimum stock</div></div>
+        <div className={s.uncovered ? 'tile warn' : 'tile'}><div className="v">{s.uncovered}</div><div className="k">Below min, no PR raised</div></div>
+      </div>
+
+      <h2>Important spares</h2>
+      <div className="card tbl-wrap">
+        <table>
+          <thead><tr><th>Code</th><th>Spare</th><th>For class</th><th>Store / bin</th><th>Stock</th><th>Min</th><th>Status</th><th>Linked PR</th></tr></thead>
+          <tbody>
+            {SPARES.map((sp) => {
+              const low = sp.qty < sp.min
+              return (
+                <tr key={sp.code} style={{ cursor: 'default' }} className={low ? 'row-low' : ''}>
+                  <td className="code">{sp.code}</td>
+                  <td>{sp.name}</td>
+                  <td className="dim">{sp.cls}</td>
+                  <td className="dim">{sp.bin}</td>
+                  <td className="dt"><b>{sp.qty}</b> {sp.unit}</td>
+                  <td className="dim dt">{sp.min} {sp.unit}</td>
+                  <td>{low
+                    ? <span className="chip d-overdue"><span className="dot" />Below min</span>
+                    : <span className="chip w-done"><span className="dot" />In stock</span>}</td>
+                  <td>{sp.pr
+                    ? <a className="pr-link" href="#/procurement"><span className="code">{sp.pr}</span> <StageChip stage={prStage(sp.pr)} /></a>
+                    : <span className="dim">—</span>}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="roadmap">
+        Minimum levels per OEM recommended-spares lists. Items below minimum with no PR are the
+        action list — raise a proposal from the Procurement tab. Issue/receive movements land in v0.2.
+      </p>
+    </>
+  )
+}
+
 /* ---------- procurement ---------- */
 
 function Procurement() {
@@ -428,6 +477,7 @@ const NAV = [
   ['/planner', 'Planner'],
   ['/log', 'Log book'],
   ['/failures', 'Failures'],
+  ['/spares', 'Spares'],
   ['/procurement', 'Procurement'],
   ['/tags', 'QR tags'],
 ]
@@ -462,6 +512,7 @@ export default function App() {
         : route === '/planner' ? <Planner />
         : route === '/log' ? <LogBook />
         : route === '/failures' ? <Failures />
+        : route === '/spares' ? <Spares />
         : route === '/procurement' ? <Procurement />
         : route === '/tags' ? <TagSheet />
         : <Dashboard go={go} />}
