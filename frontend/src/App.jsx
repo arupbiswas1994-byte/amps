@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import {
   ASSETS, PM_SCHEDULES, WORK_ORDERS, SPECS, LOG_ENTRIES, PROCUREMENTS, PROC_STAGES,
-  FAILURES, SPARES, spareStats, checksheetFor, CHECKSHEET_RESULTS, kpis, fmtDate,
-  fmtTime, dueState, durationHrs, failureStats, pmOccurrencesInMonth,
+  FAILURES, SPARES, spareStats, checksheetFor, CHECKSHEET_TEMPLATES, CHECKSHEET_RESULTS,
+  kpis, fmtDate, fmtTime, dueState, durationHrs, failureStats, pmOccurrencesInMonth,
 } from './data.js'
 import QR, { assetUrl } from './qr.jsx'
 
@@ -463,6 +463,7 @@ function Checksheet({ kind, a1, a2 }) {
   }
   const items = checksheetFor(task)
   const pm = PM_SCHEDULES.find((p) => p.asset === asset.code && p.task === task)
+  const fmtNo = String(Object.keys(CHECKSHEET_TEMPLATES).indexOf(task) + 1 || 0).padStart(2, '0')
 
   return (
     <>
@@ -472,41 +473,91 @@ function Checksheet({ kind, a1, a2 }) {
         <p>{filled ? 'Completed record — as verified on the work order.' : 'Blank sheet — print, fill in the field, and file against the work order.'}</p>
       </div>
 
-      <div className="card cs">
-        <div className="cs-head">
-          <div>
-            <div className="cs-title">Maintenance Checksheet — {task}</div>
-            <div className="cs-sub">
-              <span><b className="code">{asset.code}</b> · {asset.name}</span>
-              <span>{asset.location} · Demo Plant</span>
-              {pm && <span>Frequency: {pm.frequency}</span>}
-              {filled && wo ? <span>Ref: {wo.id} · done {fmtDate(wo.closedAt)}</span> : <span>Ref: WO-____ · date ____</span>}
-            </div>
+      <div className="osheet">
+        <div className="os-top">
+          <div className="os-brand">
+            <div className="os-org"><span className="bolt">⚡</span>AMPS</div>
+            <div className="os-dept">Maintenance Department<br />Demo Plant</div>
           </div>
-          <span className={filled ? 'chip w-verified' : 'chip d-due_soon'}>
-            <span className="dot" />{filled ? 'Completed' : 'Blank'}
-          </span>
+          <div className="os-title">
+            <div className="os-t1">Preventive Maintenance Checksheet</div>
+            <div className="os-t2">{task}</div>
+          </div>
+          <div className="os-qr">
+            <QR value={assetUrl(asset.code)} size={72} />
+            <div className="os-qr-cap">Scan for asset history</div>
+          </div>
         </div>
-        <div className="tbl-wrap">
-          <table>
-            <thead><tr><th style={{ width: 30 }}>#</th><th>Check item</th><th>Acceptance limit</th><th>Reading / result</th><th style={{ width: 60 }}>OK</th></tr></thead>
-            <tbody>
-              {items.map(([item, limit], i) => (
-                <tr key={i} style={{ cursor: 'default' }}>
-                  <td className="dim dt">{i + 1}</td>
-                  <td className="wrap-cell">{item}</td>
-                  <td className="dim">{limit}</td>
-                  <td className="dt">{filled ? <b>{filled.readings[i] ?? '—'}</b> : <span className="cs-blank" />}</td>
-                  <td>{filled ? <span className="cs-ok">✓</span> : <span className="cs-box" />}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+
+        <div className="os-doc">
+          <span>Format No.: AMPS/CS-{fmtNo} · Rev 00</span>
+          <span>{filled ? 'Record: COMPLETED' : 'Record: TO BE FILLED'}</span>
+          <span>Page 1 of 1</span>
         </div>
-        <div className="cs-signs">
-          <div><span className="cs-line">{filled?.doneBy}</span><label>Done by</label></div>
-          <div><span className="cs-line">{filled?.checkedBy}</span><label>Checked by</label></div>
-          <div><span className="cs-line">{filled?.approvedBy}</span><label>Approved by</label></div>
+
+        <table className="os-details">
+          <tbody>
+            <tr>
+              <td><label>Asset code</label><b className="code">{asset.code}</b></td>
+              <td><label>Asset</label>{asset.name}</td>
+              <td><label>Location</label>{asset.location}</td>
+              <td><label>Make / model</label>{asset.makeModel}</td>
+            </tr>
+            <tr>
+              <td><label>Frequency</label>{pm ? pm.frequency : '—'}</td>
+              <td><label>Work order ref.</label>{filled && wo ? wo.id : ''}</td>
+              <td><label>Date of maintenance</label>{filled && wo ? fmtDate(wo.closedAt) : ''}</td>
+              <td><label>Next due</label>{pm ? fmtDate(pm.nextDue) : '—'}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <table className="os-items">
+          <thead>
+            <tr><th style={{ width: 34 }}>Sl.</th><th>Check item</th><th style={{ width: 160 }}>Acceptance limit</th><th style={{ width: 150 }}>Reading / result</th><th style={{ width: 52 }}>OK</th></tr>
+          </thead>
+          <tbody>
+            {items.map(([item, limit], i) => (
+              <tr key={i}>
+                <td className="dt os-c">{i + 1}</td>
+                <td>{item}</td>
+                <td>{limit}</td>
+                <td className="dt os-c">{filled ? <b>{filled.readings[i] ?? '—'}</b> : ''}</td>
+                <td className="os-c">{filled ? <span className="cs-ok">✓</span> : <span className="cs-box" />}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <div className="os-remarks">
+          <label>Remarks</label>
+          {filled && wo?.findings ? <p>{wo.findings}</p> : <><span className="os-rule" /><span className="os-rule" /></>}
+        </div>
+
+        <table className="os-signs">
+          <tbody>
+            <tr>
+              <td>
+                <span className="os-sign-space">{filled?.doneBy}</span>
+                <label>Done by (Technician)</label>
+                <span className="os-date">Date: {filled && wo ? fmtDate(wo.closedAt) : '__________'}</span>
+              </td>
+              <td>
+                <span className="os-sign-space">{filled?.checkedBy}</span>
+                <label>Checked by (Supervisor)</label>
+                <span className="os-date">Date: {filled && wo ? fmtDate(wo.closedAt) : '__________'}</span>
+              </td>
+              <td>
+                <span className="os-sign-space">{filled?.approvedBy}</span>
+                <label>Approved by</label>
+                <span className="os-date">Date: {filled && wo ? fmtDate(wo.closedAt) : '__________'}</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div className="os-foot">
+          Generated by AMPS — Asset Maintenance &amp; Preventive Scheduling · Format AMPS/CS-{fmtNo} Rev 00
         </div>
       </div>
     </>
