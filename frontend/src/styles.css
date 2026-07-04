@@ -179,10 +179,10 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 .plan-month { font-size: 14px; font-weight: 600; min-width: 130px; text-align: center; }
 .pbtn { font: inherit; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; width: 32px; height: 32px; cursor: pointer; color: var(--ink-2); }
 .pbtn:hover { color: var(--accent); border-color: var(--accent); }
-.cal-head { display: grid; grid-template-columns: repeat(7, 1fr); border-bottom: 1px solid var(--border); }
+.cal-head { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-bottom: 1px solid var(--border); }
 .cal-head div { padding: 8px 6px; font-size: 11px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; text-align: center; }
-.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
-.cal-cell { min-height: 76px; padding: 6px; border-right: 1px solid #f0efee; border-bottom: 1px solid #f0efee; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.cal-cell { min-height: 76px; min-width: 0; overflow: hidden; padding: 6px; border-right: 1px solid #f0efee; border-bottom: 1px solid #f0efee; }
 .cal-cell:nth-child(7n) { border-right: none; }
 .cal-cell.pad { background: #fcfcfb; }
 .cal-cell.today { background: var(--accent-soft); }
@@ -192,6 +192,28 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 .cal-item b { color: var(--ink); font-weight: 600; }
 .cal-item:hover { background: #e2edfa; }
 .cal-item.late { background: #fdf1f1; border-left-color: var(--critical); }
+.cal-freq {
+  font-style: normal; font-size: 8.5px; font-weight: 700; letter-spacing: 0.02em;
+  color: #1c5cab; background: #e2edfa; border-radius: 3px; padding: 0 3px;
+  vertical-align: 1px;
+}
+.cal-item.late .cal-freq { color: #a32e2e; background: #f9dede; }
+
+/* carried-forward strip + month summary */
+.plan-carry {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: #fdf1f1; border: 1px solid #f5d5d5; border-radius: 10px;
+  padding: 9px 14px; margin-bottom: 12px;
+}
+.plan-carry-t { font-size: 12px; font-weight: 650; color: #a32e2e; letter-spacing: 0.02em; }
+.plan-carry-item {
+  font-size: 12.5px; color: var(--ink-2); background: #fff; border: 1px solid #f0d4d4;
+  border-radius: 99px; padding: 3px 11px;
+}
+.plan-carry-item:hover { border-color: var(--critical); color: var(--ink); }
+.pc-days { color: #a32e2e; font-weight: 650; }
+.pc-red { color: #a32e2e; font-weight: 600; }
+.plan-sum { font-size: 13px; color: var(--ink-2); margin: 0 0 12px; }
 @media (max-width: 720px) { .cal-cell { min-height: 56px; } .cal-item { font-size: 9.5px; } }
 
 /* ---- log book ---- */
@@ -363,8 +385,23 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 .foot a { color: inherit; }
 .foot a:hover { color: var(--ink-3); }
 
+/* ---- tablet: tables stay tables but cells wrap — no horizontal scroll ---- */
+@media (min-width: 761px) and (max-width: 1024px) {
+  table { table-layout: auto; }
+  th, td { white-space: normal; }
+  td { padding: 9px 6px; font-size: 13px; }
+  th { padding: 9px 6px; }
+  .chip { font-size: 11.5px; padding: 2px 8px 2px 7px; }
+  .dt { white-space: normal; }           /* dates may wrap at spaces */
+  .code, .chip, .mini-btn, .rec-count { white-space: nowrap; }
+  .wrap-cell { min-width: 0; max-width: none; }
+  .pr-link { flex-wrap: wrap; }
+  .cs-cell { flex-wrap: wrap; }
+  .detail-grid { grid-template-columns: 1fr; }   /* QR card below, tables get full width */
+}
+
 /* ---- mobile: data tables become labeled cards (no horizontal scroll) ---- */
-@media (max-width: 680px) {
+@media (max-width: 760px) {
   .tbl-wrap table, .tbl-wrap tbody, .tbl-wrap tr, .tbl-wrap td { display: block; width: 100%; }
   .tbl-wrap thead { display: none; }
   .tbl-wrap tr { padding: 10px 14px 12px; border-bottom: 1px solid var(--border); }
