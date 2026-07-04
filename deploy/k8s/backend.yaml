@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: amps-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: amps-backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: amps-backend
+        app.kubernetes.io/part-of: amps
+    spec:
+      containers:
+        - name: api
+          image: ghcr.io/biniyognet/amps-backend:demo   # retagged via kustomization.yaml `images:`
+          ports:
+            - containerPort: 8000
+          env:
+            # Not read by v0.1 (in-memory skeleton); consumed once the
+            # SQLAlchemy layer lands in v0.2.
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: amps-backend-env
+                  key: DATABASE_URL
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8000
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: amps-backend
+spec:
+  selector:
+    app.kubernetes.io/name: amps-backend
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000

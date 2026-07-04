@@ -1,0 +1,42 @@
+# Single-host ingress: frontend on /, backend on its API + docs paths.
+# Host and ingress class are placeholders — adjust for your cluster.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: amps
+  annotations: {}
+    # cert-manager users:
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: traefik   # k3s default; change to nginx etc. as needed
+  # tls:
+  #   - hosts: [amps.binihost.com]
+  #     secretName: amps-tls
+  rules:
+    - host: amps.binihost.com   # public demo host (binihost k3s)
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: amps-backend
+                port: { number: 8000 }
+          - path: /docs
+            pathType: Prefix
+            backend:
+              service:
+                name: amps-backend
+                port: { number: 8000 }
+          - path: /openapi.json
+            pathType: Exact
+            backend:
+              service:
+                name: amps-backend
+                port: { number: 8000 }
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: amps-frontend
+                port: { number: 80 }
