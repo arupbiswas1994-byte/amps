@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import {
   ASSETS, PM_SCHEDULES, WORK_ORDERS, SPECS, LOG_ENTRIES, PROCUREMENTS, PROC_STAGES,
   FAILURES, SPARES, spareStats, checksheetFor, CHECKSHEET_TEMPLATES, CHECKSHEET_RESULTS,
-  kpis, fmtDate, fmtTime, dueState, durationHrs, failureStats, pmOccurrencesInMonth,
+  completedChecksheets, kpis, fmtDate, fmtTime, dueState, durationHrs, failureStats,
+  pmOccurrencesInMonth,
 } from './data.js'
 import QR, { assetUrl } from './qr.jsx'
 
@@ -52,7 +53,7 @@ function Dashboard({ go }) {
       <div className="card tbl-wrap">
         <table>
           <thead>
-            <tr><th>Code</th><th>Asset</th><th>Class</th><th>Location</th><th>Status</th><th>Next PM</th><th>PM state</th></tr>
+            <tr><th>Code</th><th>Asset</th><th>Class</th><th>Location</th><th>Status</th><th>Next PM</th><th>PM state</th><th>Records</th></tr>
           </thead>
           <tbody>
             {ASSETS.map((a) => {
@@ -67,6 +68,10 @@ function Dashboard({ go }) {
                   <td><StatusChip status={a.status} /></td>
                   <td className="dim dt">{pm ? fmtDate(pm.nextDue) : '—'}</td>
                   <td>{pm ? <DueChip nextDue={pm.nextDue} /> : <span className="dim">—</span>}</td>
+                  <td>{(() => {
+                    const n = completedChecksheets(a.code).length
+                    return n ? <span className="rec-count" title={`${n} completed checksheet${n > 1 ? 's' : ''}`}>✓ {n}</span> : <span className="dim">—</span>
+                  })()}</td>
                 </tr>
               )
             })}
@@ -127,7 +132,13 @@ function AssetDetail({ code }) {
                         <td className="dim dt">{fmtDate(p.lastDone)}</td>
                         <td className="dt">{fmtDate(p.nextDue)}</td>
                         <td><DueChip nextDue={p.nextDue} /></td>
-                        <td><a className="mini-btn muted" href={`#/checksheet/pm/${a.code}/${encodeURIComponent(p.task)}`}>Checksheet</a></td>
+                        <td className="cs-cell">
+                          {(() => {
+                            const rec = completedChecksheets(a.code).find((r) => r.task === p.task)
+                            return rec && <a className="mini-btn" href={`#/checksheet/wo/${rec.woId}`}>Record ✓</a>
+                          })()}
+                          <a className="mini-btn muted" href={`#/checksheet/pm/${a.code}/${encodeURIComponent(p.task)}`}>New sheet</a>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

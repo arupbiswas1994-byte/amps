@@ -170,6 +170,11 @@ export const CHECKSHEET_RESULTS = {
   },
 }
 
+export const completedChecksheets = (assetCode) =>
+  Object.entries(CHECKSHEET_RESULTS)
+    .filter(([woId]) => WORK_ORDERS.find((w) => w.id === woId)?.asset === assetCode)
+    .map(([woId, r]) => ({ woId, task: r.task }))
+
 // ---- derived helpers ----
 
 export const fmtDate = (date) =>
