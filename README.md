@@ -32,6 +32,7 @@ AMPS replaces that with a **single centralized system**:
 - [ ] Role-based auth (admin / supervisor / technician / viewer)
 - [ ] Reports: compliance, downtime, asset history export
 - [ ] Mobile-friendly field mode (scan, update, photo attach)
+- [ ] AI maintenance assistant (LangChain): natural-language queries over the asset base — "which assets are overdue?", "what did we find last time on TRF-0001?"
 
 ## Architecture
 
@@ -79,6 +80,10 @@ python backend/seed.py           # load synthetic demo data
 2. **Field-first.** A technician with a phone and a QR sticker is the primary user, not the office PC.
 3. **Boring technology, dependable records.** Postgres + Python + React — maintainable for a decade.
 4. **Generic core, configured instances.** AMPS ships with no organization-specific data; every deployment is a configuration, not a fork.
+
+## Contributors & hosting
+
+AMPS is authored and maintained by **Arup Biswas**. The **binidev team** (an open-source contributor group) contributes to the project and operates the public demo hosting (k3s). Design contributions: Nilanjan (binidev). Contributions via fork + pull request are welcome — all sample deployments must use synthetic data only.
 
 ## License
 
