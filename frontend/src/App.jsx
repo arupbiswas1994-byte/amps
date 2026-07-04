@@ -100,7 +100,7 @@ function AssetDetail({ code }) {
             <h1><span className="code">{a.code}</span> · {a.name}</h1>
             <div className="meta">
               <span><b>{a.cls}</b></span>
-              <span>{a.location} · Demo Plant</span>
+              <span>{a.location} · Demo Metro Line</span>
               <span>{a.makeModel}</span>
               <span>Commissioned <b className="dt">{a.commissioned}</b></span>
               <StatusChip status={a.status} />
@@ -393,9 +393,9 @@ function Failures() {
         </section>
 
         <section className="card viz-card">
-          <h2 className="viz-h">Failures by asset class <span className="viz-note">6 months</span></h2>
+          <h2 className="viz-h">Failures by system <span className="viz-note">6 months</span></h2>
           <HBar rows={classes} unit="" />
-          <p className="viz-insight">{worstClass[0]} leads with {worstClass[1]} failures — focus class for the next PM review.</p>
+          <p className="viz-insight">{worstClass[0]} leads with {worstClass[1]} failures — focus area for the next PM review.</p>
         </section>
 
         <section className="card viz-card">
@@ -526,12 +526,12 @@ function ProposalLetter({ prId }) {
       </div>
       <div className="card letter">
         <p className="l-right dt">Ref: AMPS/{p.id}<br />Date: {fmtDate(new Date())}</p>
-        <p>To,<br />The Senior Manager (Procurement)<br />Demo Plant</p>
+        <p>To,<br />The Senior Manager (Procurement)<br />Demo Metro Line</p>
         <p className="l-sub"><b>Subject: Proposal for procurement of {p.item} — {p.qty}</b></p>
         <p>Respected Sir,</p>
         <p>
           It is proposed to procure <b>{p.item}</b> ({p.qty}) for <b>{p.asset} — {a?.name}</b> installed
-          at {a?.location}, Demo Plant.
+          at {a?.location}, Demo Metro Line.
         </p>
         {f && (
           <p>
@@ -543,7 +543,7 @@ function ProposalLetter({ prId }) {
         {!f && <p>{p.note} The item is required to maintain preventive-maintenance readiness for this equipment.</p>}
         {p.cost !== '—' && <p>Estimated cost: <b>{p.cost}</b>.</p>}
         <p>Submitted for your kind approval, please.</p>
-        <p className="l-sign">Yours faithfully,<br /><br />Maintenance Department<br />Demo Plant</p>
+        <p className="l-sign">Yours faithfully,<br /><br />Power Supply &amp; E&amp;M Maintenance<br />Demo Metro Line</p>
       </div>
     </>
   )
@@ -569,7 +569,7 @@ function JobCard({ jcId }) {
         <div className="os-top">
           <div className="os-brand">
             <div className="os-org"><span className="bolt">⚡</span>AMPS</div>
-            <div className="os-dept">Maintenance Department<br />Demo Plant</div>
+            <div className="os-dept">Power Supply &amp; E&amp;M Maintenance<br />Demo Metro Line</div>
           </div>
           <div className="os-title">
             <div className="os-t1">Job Card</div>
@@ -688,7 +688,7 @@ function Checksheet({ kind, a1, a2 }) {
         <div className="os-top">
           <div className="os-brand">
             <div className="os-org"><span className="bolt">⚡</span>AMPS</div>
-            <div className="os-dept">Maintenance Department<br />Demo Plant</div>
+            <div className="os-dept">Power Supply &amp; E&amp;M Maintenance<br />Demo Metro Line</div>
           </div>
           <div className="os-title">
             <div className="os-t1">Preventive Maintenance Checksheet</div>
@@ -806,7 +806,7 @@ function TagSheet() {
             <div className="scan-cap">Scan for history</div>
             <div className="nm">{a.name}</div>
             <span className="code">{a.code}</span>
-            <div className="org">AMPS · DEMO PLANT</div>
+            <div className="org">AMPS · DEMO METRO LINE</div>
           </div>
         ))}
       </div>
