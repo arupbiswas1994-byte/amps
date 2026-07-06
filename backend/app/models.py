@@ -121,6 +121,47 @@ class WorkOrder(Base):
     asset: Mapped[Asset] = relationship(back_populates="work_orders")
 
 
+class ShiftCode(str, Enum):
+    """Generic shift codes; each deployment maps them to its own timings."""
+    MORNING = "M"
+    EVENING = "E"
+    NIGHT = "N"
+    GENERAL = "G"
+    REST = "R"
+
+
+class RosterPattern(Base):
+    """A named weekly duty pattern (baseline or a pre-approved mode).
+
+    Patterns are maintenance-planning objects, not attendance records:
+    they tell the PM engine who is on duty in which window, so due work
+    can be bundled into shift work packages.
+    """
+    __tablename__ = "roster_patterns"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), unique=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    maintenance_window_shifts: Mapped[str] = mapped_column(String(20), default="N")  # csv of ShiftCode values
+    is_active: Mapped[bool] = mapped_column(default=False)
+
+    entries: Mapped[list["RosterEntry"]] = relationship(back_populates="pattern")
+
+
+class RosterEntry(Base):
+    """One cell of the weekly grid: person × weekday → shift."""
+    __tablename__ = "roster_entries"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pattern_id: Mapped[int] = mapped_column(ForeignKey("roster_patterns.id"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    weekday: Mapped[int]  # 0 = Monday … 6 = Sunday
+    shift: Mapped[ShiftCode]
+
+    pattern: Mapped[RosterPattern] = relationship(back_populates="entries")
+    user: Mapped["User"] = relationship()
+
+
 class UserRole(str, Enum):
     ADMIN = "admin"
     SUPERVISOR = "supervisor"

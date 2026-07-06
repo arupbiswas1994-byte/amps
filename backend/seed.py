@@ -1,13 +1,24 @@
-"""Synthetic demo data for AMPS.
+"""Synthetic demo data for AMPS — v0.2 seeds a live database.
 
 ALL DATA HERE IS FICTIONAL — generic industrial examples for demonstration.
 No real organization's assets, locations or records appear in this repository.
+
+Run:  python seed.py   (uses DATABASE_URL, or the local SQLite fallback)
 """
+from datetime import date, timedelta
+
+from sqlalchemy import select
+
+from app.db import SessionLocal, init_db
+from app.models import (
+    Asset, AssetClass, Location, LocationKind, PMFrequency, PMSchedule,
+    RosterEntry, RosterPattern, ShiftCode, User, UserRole,
+)
 
 DEMO_LOCATIONS = [
-    ("Demo Plant", "site", None),
-    ("Substation-1", "station", "Demo Plant"),
-    ("Workshop Bay-A", "bay", "Demo Plant"),
+    ("Demo Plant", LocationKind.SITE, None),
+    ("Substation-1", LocationKind.STATION, "Demo Plant"),
+    ("Workshop Bay-A", LocationKind.BAY, "Demo Plant"),
 ]
 
 DEMO_ASSET_CLASSES = [
@@ -21,13 +32,74 @@ DEMO_ASSETS = [
     ("CRN-0001", "10T EOT Crane Hoist", "Crane Hoist", "Workshop Bay-A"),
 ]
 
+# (asset, task, frequency, days since last done — mix of ok/due/overdue)
 DEMO_PM = [
-    ("TRF-0001", "Oil BDV test", "half_yearly"),
-    ("HTP-0001", "Contact resistance check", "yearly"),
-    ("PLC-0001", "Battery & backup verification", "quarterly"),
-    ("CRN-0001", "Brake & limit-switch inspection", "monthly"),
+    ("TRF-0001", "Oil BDV test", PMFrequency.HALF_YEARLY, 200),
+    ("HTP-0001", "Contact resistance check", PMFrequency.YEARLY, 100),
+    ("PLC-0001", "Battery & backup verification", PMFrequency.QUARTERLY, 95),
+    ("CRN-0001", "Brake & limit-switch inspection", PMFrequency.MONTHLY, 10),
 ]
 
+DEMO_USERS = [
+    ("demo.super1", "Demo Supervisor One", UserRole.SUPERVISOR),
+    ("demo.super2", "Demo Supervisor Two", UserRole.SUPERVISOR),
+    ("demo.super3", "Demo Supervisor Three", UserRole.SUPERVISOR),
+    ("demo.tech1", "Demo Technician One", UserRole.TECHNICIAN),
+]
+
+# balanced weekly pattern: M/E/N covered every day among the supervisors
+DEMO_ROSTER = {
+    "demo.super1": ["M", "E", "N", "R", "G", "M", "E"],
+    "demo.super2": ["E", "N", "R", "M", "E", "N", "G"],
+    "demo.super3": ["N", "M", "E", "N", "M", "R", "N"],
+    "demo.tech1":  ["G", "G", "M", "E", "N", "E", "M"],
+}
+
+
+def seed():
+    init_db()
+    db = SessionLocal()
+    try:
+        if db.scalar(select(Asset)):
+            print("Database already seeded — nothing to do.")
+            return
+        locs = {}
+        for name, kind, parent in DEMO_LOCATIONS:
+            locs[name] = Location(name=name, kind=kind, parent=locs.get(parent))
+            db.add(locs[name])
+        classes = {n: AssetClass(name=n) for n in DEMO_ASSET_CLASSES}
+        db.add_all(classes.values())
+        assets = {}
+        for code, name, cls, loc in DEMO_ASSETS:
+            assets[code] = Asset(code=code, name=name,
+                                 asset_class=classes[cls], location=locs[loc])
+            db.add(assets[code])
+        for code, task, freq, ago in DEMO_PM:
+            last = date.today() - timedelta(days=ago)
+            db.add(PMSchedule(asset=assets[code], task=task, frequency=freq,
+                              last_done=last))
+        users = {}
+        for uname, full, role in DEMO_USERS:
+            users[uname] = User(username=uname, full_name=full, role=role)
+            db.add(users[uname])
+        pattern = RosterPattern(
+            name="Demo balanced baseline",
+            description="Synthetic weekly pattern: M/E/N covered every day.",
+            maintenance_window_shifts="N",
+            is_active=True,
+        )
+        db.add(pattern)
+        for uname, week in DEMO_ROSTER.items():
+            for weekday, code in enumerate(week):
+                if code != "R":
+                    db.add(RosterEntry(pattern=pattern, user=users[uname],
+                                       weekday=weekday, shift=ShiftCode(code)))
+        db.commit()
+        print(f"Seeded {len(DEMO_ASSETS)} assets, {len(DEMO_PM)} PM schedules, "
+              f"{len(DEMO_USERS)} users, 1 active roster pattern.")
+    finally:
+        db.close()
+
+
 if __name__ == "__main__":
-    print("v0.1 skeleton — DB seeding lands with the SQLAlchemy layer in v0.2.")
-    print(f"{len(DEMO_ASSETS)} synthetic assets defined across {len(DEMO_LOCATIONS)} demo locations.")
+    seed()

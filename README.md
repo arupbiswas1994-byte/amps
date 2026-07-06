@@ -24,9 +24,11 @@ AMPS replaces that with a **single centralized system**:
 
 ## Feature roadmap
 
-- [x] Domain model: locations, asset classes, assets, PM schedules, work orders *(v0.1 skeleton)*
+- [x] Domain model: locations, asset classes, assets, PM schedules, work orders, roster patterns *(v0.2)*
 - [x] REST API skeleton (FastAPI) with QR-code generation per asset
-- [ ] Preventive-maintenance due-date engine & calendar view
+- [x] Database layer — PostgreSQL, with SQLite fallback so the demo runs out of the box *(v0.2)*
+- [x] Preventive-maintenance due-date engine: due/overdue list, complete-and-roll-forward *(v0.2; calendar view pending)*
+- [x] Duty-roster ↔ maintenance linkage: weekly shift patterns, live coverage analysis (uncovered-slot detection, maintenance-window staffing), and shift work packages — due PMs bundled per window with the rostered crew *(v0.2)*
 - [ ] Work-order lifecycle (open → assigned → done → verified)
 - [ ] React front-end: asset browser, scan-to-view, PM dashboard
 - [ ] Role-based auth (admin / supervisor / technician / viewer)
@@ -72,13 +74,26 @@ All sample data in this repository is **synthetic** — generic industrial asset
 
 ## Quickstart (development)
 
+**Zero-config demo (SQLite — no database server needed):**
+```bash
+cd backend && pip install -r requirements.txt
+python seed.py                   # creates amps.db + synthetic demo data
+uvicorn app.main:app --reload    # API on :8000, docs at /docs
+```
+
+**Full stack (PostgreSQL + UI):**
 ```bash
 docker compose up -d db          # PostgreSQL
-cd backend && pip install -r requirements.txt
-uvicorn app.main:app --reload    # API on :8000, docs at /docs
+export DATABASE_URL=postgresql+psycopg2://amps:amps@localhost/amps
+cd backend && python seed.py && uvicorn app.main:app --reload
 cd ../frontend && npm install && npm run dev   # UI on :5173
-python backend/seed.py           # load synthetic demo data
 ```
+
+**Try the roster ↔ maintenance features** (after seeding, on `/docs`):
+- `GET /api/maintenance/due` — live due/overdue PM list (demo data includes overdue items)
+- `POST /api/maintenance/complete/{id}` — done today, due date rolls forward
+- `POST /api/roster/coverage` — analyse any weekly pattern: per-day headcounts, **uncovered shift-slots**, maintenance-window staffing
+- `GET /api/roster/work-package?for_date=...&shift=N` — due PMs bundled for a shift window with the rostered crew
 
 ## Philosophy
 
