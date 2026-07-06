@@ -1,0 +1,30 @@
+# One-shot Job that loads the synthetic demo data (backend/seed.py).
+#
+# v0.1: seed.py only defines and prints the synthetic dataset — actual DB
+# seeding arrives with the SQLAlchemy layer in v0.2, at which point this Job
+# is already wired to run it. The demo must only ever contain this synthetic
+# data — never real organizational records.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: amps-seed
+spec:
+  ttlSecondsAfterFinished: 3600
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: amps-seed
+        app.kubernetes.io/part-of: amps
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: seed
+          image: ghcr.io/biniyognet/amps-backend:demo   # retagged via kustomization.yaml `images:`
+          command: ["python", "seed.py"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: amps-backend-env
+                  key: DATABASE_URL

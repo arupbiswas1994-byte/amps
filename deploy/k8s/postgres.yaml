@@ -1,0 +1,71 @@
+# PostgreSQL for the AMPS demo — single-replica StatefulSet with a PVC.
+#
+# NOTE (v0.1): the backend does not connect to the database yet (the assets
+# API is an in-memory skeleton; SQLAlchemy wiring lands in v0.2). This
+# StatefulSet provisions the database ahead of that so the demo environment
+# is already complete when v0.2 rolls.
+#
+# Alternative: clusters running CloudNativePG can replace this file with a
+# CNPG Cluster resource and point DATABASE_URL at its rw Service.
+apiVersion: v1
+kind: Service
+metadata:
+  name: amps-db
+spec:
+  selector:
+    app.kubernetes.io/name: amps-db
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: amps-db
+spec:
+  serviceName: amps-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: amps-db
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: amps-db
+        app.kubernetes.io/part-of: amps
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: amps-db-credentials   # POSTGRES_DB / POSTGRES_USER / POSTGRES_PASSWORD
+          env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "amps"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        # storageClassName: longhorn   # uncomment / adjust per cluster; omitted = cluster default
+        resources:
+          requests:
+            storage: 2Gi

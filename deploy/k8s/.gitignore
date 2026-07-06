@@ -1,0 +1,2 @@
+# Filled-in secrets must never be committed
+secrets.yaml
