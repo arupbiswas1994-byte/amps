@@ -6,6 +6,7 @@ import {
   failuresByMonth, classCountsAll, downtimeByAsset, recoveryStatus, pmOccurrencesInMonth,
 } from './data.js'
 import QR, { assetUrl } from './qr.jsx'
+import DutyRoster from './roster.jsx'
 
 const STATUS_LABEL = {
   in_service: 'In service',
@@ -849,6 +850,7 @@ const routeFromHash = () => location.hash.replace(/^#/, '') || '/'
 const NAV = [
   ['/', 'Assets'],
   ['/planner', 'Planner'],
+  ['/roster', 'Duty roster'],
   ['/log', 'Log book'],
   ['/failures', 'Failures'],
   ['/spares', 'Spares'],
@@ -888,6 +890,7 @@ export default function App() {
         : csMatch ? <Checksheet kind={csMatch[1]} a1={csMatch[2]} a2={csMatch[3]} />
         : jcMatch ? <JobCard jcId={jcMatch[1]} />
         : route === '/planner' ? <Planner />
+        : route === '/roster' ? <DutyRoster />
         : route === '/log' ? <LogBook />
         : route === '/failures' ? <Failures />
         : route === '/spares' ? <Spares />

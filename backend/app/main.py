@@ -1,7 +1,9 @@
 """AMPS API — v0.2.1: DB-backed, audited, history-preserving."""
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import assets, maintenance, qr, roster
 from app.db import init_db
@@ -20,6 +22,18 @@ app = FastAPI(
     contact={"name": "Arup Biswas"},
     license_info={"name": "MIT"},
     lifespan=lifespan,
+)
+
+# Browsers block cross-origin API calls without this. Same-origin deploys are
+# unaffected; split-host deploys (frontend and API on different hostnames, as
+# the public demo runs) set AMPS_CORS_ORIGINS to a comma-separated allow-list.
+# Default "*" is fine while the API is an unauthenticated read/demo surface —
+# revisit when auth lands.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in os.environ.get("AMPS_CORS_ORIGINS", "*").split(",")],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(assets.router, prefix="/api/assets", tags=["assets"])

@@ -470,3 +470,40 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
   .scan-cap { font-size: 6.5pt; margin-top: 2mm; }
   .letter { border: none; border-radius: 0; max-width: none; padding: 10mm 6mm; }
 }
+
+/* ---------- duty roster (live API page) ---------- */
+.page-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.page-head h1 { margin: 0; }
+.page-sub { margin-top: 4px; max-width: 62ch; }
+.chip.live-ok { background: #eefaf2; border-color: #cdeeda; color: #1c7a44; }
+.chip.live-ok .dot { background: #22a45c; }
+.chip.live-off { background: #f4f4f5; border-color: #e4e4e7; color: #71717a; }
+.chip.live-off .dot { background: #a1a1aa; }
+.chip.cr-A { background: #fdf1f1; border-color: #f5d5d5; color: #a32e2e; }
+.chip.cr-A .dot { background: var(--critical); }
+.chip.cr-B { background: #fef6ec; border-color: #f6e0c2; color: #92600f; }
+.chip.cr-B .dot { background: #d99a2b; }
+.chip.cr-C { background: #f0f6fd; border-color: #d3e3f6; color: #2b5c99; }
+.chip.cr-C .dot { background: #3f7fc4; }
+.roster-grid td { text-align: center; }
+.roster-grid td.code { text-align: left; }
+.shift-sel {
+  font: inherit; padding: 4px 6px; border: 1px solid var(--line, #e4e4e7);
+  border-radius: 8px; background: #fff; min-width: 52px;
+}
+.shift-sel.sh-R { color: #a1a1aa; }
+.shift-sel.sh-N { background: #f5f3ff; }
+.roster-legend { display: flex; gap: 14px; flex-wrap: wrap; margin: 10px 0 14px; font-size: 0.85em; }
+.roster-legend b { margin-right: 3px; }
+.cov-zero { color: #a32e2e; font-weight: 600; }
+.cov-verdict { margin: 12px 2px 2px; font-weight: 500; }
+.cov-verdict.ok { color: #1c7a44; }
+.cov-verdict.warn { color: #a32e2e; }
+.pkg-controls { display: flex; gap: 14px; align-items: end; flex-wrap: wrap; margin-bottom: 8px; }
+.pkg-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 0.88em; color: var(--ink-2, #52525b); }
+.pkg-controls input, .pkg-controls select {
+  font: inherit; padding: 6px 8px; border: 1px solid var(--line, #e4e4e7); border-radius: 8px; background: #fff;
+}
+@media screen and (max-width: 680px) {
+  .roster-grid td { text-align: left; }
+}
