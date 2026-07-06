@@ -32,6 +32,12 @@ AMPS replaces that with a **single centralized system**:
 - [ ] Role-based auth (admin / supervisor / technician / viewer)
 - [ ] Reports: compliance, downtime, asset history export
 - [ ] Mobile-friendly field mode (scan, update, photo attach)
+- [ ] Asset hierarchy & criticality: site → system → equipment tree with A/B/C criticality classes, so PM effort concentrates where failure hurts most
+- [ ] Failure-code taxonomy: every breakdown classified once against a standard code set — analysable forever (root-cause trends, repeat-failure detection)
+- [ ] Reliability analytics: MTBF / MTTR per asset class, availability % with planned-vs-unplanned outage separation
+- [ ] Statutory / mandatory-test compliance alarms: overdue inspections (e.g. protection relays, earthing, batteries) flagged automatically — zero-miss, audit-ready register
+- [ ] Maintenance-window work packages: due PMs auto-bundled per available window (night blocks, shutdowns), printable as a shift-ready package
+- [ ] High-availability deployment profile: multi-node cluster (N hot + cold standby) with automated backups and restore drills
 - [ ] AI maintenance assistant (LangChain): natural-language queries over the asset base — "which assets are overdue?", "what did we find last time on TRF-0001?"
 
 ## Architecture
