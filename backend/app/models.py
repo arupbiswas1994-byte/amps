@@ -6,7 +6,7 @@ every deployment configures its own location tree and asset classes.
 from datetime import date, datetime
 from enum import Enum
 
-from sqlalchemy import ForeignKey, String, Text
+from sqlalchemy import ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -51,6 +51,13 @@ class AssetStatus(str, Enum):
     DECOMMISSIONED = "decommissioned"
 
 
+class Criticality(str, Enum):
+    """A = failure hurts safety/service immediately · B = significant · C = tolerable."""
+    A = "A"
+    B = "B"
+    C = "C"
+
+
 class Asset(Base):
     __tablename__ = "assets"
 
@@ -62,6 +69,7 @@ class Asset(Base):
     make_model: Mapped[str | None] = mapped_column(String(160))
     commissioned_on: Mapped[date | None]
     status: Mapped[AssetStatus] = mapped_column(default=AssetStatus.IN_SERVICE)
+    criticality: Mapped[Criticality] = mapped_column(default=Criticality.B)
 
     asset_class: Mapped[AssetClass] = relationship()
     location: Mapped[Location] = relationship(back_populates="assets")
@@ -110,6 +118,7 @@ class WorkOrder(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id"))
+    pm_schedule_id: Mapped[int | None] = mapped_column(ForeignKey("pm_schedules.id"))
     type: Mapped[WorkOrderType]
     status: Mapped[WorkOrderStatus] = mapped_column(default=WorkOrderStatus.OPEN)
     title: Mapped[str] = mapped_column(String(200))
@@ -151,6 +160,7 @@ class RosterPattern(Base):
 class RosterEntry(Base):
     """One cell of the weekly grid: person × weekday → shift."""
     __tablename__ = "roster_entries"
+    __table_args__ = (UniqueConstraint("pattern_id", "user_id", "weekday"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     pattern_id: Mapped[int] = mapped_column(ForeignKey("roster_patterns.id"))
@@ -176,3 +186,17 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(60), unique=True)
     full_name: Mapped[str] = mapped_column(String(120))
     role: Mapped[UserRole] = mapped_column(default=UserRole.VIEWER)
+
+
+class AuditLog(Base):
+    """Append-only trail of every mutation: the register is only 'the truth'
+    if every change is attributable. Written via app.db.audit()."""
+    __tablename__ = "audit_log"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    actor: Mapped[str] = mapped_column(String(60), default="system")  # username once auth lands
+    entity: Mapped[str] = mapped_column(String(40))
+    entity_id: Mapped[int]
+    action: Mapped[str] = mapped_column(String(40))
+    detail: Mapped[str | None] = mapped_column(Text)

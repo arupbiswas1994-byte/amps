@@ -11,8 +11,8 @@ from sqlalchemy import select
 
 from app.db import SessionLocal, init_db
 from app.models import (
-    Asset, AssetClass, Location, LocationKind, PMFrequency, PMSchedule,
-    RosterEntry, RosterPattern, ShiftCode, User, UserRole,
+    Asset, AssetClass, Criticality, Location, LocationKind, PMFrequency,
+    PMSchedule, RosterEntry, RosterPattern, ShiftCode, User, UserRole,
 )
 
 DEMO_LOCATIONS = [
@@ -26,10 +26,11 @@ DEMO_ASSET_CLASSES = [
 ]
 
 DEMO_ASSETS = [
-    ("TRF-0001", "33kV/415V Distribution Transformer", "Transformer", "Substation-1"),
-    ("HTP-0001", "33kV Incomer Panel", "HT Panel", "Substation-1"),
-    ("PLC-0001", "Bay Automation PLC", "PLC", "Workshop Bay-A"),
-    ("CRN-0001", "10T EOT Crane Hoist", "Crane Hoist", "Workshop Bay-A"),
+    # (code, name, class, location, criticality)
+    ("TRF-0001", "33kV/415V Distribution Transformer", "Transformer", "Substation-1", Criticality.A),
+    ("HTP-0001", "33kV Incomer Panel", "HT Panel", "Substation-1", Criticality.B),
+    ("PLC-0001", "Bay Automation PLC", "PLC", "Workshop Bay-A", Criticality.B),
+    ("CRN-0001", "10T EOT Crane Hoist", "Crane Hoist", "Workshop Bay-A", Criticality.A),
 ]
 
 # (asset, task, frequency, days since last done — mix of ok/due/overdue)
@@ -70,8 +71,8 @@ def seed():
         classes = {n: AssetClass(name=n) for n in DEMO_ASSET_CLASSES}
         db.add_all(classes.values())
         assets = {}
-        for code, name, cls, loc in DEMO_ASSETS:
-            assets[code] = Asset(code=code, name=name,
+        for code, name, cls, loc, crit in DEMO_ASSETS:
+            assets[code] = Asset(code=code, name=name, criticality=crit,
                                  asset_class=classes[cls], location=locs[loc])
             db.add(assets[code])
         for code, task, freq, ago in DEMO_PM:

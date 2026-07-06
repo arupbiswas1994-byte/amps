@@ -29,3 +29,12 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def audit(db, entity, entity_id, action, detail=None, actor="system"):
+    """Append an audit-trail row inside the caller's transaction
+    (committed/rolled back together with the change it records)."""
+    from app.models import AuditLog
+
+    db.add(AuditLog(entity=entity, entity_id=entity_id, action=action,
+                    detail=detail, actor=actor))

@@ -33,6 +33,16 @@ def overdue_days(due, today=None):
     return max(0, (today - due).days)
 
 
+CRITICALITY_WEIGHT = {"A": 3, "B": 2, "C": 1}
+
+
+def priority_score(criticality, overdue):
+    """Maintenance triage is criticality x overdue, not date order alone:
+    an overdue check on a critical asset outranks a very-overdue check on a
+    tolerable one. Score = weight x (1 + days overdue)."""
+    return CRITICALITY_WEIGHT.get(criticality, 2) * (1 + overdue)
+
+
 # ---------------- roster coverage engine ----------------
 
 def compute_coverage(rows, window_shifts):

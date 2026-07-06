@@ -28,6 +28,10 @@ AMPS replaces that with a **single centralized system**:
 - [x] REST API skeleton (FastAPI) with QR-code generation per asset
 - [x] Database layer — PostgreSQL, with SQLite fallback so the demo runs out of the box *(v0.2)*
 - [x] Preventive-maintenance due-date engine: due/overdue list, complete-and-roll-forward *(v0.2; calendar view pending)*
+- [x] **Audit trail** — append-only log of every mutation, written in the same transaction *(v0.2.1)*
+- [x] **PM completion → work order**: every completed task becomes a history record (who, what, findings); `GET /api/assets/{code}/history` = the asset's history card *(v0.2.1)*
+- [x] **A/B/C criticality + priority-ranked due list** — triage by criticality × overdue, not date alone *(v0.2.1; full hierarchy tree pending)*
+- [x] Unit-tested pure engines + CI (GitHub Actions) *(v0.2.1)*
 - [x] Duty-roster ↔ maintenance linkage: weekly shift patterns, live coverage analysis (uncovered-slot detection, maintenance-window staffing), and shift work packages — due PMs bundled per window with the rostered crew *(v0.2)*
 - [ ] Work-order lifecycle (open → assigned → done → verified)
 - [ ] React front-end: asset browser, scan-to-view, PM dashboard

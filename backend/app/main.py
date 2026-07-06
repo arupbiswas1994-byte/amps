@@ -1,4 +1,4 @@
-"""AMPS API — v0.2: DB-backed (PostgreSQL, SQLite fallback for instant demo)."""
+"""AMPS API — v0.2.1: DB-backed, audited, history-preserving."""
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -16,7 +16,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="AMPS — Asset Maintenance & Preventive Scheduling",
     description="Open-source maintenance management for electrical & industrial assets.",
-    version="0.2.0",
+    version="0.2.1",
     contact={"name": "Arup Biswas"},
     license_info={"name": "MIT"},
     lifespan=lifespan,
@@ -30,4 +30,10 @@ app.include_router(roster.router, prefix="/api/roster", tags=["roster"])
 
 @app.get("/")
 def root():
-    return {"app": "AMPS", "version": "0.2.0", "status": "db-backed"}
+    return {"app": "AMPS", "version": "0.2.1", "status": "db-backed"}
+
+
+@app.get("/health")
+def health():
+    """Liveness probe for hosting."""
+    return {"status": "ok"}
