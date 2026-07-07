@@ -11,8 +11,9 @@ from sqlalchemy import select
 
 from app.db import SessionLocal, init_db
 from app.models import (
-    Asset, AssetClass, Criticality, Location, LocationKind, PMFrequency,
-    PMSchedule, RosterEntry, RosterPattern, ShiftCode, User, UserRole,
+    Asset, AssetClass, Criticality, Location, LocationKind, LogEntry,
+    LogEntryType, PMFrequency, PMSchedule, RosterEntry, RosterPattern,
+    ShiftCode, User, UserRole,
 )
 
 DEMO_LOCATIONS = [
@@ -95,9 +96,20 @@ def seed():
                 if code != "R":
                     db.add(RosterEntry(pattern=pattern, user=users[uname],
                                        weekday=weekday, shift=ShiftCode(code)))
+        db.add(LogEntry(log_date=date.today(), shift=ShiftCode.MORNING,
+                         type=LogEntryType.OPERATION, asset=assets["TRF-0001"],
+                         entered_by="demo.super1",
+                         text="Transformer taken on load after scheduled inspection; all parameters normal."))
+        db.add(LogEntry(log_date=date.today(), shift=ShiftCode.MORNING,
+                         type=LogEntryType.DEFECT, asset=assets["CRN-0001"],
+                         entered_by="demo.tech1",
+                         text="Hoist limit switch sluggish on upper limit; to be attended in next PM."))
+        db.add(LogEntry(log_date=date.today(), shift=ShiftCode.MORNING,
+                         type=LogEntryType.HANDOVER, entered_by="demo.super1",
+                         text="Shift normal. One defect logged on CRN-0001; no pending isolations."))
         db.commit()
         print(f"Seeded {len(DEMO_ASSETS)} assets, {len(DEMO_PM)} PM schedules, "
-              f"{len(DEMO_USERS)} users, 1 active roster pattern.")
+              f"{len(DEMO_USERS)} users, 1 active roster pattern, 3 demo log entries.")
     finally:
         db.close()
 

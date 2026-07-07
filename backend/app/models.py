@@ -188,6 +188,35 @@ class User(Base):
     role: Mapped[UserRole] = mapped_column(default=UserRole.VIEWER)
 
 
+class LogEntryType(str, Enum):
+    OPERATION = "operation"      # switching, isolations, normal ops events
+    OBSERVATION = "observation"  # readings, conditions noticed
+    DEFECT = "defect"            # something wrong, to become a work order
+    HANDOVER = "handover"        # shift handover note
+
+
+class LogEntry(Base):
+    """Digital shift logbook — the running record a section keeps by hand today.
+
+    Entries are append-only (corrections are new entries referencing the old
+    one), optionally tied to an asset so the asset's history card can show
+    everything ever logged against it.
+    """
+    __tablename__ = "log_entries"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    log_date: Mapped[date]                     # the duty date the entry belongs to
+    shift: Mapped[ShiftCode] = mapped_column(default=ShiftCode.GENERAL)
+    type: Mapped[LogEntryType] = mapped_column(default=LogEntryType.OPERATION)
+    asset_id: Mapped[int | None] = mapped_column(ForeignKey("assets.id"))
+    text: Mapped[str] = mapped_column(Text)
+    entered_by: Mapped[str] = mapped_column(String(120), default="unknown")
+    corrects_id: Mapped[int | None] = mapped_column(ForeignKey("log_entries.id"))
+
+    asset: Mapped["Asset | None"] = relationship()
+
+
 class AuditLog(Base):
     """Append-only trail of every mutation: the register is only 'the truth'
     if every change is attributable. Written via app.db.audit()."""
