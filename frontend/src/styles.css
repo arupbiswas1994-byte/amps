@@ -507,3 +507,12 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 @media screen and (max-width: 680px) {
   .roster-grid td { text-align: left; }
 }
+
+/* ---- shift logbook (v0.3 API page) ---- */
+.log-author { max-width: 150px; }
+.log-filters { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin: 0 0 14px; }
+.log-filters label { display: flex; gap: 6px; align-items: center; font-size: 0.88em; }
+.log-filters input, .log-filters select {
+  font: inherit; padding: 5px 8px; border: 1px solid var(--line, #e4e4e7); border-radius: 8px; background: #fff;
+}
+.offline-note { border-color: #eadfa9; background: #fdfaee; margin-bottom: 12px; }
