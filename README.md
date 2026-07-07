@@ -34,6 +34,7 @@ AMPS replaces that with a **single centralized system**:
 - [x] **PM completion → work order**: every completed task becomes a history record (who, what, findings); `GET /api/assets/{code}/history` = the asset's history card *(v0.2.1)*
 - [x] **A/B/C criticality + priority-ranked due list** — triage by criticality × overdue, not date alone *(v0.2.1; full hierarchy tree pending)*
 - [x] Unit-tested pure engines + CI (GitHub Actions) *(v0.2.1)*
+- [x] **Digital shift logbook** — append-only entries (operation / observation / defect / handover), correction-by-new-entry discipline, per-asset log history *(v0.3)*
 - [x] Duty-roster ↔ maintenance linkage: weekly shift patterns, live coverage analysis (uncovered-slot detection, maintenance-window staffing), and shift work packages — due PMs bundled per window with the rostered crew *(v0.2)*
 - [ ] Work-order lifecycle (open → assigned → done → verified)
 - [ ] React front-end: asset browser, scan-to-view, PM dashboard
@@ -100,6 +101,7 @@ cd ../frontend && npm install && npm run dev   # UI on :5173
 - `POST /api/maintenance/complete/{id}` — done today, due date rolls forward
 - `POST /api/roster/coverage` — analyse any weekly pattern: per-day headcounts, **uncovered shift-slots**, maintenance-window staffing
 - `GET /api/roster/work-package?for_date=...&shift=N` — due PMs bundled for a shift window with the rostered crew
+- `POST /api/logbook` / `GET /api/logbook?log_date=...` — the digital shift logbook; `?asset_code=` shows everything ever logged against one asset
 
 ## Philosophy
 
