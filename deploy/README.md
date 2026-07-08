@@ -8,14 +8,36 @@ AMPS itself is authored and maintained by Arup Biswas (MIT).
 > `backend/seed.py` — no real organizational assets, locations or records,
 > ever.
 
+## Quickstart — single machine (no cluster)
+
+For an office laptop or workstation, `compose.yaml` runs the whole stack —
+Postgres (persistent volume), backend, and the UI with same-origin `/api`
+and `/docs` — in one command:
+
+```bash
+docker compose -f deploy/compose.yaml up -d --build
+# → http://localhost:8080
+```
+
+The database starts **empty and persistent** (real use). To load the
+synthetic demo dataset instead:
+
+```bash
+docker compose -f deploy/compose.yaml run --rm backend python seed.py
+```
+
+Seeding is idempotent — it refuses to touch a database that already has data.
+
 ## Layout
 
 ```
 deploy/
+├── compose.yaml              # single-machine stack (Postgres + backend + UI)
 ├── docker/
 │   ├── backend.Dockerfile    # FastAPI + uvicorn on :8000
 │   ├── frontend.Dockerfile   # Vite build → nginx on :80
-│   └── nginx.conf
+│   ├── nginx.conf
+│   └── nginx.compose.conf    # compose variant — nginx proxies /api,/docs
 └── k8s/
     ├── kustomization.yaml    # apply with: kubectl apply -k deploy/k8s
     ├── namespace.yaml        # amps-demo
