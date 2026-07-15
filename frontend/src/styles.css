@@ -557,3 +557,25 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
   font: inherit; padding: 5px 8px; border: 1px solid var(--line, #e4e4e7); border-radius: 8px; background: #fff;
 }
 .offline-note { border-color: #eadfa9; background: #fdfaee; margin-bottom: 12px; }
+
+/* ---- sign-in (line-scoped operations) ---- */
+.login-overlay {
+  position: fixed; inset: 0; z-index: 50; display: grid; place-items: center;
+  background: rgba(24, 24, 27, 0.45); backdrop-filter: blur(2px); padding: 16px;
+}
+.login-card { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 12px; padding: 26px; }
+.login-card .login-brand { font-weight: 700; font-size: 1.1em; letter-spacing: 0.02em; }
+.login-card h2 { margin: 0; }
+.login-card p { margin: 0 0 4px; }
+.login-card input {
+  font: inherit; padding: 10px 12px; border: 1px solid var(--line, #e4e4e7);
+  border-radius: 8px; background: #fff;
+}
+.login-card input:focus-visible { outline: 2px solid #b98a00; outline-offset: 1px; }
+.login-err { color: #a32e2e; font-size: 0.9em; }
+.nav .login-btn { padding: 5px 14px; }
+.nav .who {
+  display: inline-flex; align-items: center; gap: 8px; font-size: 0.9em;
+  color: var(--ink-2, #52525b); padding-left: 8px; white-space: nowrap;
+}
+.nav .who .dot { width: 8px; height: 8px; border-radius: 99px; display: inline-block; }

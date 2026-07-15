@@ -32,6 +32,11 @@ services:
       dockerfile: deploy/docker/backend.Dockerfile
     environment:
       DATABASE_URL: postgresql+psycopg2://amps:amps@db/amps
+      # Login (operational deployments): AMPS_AUTH=1 turns it on — reads stay
+      # open (QR/walk-up viewing), writes need a signed-in, line-scoped user.
+      AMPS_AUTH: ${AMPS_AUTH:-0}
+      AMPS_SECRET: ${AMPS_SECRET:-}            # set to keep sessions across restarts
+      AMPS_ADMIN_PASSWORD: ${AMPS_ADMIN_PASSWORD:-admin}  # first-boot admin
     depends_on:
       db:
         condition: service_healthy

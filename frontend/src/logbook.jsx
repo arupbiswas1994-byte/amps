@@ -6,6 +6,7 @@
 
    API base: same-origin by default; demo hosting builds with VITE_AMPS_API. */
 import { useEffect, useState } from 'react'
+import { useMe } from './api.js'
 
 const API = import.meta.env.VITE_AMPS_API ?? ''
 
@@ -27,6 +28,8 @@ function LiveBadge({ ok }) {
 }
 
 export default function LogBook() {
+  const { me, canWrite } = useMe()
+  const authOn = me?.auth_enabled
   const [entries, setEntries] = useState([])
   const [fDate, setFDate] = useState('')          // '' = all dates
   const [fShift, setFShift] = useState('')        // '' = all shifts
@@ -100,21 +103,27 @@ export default function LogBook() {
         </div>
       )}
 
-      <form className="log-form card" onSubmit={add}>
-        <select value={shift} onChange={(e) => setShift(e.target.value)} aria-label="Shift">
-          {Object.keys(SHIFT_LABEL).map((s) => <option key={s} value={s}>{s} — {SHIFT_LABEL[s]}</option>)}
-        </select>
-        <select value={type} onChange={(e) => setType(e.target.value)} aria-label="Entry type">
-          {ENTRY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-        </select>
-        <input value={author} onChange={(e) => setAuthor(e.target.value)}
-               aria-label="Entered by" placeholder="Entered by…" className="log-author" maxLength={40} />
-        <input value={text} onChange={(e) => setText(e.target.value)}
-               placeholder="New log entry — readings, events, handover notes…" />
-        <button className="btn" type="submit" disabled={busy || apiOk === false || !text.trim()}>
-          {busy ? 'Adding…' : 'Add entry'}
-        </button>
-      </form>
+      {canWrite ? (
+        <form className="log-form card" onSubmit={add}>
+          <select value={shift} onChange={(e) => setShift(e.target.value)} aria-label="Shift">
+            {Object.keys(SHIFT_LABEL).map((s) => <option key={s} value={s}>{s} — {SHIFT_LABEL[s]}</option>)}
+          </select>
+          <select value={type} onChange={(e) => setType(e.target.value)} aria-label="Entry type">
+            {ENTRY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+          {!authOn && ( /* signed-in deployments stamp the author from the session */
+            <input value={author} onChange={(e) => setAuthor(e.target.value)}
+                   aria-label="Entered by" placeholder="Entered by…" className="log-author" maxLength={40} />
+          )}
+          <input value={text} onChange={(e) => setText(e.target.value)}
+                 placeholder="New log entry — readings, events, handover notes…" />
+          <button className="btn" type="submit" disabled={busy || apiOk === false || !text.trim()}>
+            {busy ? 'Adding…' : 'Add entry'}
+          </button>
+        </form>
+      ) : (
+        <p className="dim">Viewing only — sign in with your line account to add entries.</p>
+      )}
 
       <div className="log-filters">
         <label className="dim">Date <input type="date" value={fDate} onChange={(e) => setFDate(e.target.value)} /></label>

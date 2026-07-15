@@ -5,7 +5,7 @@ import {
   completedChecksheets, kpis, fmtDate, fmtTime, dueState, durationHrs, failureStats,
   failuresByMonth, classCountsAll, downtimeByAsset, recoveryStatus, pmOccurrencesInMonth,
 } from './data.js'
-import { LIVE, ORG, useLiveAssets, useLiveAsset } from './api.js'
+import { LIVE, ORG, useLiveAssets, useLiveAsset, useMe, apiLogin, apiLogout } from './api.js'
 import QR, { assetUrl } from './qr.jsx'
 import DutyRoster from './roster.jsx'
 import LogBook from './logbook.jsx'
@@ -1014,14 +1014,57 @@ const NotYet = () => (
   </p></div>
 )
 
+/* ---------- sign in (line-scoped operations) ---------- */
+
+function LoginModal({ onClose }) {
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [err, setErr] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const submit = async (e) => {
+    e.preventDefault()
+    setBusy(true); setErr(null)
+    try {
+      await apiLogin(username.trim(), password)
+      location.reload() // fresh session everywhere: nav, scope, authorship
+    } catch (ex) {
+      setErr(String(ex.message || 'login failed'))
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="login-overlay" role="dialog" aria-modal="true" aria-label="Sign in"
+         onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <form className="login-card card" onSubmit={submit}>
+        <div className="login-brand"><span className="bolt">⚡</span>AMPS</div>
+        <h2>Sign in</h2>
+        <p className="dim">Operational access for your line. Viewing needs no login.</p>
+        <input autoFocus autoComplete="username" placeholder="Username"
+               value={username} onChange={(e) => setUsername(e.target.value)} />
+        <input type="password" autoComplete="current-password" placeholder="Password"
+               value={password} onChange={(e) => setPassword(e.target.value)} />
+        {err && <div className="login-err">{err}</div>}
+        <button className="btn" type="submit" disabled={busy || !username.trim() || !password}>
+          {busy ? 'Signing in…' : 'Sign in'}
+        </button>
+        <button className="btn muted" type="button" onClick={onClose}>Continue viewing</button>
+      </form>
+    </div>
+  )
+}
+
 export default function App() {
   const [route, setRoute] = useState(routeFromHash)
+  const { me, canWrite } = useMe()
+  const [showLogin, setShowLogin] = useState(false)
   useEffect(() => {
     const onHash = () => { setRoute(routeFromHash()); window.scrollTo(0, 0) }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
   const go = (r) => { location.hash = r }
+  const authOn = LIVE && me?.auth_enabled
+  const signedIn = authOn && me.username !== 'viewer'
 
   const assetMatch = route.match(/^\/asset\/(.+)$/)
   const letterMatch = route.match(/^\/procurement\/([^/]+)\/letter$/)
@@ -1038,8 +1081,18 @@ export default function App() {
           {NAV.map(([path, label]) => (
             <a key={path} href={`#${path}`} className={route === path ? 'active' : ''}>{label}</a>
           ))}
+          {authOn && (signedIn ? (
+            <span className="who">
+              <span className="dot" style={{ background: lineColor(me.line || '') }} />
+              {me.full_name}{me.line ? ` · ${me.line}` : ''}
+              <button className="mini-btn muted" type="button" onClick={apiLogout}>Sign out</button>
+            </span>
+          ) : (
+            <button className="btn login-btn" type="button" onClick={() => setShowLogin(true)}>Sign in</button>
+          ))}
         </nav>
       </header>
+      {showLogin && !signedIn && <LoginModal onClose={() => setShowLogin(false)} />}
 
       {assetMatch ? (LIVE ? <LiveAssetDetail code={assetMatch[1]} /> : <AssetDetail code={assetMatch[1]} />)
         : letterMatch ? (LIVE ? <NotYet /> : <ProposalLetter prId={letterMatch[1]} />)

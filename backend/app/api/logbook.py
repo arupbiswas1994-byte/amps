@@ -15,6 +15,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.assets import visible_asset
+from app.api.auth import AUTH_ON, current_user, optional_user
 from app.db import audit, get_db
 from app.models import Asset, LogEntry, LogEntryType, ShiftCode
 
@@ -26,7 +28,7 @@ class LogEntryIn(BaseModel):
     shift: str = "G"                    # M/E/N/G/R
     type: str = "operation"             # operation/observation/defect/handover
     text: str = Field(min_length=3)
-    entered_by: str
+    entered_by: str = ""                # ignored on authenticated deployments
     asset_code: str | None = None
     corrects_id: int | None = None
 
@@ -52,23 +54,24 @@ def _to_out(e: LogEntry) -> LogEntryOut:
 
 
 @router.post("", response_model=LogEntryOut, status_code=201)
-def add_entry(entry: LogEntryIn, db: Session = Depends(get_db)):
+def add_entry(entry: LogEntryIn, db: Session = Depends(get_db), user=Depends(current_user)):
     asset = None
     if entry.asset_code:
-        asset = db.scalar(select(Asset).where(Asset.code == entry.asset_code))
-        if not asset:
-            raise HTTPException(404, f"asset {entry.asset_code} not found")
+        asset = visible_asset(db, entry.asset_code, user)
     if entry.corrects_id and not db.get(LogEntry, entry.corrects_id):
         raise HTTPException(404, "entry to correct not found")
+    # Logged-in deployments: authorship comes from the session, never the form.
+    author = user.full_name if AUTH_ON else (entry.entered_by or "unknown")
     obj = LogEntry(
         log_date=entry.log_date, shift=ShiftCode(entry.shift),
         type=LogEntryType(entry.type), text=entry.text,
-        entered_by=entry.entered_by, asset=asset, corrects_id=entry.corrects_id,
+        entered_by=author, asset=asset, corrects_id=entry.corrects_id,
+        line_id=user.line_id,  # NULL = department-wide entry (HQ/admin)
     )
     db.add(obj)
     db.flush()
     audit(db, "log_entry", obj.id, "created",
-          detail=f"date={obj.log_date} shift={obj.shift.value}", actor=entry.entered_by)
+          detail=f"date={obj.log_date} shift={obj.shift.value}", actor=user.username)
     db.commit()
     db.refresh(obj)
     return _to_out(obj)
@@ -77,9 +80,12 @@ def add_entry(entry: LogEntryIn, db: Session = Depends(get_db)):
 @router.get("", response_model=list[LogEntryOut])
 def list_entries(log_date: date | None = None, shift: str | None = None,
                  asset_code: str | None = None, entry_type: str | None = None,
-                 limit: int = 200, db: Session = Depends(get_db)):
-    """The day's log, a shift's log, or one asset's complete logged history."""
+                 limit: int = 200, db: Session = Depends(get_db), user=Depends(optional_user)):
+    """The day's log, a shift's log, or one asset's complete logged history.
+    Line-scoped users read their line's book plus department-wide entries."""
     q = select(LogEntry).order_by(LogEntry.at.desc()).limit(min(limit, 1000))
+    if user.line_id is not None:
+        q = q.where((LogEntry.line_id == user.line_id) | (LogEntry.line_id.is_(None)))
     if log_date:
         q = q.where(LogEntry.log_date == log_date)
     if shift:
@@ -87,8 +93,6 @@ def list_entries(log_date: date | None = None, shift: str | None = None,
     if entry_type:
         q = q.where(LogEntry.type == LogEntryType(entry_type))
     if asset_code:
-        asset = db.scalar(select(Asset).where(Asset.code == asset_code))
-        if not asset:
-            raise HTTPException(404, f"asset {asset_code} not found")
+        asset = visible_asset(db, asset_code, user)
         q = q.where(LogEntry.asset_id == asset.id)
     return [_to_out(e) for e in db.scalars(q).all()]

@@ -7,10 +7,19 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.assets import visible_asset
+from app.api.auth import current_user, optional_user, scope_location_ids
 from app.db import audit, get_db
 from app.models import Asset, Failure
 
 router = APIRouter()
+
+
+def _scoped(q, db, user):
+    scope = scope_location_ids(db, user)
+    if scope is not None:
+        q = q.join(Asset, Failure.asset_id == Asset.id).where(Asset.location_id.in_(scope))
+    return q
 
 
 class FailureIn(BaseModel):
@@ -53,12 +62,10 @@ def _to_out(f: Failure) -> FailureOut:
 
 @router.get("", response_model=list[FailureOut])
 def list_failures(asset_code: str | None = None, open_only: bool = False,
-                  db: Session = Depends(get_db)):
-    q = select(Failure).order_by(Failure.started_at.desc())
+                  db: Session = Depends(get_db), user=Depends(optional_user)):
+    q = _scoped(select(Failure).order_by(Failure.started_at.desc()), db, user)
     if asset_code:
-        asset = db.scalar(select(Asset).where(Asset.code == asset_code))
-        if not asset:
-            raise HTTPException(404, "asset not found")
+        asset = visible_asset(db, asset_code, user)
         q = q.where(Failure.asset_id == asset.id)
     if open_only:
         q = q.where(Failure.ended_at.is_(None))
@@ -66,10 +73,8 @@ def list_failures(asset_code: str | None = None, open_only: bool = False,
 
 
 @router.post("", response_model=FailureOut, status_code=201)
-def report_failure(body: FailureIn, db: Session = Depends(get_db)):
-    asset = db.scalar(select(Asset).where(Asset.code == body.asset_code))
-    if not asset:
-        raise HTTPException(404, f"asset {body.asset_code} not found")
+def report_failure(body: FailureIn, db: Session = Depends(get_db), user=Depends(current_user)):
+    asset = visible_asset(db, body.asset_code, user)
     f = Failure(
         asset_id=asset.id, description=body.description,
         fault_type=body.fault_type,
@@ -77,17 +82,19 @@ def report_failure(body: FailureIn, db: Session = Depends(get_db)):
     )
     db.add(f)
     db.flush()
-    audit(db, "failure", f.id, "reported", detail=f"asset={asset.code}")
+    audit(db, "failure", f.id, "reported", detail=f"asset={asset.code}", actor=user.username)
     db.commit()
     db.refresh(f)
     return _to_out(f)
 
 
 @router.post("/{failure_id}/close", response_model=FailureOut)
-def close_failure(failure_id: int, body: FailureClose, db: Session = Depends(get_db)):
+def close_failure(failure_id: int, body: FailureClose,
+                  db: Session = Depends(get_db), user=Depends(current_user)):
     f = db.get(Failure, failure_id)
     if not f:
         raise HTTPException(404, "failure not found")
+    visible_asset(db, f.asset.code, user)  # 404 outside the user's line
     if f.ended_at:
         raise HTTPException(409, "failure already closed")
     ended = body.ended_at or datetime.utcnow()
@@ -96,7 +103,8 @@ def close_failure(failure_id: int, body: FailureClose, db: Session = Depends(get
     f.ended_at = ended
     f.work_done = body.work_done
     f.attended_by = body.attended_by
-    audit(db, "failure", f.id, "closed", detail=f"downtime={(ended - f.started_at)}")
+    audit(db, "failure", f.id, "closed", detail=f"downtime={(ended - f.started_at)}",
+          actor=user.username)
     db.commit()
     db.refresh(f)
     return _to_out(f)
@@ -111,9 +119,10 @@ class FailureStats(BaseModel):
 
 
 @router.get("/stats", response_model=FailureStats)
-def failure_stats(window_days: int = 90, db: Session = Depends(get_db)):
+def failure_stats(window_days: int = 90, db: Session = Depends(get_db),
+                  user=Depends(optional_user)):
     since = datetime.utcnow() - timedelta(days=window_days)
-    rows = db.scalars(select(Failure).where(Failure.started_at >= since)).all()
+    rows = db.scalars(_scoped(select(Failure).where(Failure.started_at >= since), db, user)).all()
     ongoing = [f for f in rows if f.ended_at is None]
     closed = [f for f in rows if f.ended_at is not None]
     downtime = sum((f.ended_at - f.started_at).total_seconds() for f in closed) / 3600

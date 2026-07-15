@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.auth import current_user, optional_user, scope_location_ids
 from app.db import audit, get_db
 from app.engine import next_due, overdue_days, priority_score
 from app.models import Asset, PMSchedule, WorkOrder, WorkOrderStatus, WorkOrderType
@@ -43,9 +44,15 @@ def due_query(db: Session, horizon_days: int = 0) -> list[PMDueItem]:
 
 
 @router.get("/due", response_model=list[PMDueItem])
-def due_list(horizon_days: int = 0, db: Session = Depends(get_db)):
+def due_list(horizon_days: int = 0, db: Session = Depends(get_db), user=Depends(optional_user)):
     """PM items due/overdue — the daily planning list, highest priority first."""
-    return due_query(db, horizon_days)
+    items = due_query(db, horizon_days)
+    scope = scope_location_ids(db, user)
+    if scope is not None:
+        codes = {a.code for a in db.scalars(
+            select(Asset).where(Asset.location_id.in_(scope))).all()}
+        items = [i for i in items if i.asset_code in codes]
+    return items
 
 
 class PMCompletion(BaseModel):
@@ -63,7 +70,7 @@ class PMCompleted(BaseModel):
 
 @router.post("/complete/{schedule_id}", response_model=PMCompleted)
 def complete_pm(schedule_id: int, completion: PMCompletion | None = None,
-                db: Session = Depends(get_db)):
+                db: Session = Depends(get_db), user=Depends(current_user)):
     """Mark a PM task done today. Creates a closed preventive WORK ORDER —
     the asset's history record of who did what and what was found — and
     rolls the due date forward by the task's frequency."""
@@ -84,7 +91,7 @@ def complete_pm(schedule_id: int, completion: PMCompletion | None = None,
     db.flush()
     audit(db, "pm_schedule", sched.id, "completed",
           detail=f"work_order={wo.id}; next_due={sched.next_due}",
-          actor=completion.done_by or "system")
+          actor=user.username)
     db.commit()
     asset = db.get(Asset, sched.asset_id)
     return PMCompleted(schedule_id=sched.id, work_order_id=wo.id,

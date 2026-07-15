@@ -32,6 +32,42 @@ const toView = (a) => ({
   criticality: a.criticality,
 })
 
+/** Session identity. Reads are open to everyone (the QR-scan surface);
+    `canWrite` is true when auth is off (demo/dev) or a real user is signed in.
+    Anonymous visitors on an authenticated deployment browse as 'viewer'. */
+export function useMe() {
+  const [state, set] = useState({ me: null, canWrite: !LIVE, loading: LIVE })
+  useEffect(() => {
+    if (!LIVE) return undefined
+    let alive = true
+    fetch(`${API}/api/auth/me`)
+      .then((r) => { if (!r.ok) throw new Error(r.status); return r.json() })
+      .then((me) => alive && set({
+        me,
+        canWrite: !me.auth_enabled || me.username !== 'viewer',
+        loading: false,
+      }))
+      .catch(() => alive && set({ me: null, canWrite: false, loading: false }))
+    return () => { alive = false }
+  }, [])
+  return state
+}
+
+export async function apiLogin(username, password) {
+  const r = await fetch(`${API}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  })
+  if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.detail || 'login failed')
+  return r.json()
+}
+
+export async function apiLogout() {
+  await fetch(`${API}/api/auth/logout`, { method: 'POST' }).catch(() => {})
+  location.reload()
+}
+
 /** Register + dashboard source: every asset, plus PM items due within 60 days. */
 export function useLiveAssets() {
   const [state, set] = useState({ assets: [], due: [], loading: LIVE, error: null })

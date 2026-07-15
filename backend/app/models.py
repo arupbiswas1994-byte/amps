@@ -189,6 +189,11 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(60), unique=True)
     full_name: Mapped[str] = mapped_column(String(120))
     role: Mapped[UserRole] = mapped_column(default=UserRole.VIEWER)
+    password_hash: Mapped[str | None] = mapped_column(String(200))
+    # Access scope: a SITE location (e.g. a metro line). NULL = all sites (HQ/admin).
+    line_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id"))
+
+    line: Mapped["Location | None"] = relationship()
 
 
 class LogEntryType(str, Enum):
@@ -216,6 +221,8 @@ class LogEntry(Base):
     text: Mapped[str] = mapped_column(Text)
     entered_by: Mapped[str] = mapped_column(String(120), default="unknown")
     corrects_id: Mapped[int | None] = mapped_column(ForeignKey("log_entries.id"))
+    # Which site's (line's) logbook the entry belongs to. NULL = department-wide.
+    line_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id"))
 
     asset: Mapped["Asset | None"] = relationship()
 

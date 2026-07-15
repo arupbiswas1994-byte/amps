@@ -6,7 +6,7 @@
 
    API base: same-origin by default; split-host builds set VITE_AMPS_API. */
 import { useEffect, useState } from 'react'
-import { useLiveAssets } from './api.js'
+import { useLiveAssets, useMe } from './api.js'
 
 const API = import.meta.env.VITE_AMPS_API ?? ''
 
@@ -16,6 +16,7 @@ const fmt = (ts) => new Date(ts).toLocaleString(undefined, {
 
 export default function LiveFailures() {
   const { assets } = useLiveAssets()
+  const { canWrite } = useMe()
   const [rows, setRows] = useState([])
   const [stats, setStats] = useState(null)
   const [apiOk, setApiOk] = useState(null)
@@ -105,19 +106,23 @@ export default function LiveFailures() {
         </div>
       )}
 
-      <form className="log-form card" onSubmit={report}>
-        <select value={assetCode} onChange={(e) => setAssetCode(e.target.value)} aria-label="Asset" required>
-          <option value="">Failed asset…</option>
-          {assets.map((a) => <option key={a.code} value={a.code}>{a.code} — {a.name}</option>)}
-        </select>
-        <input value={faultType} onChange={(e) => setFaultType(e.target.value)}
-               placeholder="Fault type (optional)" className="log-author" maxLength={60} />
-        <input value={desc} onChange={(e) => setDesc(e.target.value)}
-               placeholder="What happened — symptoms, how it was noticed…" />
-        <button className="btn" type="submit" disabled={busy || apiOk === false || !assetCode || !desc.trim()}>
-          {busy ? 'Reporting…' : 'Report failure'}
-        </button>
-      </form>
+      {canWrite ? (
+        <form className="log-form card" onSubmit={report}>
+          <select value={assetCode} onChange={(e) => setAssetCode(e.target.value)} aria-label="Asset" required>
+            <option value="">Failed asset…</option>
+            {assets.map((a) => <option key={a.code} value={a.code}>{a.code} — {a.name}</option>)}
+          </select>
+          <input value={faultType} onChange={(e) => setFaultType(e.target.value)}
+                 placeholder="Fault type (optional)" className="log-author" maxLength={60} />
+          <input value={desc} onChange={(e) => setDesc(e.target.value)}
+                 placeholder="What happened — symptoms, how it was noticed…" />
+          <button className="btn" type="submit" disabled={busy || apiOk === false || !assetCode || !desc.trim()}>
+            {busy ? 'Reporting…' : 'Report failure'}
+          </button>
+        </form>
+      ) : (
+        <p className="dim">Viewing only — sign in with your line account to report or close failures.</p>
+      )}
 
       <div className="card">
         {rows.length === 0 && <p className="dim" style={{ margin: 0 }}>No failures recorded{apiOk ? '' : ' (API offline)'}.</p>}
@@ -136,7 +141,7 @@ export default function LiveFailures() {
             {f.work_done && (
               <div className="log-text dim">Work done: {f.work_done}{f.attended_by ? ` — ${f.attended_by}` : ''}</div>
             )}
-            {!f.ended_at && closing !== f.id && (
+            {canWrite && !f.ended_at && closing !== f.id && (
               <button className="mini-btn" type="button" onClick={() => setClosing(f.id)}>Close — recovered</button>
             )}
             {closing === f.id && (

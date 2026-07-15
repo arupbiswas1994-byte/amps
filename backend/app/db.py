@@ -29,10 +29,18 @@ def _migrate(engine):
     create_all() only creates missing tables, never missing columns."""
     from sqlalchemy import inspect, text
 
-    cols = {c["name"] for c in inspect(engine).get_columns("assets")}
-    if "system" not in cols:
-        with engine.begin() as conn:
-            conn.execute(text("ALTER TABLE assets ADD COLUMN system VARCHAR(80)"))
+    wanted = {
+        "assets": {"system": "VARCHAR(80)"},
+        "users": {"password_hash": "VARCHAR(200)", "line_id": "INTEGER"},
+        "log_entries": {"line_id": "INTEGER"},
+    }
+    insp = inspect(engine)
+    with engine.begin() as conn:
+        for table, columns in wanted.items():
+            have = {c["name"] for c in insp.get_columns(table)}
+            for col, ddl in columns.items():
+                if col not in have:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
 
 
 def get_db():
