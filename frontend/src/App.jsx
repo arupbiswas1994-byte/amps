@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import {
-  ASSETS, PM_SCHEDULES, JOB_CARDS, SPECS, LOG_ENTRIES, PROCUREMENTS, PROC_STAGES,
+  ASSETS, PM_SCHEDULES, JOB_CARDS, SPECS, PROCUREMENTS, PROC_STAGES,
   FAILURES, SPARES, spareStats, checksheetFor, CHECKSHEET_TEMPLATES, CHECKSHEET_RESULTS,
   completedChecksheets, kpis, fmtDate, fmtTime, dueState, durationHrs, failureStats,
   failuresByMonth, classCountsAll, downtimeByAsset, recoveryStatus, pmOccurrencesInMonth,
 } from './data.js'
 import QR, { assetUrl } from './qr.jsx'
 import DutyRoster from './roster.jsx'
+import LogBook from './logbook.jsx'
 
 const STATUS_LABEL = {
   in_service: 'In service',
@@ -263,56 +264,6 @@ function Planner() {
         </div>
       </div>
       <p className="roadmap">Planned dates are projected from each task's frequency (M / Q / HY / Y). Red = overdue. Click a task to open the asset.</p>
-    </>
-  )
-}
-
-/* ---------- daily log book ---------- */
-
-function LogBook() {
-  const [entries, setEntries] = useState(LOG_ENTRIES)
-  const [text, setText] = useState('')
-  const [shift, setShift] = useState('A')
-  const add = (e) => {
-    e.preventDefault()
-    if (!text.trim()) return
-    setEntries([{ ts: new Date(), shift, author: 'Duty Engineer', text: text.trim() }, ...entries])
-    setText('')
-  }
-  const byDay = entries.reduce((m, en) => {
-    const k = en.ts.toDateString()
-    ;(m[k] ??= []).push(en)
-    return m
-  }, {})
-  return (
-    <>
-      <h2>Daily log book</h2>
-      <form className="log-form card" onSubmit={add}>
-        <select value={shift} onChange={(e) => setShift(e.target.value)} aria-label="Shift">
-          {['A', 'B', 'C'].map((s) => <option key={s}>{s}</option>)}
-        </select>
-        <input value={text} onChange={(e) => setText(e.target.value)}
-               placeholder="New log entry — readings, events, handover notes…" />
-        <button className="btn" type="submit">Add entry</button>
-      </form>
-      {Object.entries(byDay).map(([dayKey, list]) => (
-        <div key={dayKey} className="log-day">
-          <h3 className="log-date dt">{fmtDate(new Date(dayKey))}</h3>
-          <div className="card">
-            {list.map((en, i) => (
-              <div className="log-entry" key={i}>
-                <div className="log-meta">
-                  <span className="dt">{fmtTime(en.ts)}</span>
-                  <span className={`chip sh-${en.shift}`}><span className="dot" />Shift {en.shift}</span>
-                  <span className="dim">{en.author}</span>
-                </div>
-                <div className="log-text">{en.text}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
-      <p className="roadmap">Demo note: new entries are not persisted.</p>
     </>
   )
 }
