@@ -641,7 +641,7 @@ html:has(.gate), body:has(.gate) { background: #faf8f3; }
 
 /* landing */
 .land { align-items: flex-start; }
-.land-wrap { width: min(880px, 94vw); margin: clamp(14px, 7vh, 70px) auto; }
+.land-wrap { width: min(1060px, 94vw); margin: clamp(14px, 7vh, 70px) auto; }
 .land-head { display: flex; align-items: flex-start; gap: 18px; }
 .land-head > div { flex: 1; }
 .gate-badge { font-size: 15px; font-weight: 800; letter-spacing: 0.3px; display: flex; align-items: center; gap: 10px; }
@@ -661,6 +661,11 @@ html:has(.gate), body:has(.gate) { background: #faf8f3; }
 }
 .gate-signin-btn:hover { filter: brightness(1.08); }
 .land .metro-ribbon { margin: 20px 0 22px; }
+/* two columns below the ribbon: line tiles left, the watercolor train right */
+.land-body {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 400px);
+  gap: clamp(18px, 4vw, 44px); align-items: center;
+}
 .land-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 /* pastel fill: the line colour softened into paper, dark ink on top */
 .land-tile {
@@ -729,15 +734,18 @@ html:has(.gate), body:has(.gate) { background: #faf8f3; }
 }
 
 /* ---- entry-page motion + artwork (restrained, choreographed) ---- */
-.land-wrap { position: relative; }
+/* the watercolor train rides its own column — full presence, never under the tiles */
 .land-art {
-  position: absolute; top: -28px; right: -40px; width: min(400px, 42vw);
+  width: 100%; aspect-ratio: 4 / 5; object-fit: cover; object-position: 62% 74%;
   mix-blend-mode: multiply; /* watercolor on white melts into the paper */
   pointer-events: none; user-select: none;
-  animation: artFloat 9s ease-in-out infinite alternate;
+  /* soften the crop line — the viaduct dissolves into the paper, not a hard edge */
+  -webkit-mask-image: linear-gradient(to bottom, black 78%, transparent 99%);
+  mask-image: linear-gradient(to bottom, black 78%, transparent 99%);
+  animation: artFloat 9s ease-in-out infinite alternate, artIn 0.9s ease-out 0.15s both;
 }
-.land-head, .land .metro-ribbon, .land .gate-foot { position: relative; z-index: 1; }
 @keyframes artFloat { from { transform: translateY(0) } to { transform: translateY(-8px) } }
+@keyframes artIn { from { opacity: 0 } to { opacity: 1 } }
 
 /* a light streak runs the ribbon like a train on the map */
 .metro-ribbon { position: relative; }
@@ -762,15 +770,11 @@ html:has(.gate), body:has(.gate) { background: #faf8f3; }
 .land-tile.initiator .alpona { animation: alponaTurn 90s linear infinite; }
 @keyframes alponaTurn { to { transform: translateY(-50%) rotate(360deg) } }
 
-@media screen and (max-width: 760px) {
-  .land-art { display: none; }
+/* narrow screens: stack — tiles first, then the train as a wide cropped banner */
+@media screen and (max-width: 920px) {
+  .land-body { grid-template-columns: minmax(0, 1fr); }
+  .land-art { width: min(100%, 420px); margin: 6px auto 0; aspect-ratio: 16 / 9; object-position: 58% 78%; }
 }
 @media (prefers-reduced-motion: reduce) {
   .land-art, .metro-ribbon::after, .land-tile, .land-tile.initiator .alpona { animation: none; }
-}
-
-/* the artwork stays in the header air — fade it out before the tile rows */
-.land-art {
-  -webkit-mask-image: linear-gradient(to bottom, black 50%, transparent 76%);
-  mask-image: linear-gradient(to bottom, black 50%, transparent 76%);
 }

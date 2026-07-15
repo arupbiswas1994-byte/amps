@@ -1100,8 +1100,6 @@ function Landing() {
   return (
     <div className="gate land">
       <div className="land-wrap">
-        <img className="land-art" src={`${import.meta.env.BASE_URL}landing-art.webp`}
-             alt="" aria-hidden="true" />
         <header className="land-head">
           <div>
             <div className="gate-badge">⚡ AMPS <span className="gate-live">● LIVE</span></div>
@@ -1111,22 +1109,26 @@ function Landing() {
           <a className="btn gate-signin-btn" href="#/login">Sign in</a>
         </header>
         <Ribbon lines={lines} />
-        <div className="land-tiles">
-          {lines === null ? <p className="gate-dim">Loading…</p> : lines.length === 0 ? (
-            <p className="gate-dim">No lines registered yet — the administrator adds them with the first assets.</p>
-          ) : lines.map((l) => (
-            <a key={l.name} className={`land-tile${l.initiator ? ' initiator' : ''}`}
-               href={`#/line/${encodeURIComponent(l.name)}`}
-               style={{ '--line-c': lineColor(l.name) }}>
-              {l.initiator && <Alpona />}
-              <span className="gate-line-dot" />
-              <span className="land-tile-name">{l.name}
-                {l.initiator && <span className="gate-initiator-chip">সূচনা · initiator</span>}
-              </span>
-              <span className="land-tile-sub">{l.assets} assets · {l.stations} locations</span>
-              <span className="land-tile-go">View →</span>
-            </a>
-          ))}
+        <div className="land-body">
+          <div className="land-tiles">
+            {lines === null ? <p className="gate-dim">Loading…</p> : lines.length === 0 ? (
+              <p className="gate-dim">No lines registered yet — the administrator adds them with the first assets.</p>
+            ) : lines.map((l) => (
+              <a key={l.name} className={`land-tile${l.initiator ? ' initiator' : ''}`}
+                 href={`#/line/${encodeURIComponent(l.name)}`}
+                 style={{ '--line-c': lineColor(l.name) }}>
+                {l.initiator && <Alpona />}
+                <span className="gate-line-dot" />
+                <span className="land-tile-name">{l.name}
+                  {l.initiator && <span className="gate-initiator-chip">সূচনা · initiator</span>}
+                </span>
+                <span className="land-tile-sub">{l.assets} assets · {l.stations} locations</span>
+                <span className="land-tile-go">View →</span>
+              </a>
+            ))}
+          </div>
+          <img className="land-art" src={`${import.meta.env.BASE_URL}landing-art.webp`}
+               alt="" aria-hidden="true" />
         </div>
         <div className="gate-foot">AMPS · MIT © 2026 Arup Biswas</div>
       </div>
