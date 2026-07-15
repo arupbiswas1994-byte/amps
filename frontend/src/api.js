@@ -26,6 +26,7 @@ const toView = (a) => ({
   cls: a.asset_class,
   sys: a.system || null,
   location: a.location,
+  line: a.line || null,
   makeModel: a.make_model || null,
   status: a.status,
   criticality: a.criticality,

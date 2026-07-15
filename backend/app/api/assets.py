@@ -19,6 +19,7 @@ class AssetIn(BaseModel):
     criticality: str = "B"  # A / B / C
     system: str | None = None  # reporting rollup, e.g. "Traction / PS"
     status: str = "in_service"
+    line: str | None = None  # parent site in the location tree, e.g. "Green Line"
 
 
 class AssetOut(AssetIn):
@@ -31,6 +32,7 @@ def _to_out(a: Asset) -> AssetOut:
         asset_class=a.asset_class.name, location=a.location.name,
         make_model=a.make_model, status=a.status.value,
         criticality=a.criticality.value, system=a.system,
+        line=a.location.parent.name if a.location.parent else None,
     )
 
 
@@ -43,11 +45,19 @@ def _get_or_create_class(db: Session, name: str) -> AssetClass:
     return obj
 
 
-def _get_or_create_location(db: Session, name: str) -> Location:
+def _get_or_create_location(db: Session, name: str, line: str | None = None) -> Location:
     obj = db.scalar(select(Location).where(Location.name == name))
     if not obj:
         obj = Location(name=name, kind=LocationKind.STATION)
         db.add(obj)
+        db.flush()
+    if line and obj.parent is None:
+        site = db.scalar(select(Location).where(Location.name == line))
+        if not site:
+            site = Location(name=line, kind=LocationKind.SITE)
+            db.add(site)
+            db.flush()
+        obj.parent_id = site.id
         db.flush()
     return obj
 
@@ -66,7 +76,7 @@ def create_asset(asset: AssetIn, db: Session = Depends(get_db)):
         criticality=Criticality(asset.criticality),
         system=asset.system, status=AssetStatus(asset.status),
         asset_class=_get_or_create_class(db, asset.asset_class),
-        location=_get_or_create_location(db, asset.location),
+        location=_get_or_create_location(db, asset.location, asset.line),
     )
     db.add(obj)
     db.flush()

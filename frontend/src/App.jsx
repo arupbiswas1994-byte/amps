@@ -39,7 +39,12 @@ const StageChip = ({ stage }) => (
 /* ---------- dashboard (live) ---------- */
 
 function LiveDashboard({ go }) {
-  const { assets, due, loading, error } = useLiveAssets()
+  const { assets: all, due: dueAll, loading, error } = useLiveAssets()
+  const [line, setLine] = useState('all')
+  const lines = [...new Set(all.map((a) => a.line).filter(Boolean))].sort()
+  const assets = line === 'all' ? all : all.filter((a) => a.line === line)
+  const codes = new Set(assets.map((a) => a.code))
+  const due = dueAll.filter((d) => codes.has(d.asset_code))
   const overdue = due.filter((d) => d.overdue_days > 0)
   const dueSoon = due.filter((d) => d.overdue_days <= 0 && daysUntil(d.next_due) <= 7)
   const nextPM = (code) => due.filter((d) => d.asset_code === code)
@@ -49,6 +54,18 @@ function LiveDashboard({ go }) {
   if (error) return <div className="card offline-note">Backend unreachable — {error}. Check the server and reload.</div>
   return (
     <>
+      {lines.length > 0 && (
+        <div className="preset-bar" role="tablist" aria-label="Line">
+          <button type="button" className={`btn preset ${line === 'all' ? 'active' : ''}`} onClick={() => setLine('all')}>
+            All lines
+          </button>
+          {lines.map((l) => (
+            <button key={l} type="button" className={`btn preset ${line === l ? 'active' : ''}`} onClick={() => setLine(l)}>
+              <span className="dot" style={{ background: lineColor(l), display: 'inline-block', width: 8, height: 8, borderRadius: 99, marginRight: 6 }} />{l}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="kpis">
         <div className="tile"><div className="v">{assets.length}</div><div className="k">Assets registered</div></div>
         <div className="tile"><div className="v">{stations}</div><div className="k">Locations covered</div></div>
@@ -78,7 +95,7 @@ function LiveDashboard({ go }) {
                     <td className="code" data-l="Code">{a.code}</td>
                     <td data-l="Asset">{a.name}</td>
                     <td className="dim" data-l="Class">{a.cls}</td>
-                    <td className="dim" data-l="Location">{a.location}</td>
+                    <td className="dim" data-l="Location">{a.location}{line === 'all' && a.line ? <span className="dim"> · {a.line}</span> : null}</td>
                     <td className="dim" data-l="System">{a.sys ?? '—'}</td>
                     <td data-l="Status"><StatusChip status={a.status} /></td>
                     <td className="dim dt" data-l="Next PM">{pm ? pm.next_due : '—'}</td>
@@ -95,6 +112,17 @@ function LiveDashboard({ go }) {
 }
 
 const daysUntil = (iso) => Math.round((new Date(iso) - new Date()) / 86400000)
+
+/* Lines named after colours get their colour as the chip dot — free for any
+   org that names lines that way; everyone else gets a neutral dot. */
+const LINE_COLORS = {
+  green: '#1c7a44', blue: '#2b5c99', purple: '#5b3fbf', yellow: '#b98a00',
+  red: '#a32e2e', orange: '#c2571a', pink: '#b83280', grey: '#52525b', gray: '#52525b',
+}
+const lineColor = (name) => {
+  const word = (name || '').toLowerCase().split(/\s+/).find((w) => LINE_COLORS[w])
+  return word ? LINE_COLORS[word] : '#a1a1aa'
+}
 
 const LivePmChip = ({ item }) => {
   const s = item.overdue_days > 0
@@ -181,7 +209,7 @@ function LiveAssetDetail({ code }) {
             <h1><span className="code">{a.code}</span> · {a.name}</h1>
             <div className="meta">
               <span><b>{a.cls}</b></span>
-              <span>{a.location} · {ORG}</span>
+              <span>{a.location}{a.line ? ` · ${a.line}` : ''} · {ORG}</span>
               {a.sys && <span>{a.sys}</span>}
               {a.makeModel && <span>{a.makeModel}</span>}
               <span>Criticality <b>{a.criticality}</b></span>

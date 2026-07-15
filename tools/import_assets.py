@@ -6,8 +6,9 @@ deployment — local compose, LAN server, or a remote instance — and every
 row passes the same validation and audit trail as manual entry.
 
 CSV columns (header row required, extra columns ignored, order free):
-    code, name, asset_class, location            required
-    system, make_model, criticality, status      optional
+    code, name, asset_class, location                  required
+    line, system, make_model, criticality, status      optional
+(`line` groups locations under a parent site — e.g. a metro line.)
 
 Example:
     python3 tools/import_assets.py register.csv --base-url http://localhost:8080
@@ -24,7 +25,7 @@ import urllib.error
 import urllib.request
 
 REQUIRED = ("code", "name", "asset_class", "location")
-OPTIONAL = ("system", "make_model", "criticality", "status")
+OPTIONAL = ("line", "system", "make_model", "criticality", "status")
 
 
 def clean(row: dict) -> dict:
