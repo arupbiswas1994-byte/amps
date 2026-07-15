@@ -67,6 +67,9 @@ class Asset(Base):
     asset_class_id: Mapped[int] = mapped_column(ForeignKey("asset_classes.id"))
     location_id: Mapped[int] = mapped_column(ForeignKey("locations.id"))
     make_model: Mapped[str | None] = mapped_column(String(160))
+    # Reporting rollup a department thinks in (e.g. "Traction / PS", "Station E&M").
+    # Free text so every deployment names its own systems; distinct from asset_class.
+    system: Mapped[str | None] = mapped_column(String(80))
     commissioned_on: Mapped[date | None]
     status: Mapped[AssetStatus] = mapped_column(default=AssetStatus.IN_SERVICE)
     criticality: Mapped[Criticality] = mapped_column(default=Criticality.B)

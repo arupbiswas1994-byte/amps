@@ -5,6 +5,7 @@ import {
   completedChecksheets, kpis, fmtDate, fmtTime, dueState, durationHrs, failureStats,
   failuresByMonth, classCountsAll, downtimeByAsset, recoveryStatus, pmOccurrencesInMonth,
 } from './data.js'
+import { LIVE, ORG, useLiveAssets, useLiveAsset } from './api.js'
 import QR, { assetUrl } from './qr.jsx'
 import DutyRoster from './roster.jsx'
 import LogBook from './logbook.jsx'
@@ -34,6 +35,75 @@ const WoChip = ({ status }) => (
 const StageChip = ({ stage }) => (
   <span className={`chip p-${stage}`}><span className="dot" />{cap(stage)}</span>
 )
+
+/* ---------- dashboard (live) ---------- */
+
+function LiveDashboard({ go }) {
+  const { assets, due, loading, error } = useLiveAssets()
+  const overdue = due.filter((d) => d.overdue_days > 0)
+  const dueSoon = due.filter((d) => d.overdue_days <= 0 && daysUntil(d.next_due) <= 7)
+  const nextPM = (code) => due.filter((d) => d.asset_code === code)
+    .sort((x, y) => x.next_due.localeCompare(y.next_due))[0] ?? null
+  const stations = new Set(assets.map((a) => a.location)).size
+  if (loading) return <p className="dim">Loading the asset register…</p>
+  if (error) return <div className="card offline-note">Backend unreachable — {error}. Check the server and reload.</div>
+  return (
+    <>
+      <div className="kpis">
+        <div className="tile"><div className="v">{assets.length}</div><div className="k">Assets registered</div></div>
+        <div className="tile"><div className="v">{stations}</div><div className="k">Locations covered</div></div>
+        <div className={dueSoon.length ? 'tile warn' : 'tile'}><div className="v">{dueSoon.length}</div><div className="k">PM due within 7 days</div></div>
+        <div className={overdue.length ? 'tile alert' : 'tile'}><div className="v">{overdue.length}</div><div className="k">PM overdue</div></div>
+      </div>
+
+      <h2>Assets</h2>
+      {assets.length === 0 ? (
+        <div className="card"><p className="dim" style={{ margin: 0 }}>
+          The register is empty. Add assets via the API (<a href="/docs">/docs</a>) or bulk-import a
+          CSV with <span className="code">tools/import_assets.py</span> — the register, QR tags and
+          asset pages fill in from here.
+        </p></div>
+      ) : (
+        <div className="card tbl-wrap">
+          <table>
+            <thead>
+              <tr><th>Code</th><th>Asset</th><th>Class</th><th>Location</th><th>System</th><th>Status</th><th>Next PM</th><th>PM state</th></tr>
+            </thead>
+            <tbody>
+              {assets.map((a) => {
+                const pm = nextPM(a.code)
+                return (
+                  <tr key={a.code} tabIndex={0} onClick={() => go(`/asset/${a.code}`)}
+                      onKeyDown={(e) => e.key === 'Enter' && go(`/asset/${a.code}`)}>
+                    <td className="code" data-l="Code">{a.code}</td>
+                    <td data-l="Asset">{a.name}</td>
+                    <td className="dim" data-l="Class">{a.cls}</td>
+                    <td className="dim" data-l="Location">{a.location}</td>
+                    <td className="dim" data-l="System">{a.sys ?? '—'}</td>
+                    <td data-l="Status"><StatusChip status={a.status} /></td>
+                    <td className="dim dt" data-l="Next PM">{pm ? pm.next_due : '—'}</td>
+                    <td data-l="PM state">{pm ? <LivePmChip item={pm} /> : <span className="dim">—</span>}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  )
+}
+
+const daysUntil = (iso) => Math.round((new Date(iso) - new Date()) / 86400000)
+
+const LivePmChip = ({ item }) => {
+  const s = item.overdue_days > 0
+    ? { key: 'overdue', label: `Overdue ${item.overdue_days}d` }
+    : daysUntil(item.next_due) <= 7
+      ? { key: 'due_soon', label: `Due in ${Math.max(daysUntil(item.next_due), 0)}d` }
+      : { key: 'ok', label: 'On schedule' }
+  return <span className={`chip d-${s.key}`}><span className="dot" />{s.label}</span>
+}
 
 /* ---------- dashboard ---------- */
 
@@ -85,6 +155,70 @@ function Dashboard({ go }) {
   )
 }
 
+/* ---------- asset detail (live) ---------- */
+
+function LiveAssetDetail({ code }) {
+  const { asset: a, history, loading, error } = useLiveAsset(code)
+  if (loading) return <p className="dim">Loading {code}…</p>
+  if (error || !a) {
+    return (
+      <>
+        <a className="crumb" href="#/">← Assets</a>
+        <div className="card offline-note">
+          {error && !String(error).includes('404')
+            ? <>Backend unreachable — {error}.</>
+            : <>No asset with code <span className="code">{code}</span> in the register.</>}
+        </div>
+      </>
+    )
+  }
+  return (
+    <>
+      <a className="crumb" href="#/">← Assets</a>
+      <div className="detail-grid">
+        <div className="card">
+          <div className="detail-head">
+            <h1><span className="code">{a.code}</span> · {a.name}</h1>
+            <div className="meta">
+              <span><b>{a.cls}</b></span>
+              <span>{a.location} · {ORG}</span>
+              {a.sys && <span>{a.sys}</span>}
+              {a.makeModel && <span>{a.makeModel}</span>}
+              <span>Criticality <b>{a.criticality}</b></span>
+              <StatusChip status={a.status} />
+            </div>
+          </div>
+
+          <div className="sect">
+            <h3>History — every job on this asset, newest first</h3>
+            {history.length === 0 ? <p className="dim">No records yet. Completed job cards and PM work appear here.</p> : history.map((w) => (
+              <div className="wo" key={w.work_order_id}>
+                <div className="row1">
+                  <span className="code">#{w.work_order_id}</span>
+                  <span className="t">{w.title}</span>
+                  <WoChip status={w.status} />
+                </div>
+                {w.findings && <div className="findings">{w.findings}</div>}
+                <div className="sub">
+                  {w.type}
+                  {w.done_by && <> · by <b>{w.done_by}</b></>}
+                  {w.closed_at && <> · closed <span className="dt">{w.closed_at.slice(0, 10)}</span></>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="card qr-card">
+          <QR value={assetUrl(a.code)} size={180} />
+          <span className="code">{a.code}</span>
+          <div className="hint">Scan with any phone camera to open this asset record in the field.</div>
+        </div>
+      </div>
+    </>
+  )
+}
+
 /* ---------- asset detail ---------- */
 
 function AssetDetail({ code }) {
@@ -102,7 +236,7 @@ function AssetDetail({ code }) {
             <h1><span className="code">{a.code}</span> · {a.name}</h1>
             <div className="meta">
               <span><b>{a.cls}</b></span>
-              <span>{a.location} · Demo Metro Line</span>
+              <span>{a.location} · {ORG}</span>
               <span>{a.makeModel}</span>
               <span>Commissioned <b className="dt">{a.commissioned}</b></span>
               <StatusChip status={a.status} />
@@ -506,12 +640,12 @@ function ProposalLetter({ prId }) {
       </div>
       <div className="card letter">
         <p className="l-right dt">Ref: AMPS/{p.id}<br />Date: {fmtDate(new Date())}</p>
-        <p>To,<br />The Senior Manager (Procurement)<br />Demo Metro Line</p>
+        <p>To,<br />The Senior Manager (Procurement)<br />{ORG}</p>
         <p className="l-sub"><b>Subject: Proposal for procurement of {p.item} — {p.qty}</b></p>
         <p>Respected Sir,</p>
         <p>
           It is proposed to procure <b>{p.item}</b> ({p.qty}) for <b>{p.asset} — {a?.name}</b> installed
-          at {a?.location}, Demo Metro Line.
+          at {a?.location}, {ORG}.
         </p>
         {f && (
           <p>
@@ -523,7 +657,7 @@ function ProposalLetter({ prId }) {
         {!f && <p>{p.note} The item is required to maintain preventive-maintenance readiness for this equipment.</p>}
         {p.cost !== '—' && <p>Estimated cost: <b>{p.cost}</b>.</p>}
         <p>Submitted for your kind approval, please.</p>
-        <p className="l-sign">Yours faithfully,<br /><br />Power Supply &amp; E&amp;M Maintenance<br />Demo Metro Line</p>
+        <p className="l-sign">Yours faithfully,<br /><br />Power Supply &amp; E&amp;M Maintenance<br />{ORG}</p>
       </div>
     </>
   )
@@ -549,7 +683,7 @@ function JobCard({ jcId }) {
         <div className="os-top">
           <div className="os-brand">
             <div className="os-org"><span className="bolt">⚡</span>AMPS</div>
-            <div className="os-dept">Power Supply &amp; E&amp;M Maintenance<br />Demo Metro Line</div>
+            <div className="os-dept">Power Supply &amp; E&amp;M Maintenance<br />{ORG}</div>
           </div>
           <div className="os-title">
             <div className="os-t1">Job Card</div>
@@ -668,7 +802,7 @@ function Checksheet({ kind, a1, a2 }) {
         <div className="os-top">
           <div className="os-brand">
             <div className="os-org"><span className="bolt">⚡</span>AMPS</div>
-            <div className="os-dept">Power Supply &amp; E&amp;M Maintenance<br />Demo Metro Line</div>
+            <div className="os-dept">Power Supply &amp; E&amp;M Maintenance<br />{ORG}</div>
           </div>
           <div className="os-title">
             <div className="os-t1">Preventive Maintenance Checksheet</div>
@@ -773,23 +907,29 @@ function Checksheet({ kind, a1, a2 }) {
 /* ---------- QR tag sheet ---------- */
 
 function TagSheet() {
+  const live = useLiveAssets()
+  const assets = LIVE ? live.assets : ASSETS
   return (
     <>
       <div className="sheet-bar">
         <button className="btn" onClick={() => window.print()}>Print tag sheet</button>
         <p>One tag per asset — print, laminate, stick on the equipment. Scanning opens the asset's live record.</p>
       </div>
-      <div className="tags">
-        {ASSETS.map((a) => (
-          <div className="tag" key={a.code}>
-            <QR value={assetUrl(a.code)} size={140} />
-            <div className="scan-cap">Scan for history</div>
-            <div className="nm">{a.name}</div>
-            <span className="code">{a.code}</span>
-            <div className="org">AMPS · DEMO METRO LINE</div>
+      {LIVE && live.loading ? <p className="dim">Loading the asset register…</p>
+        : assets.length === 0 ? <div className="card"><p className="dim" style={{ margin: 0 }}>No assets in the register yet — tags appear as assets are added.</p></div>
+        : (
+          <div className="tags">
+            {assets.map((a) => (
+              <div className="tag" key={a.code}>
+                <QR value={assetUrl(a.code)} size={140} />
+                <div className="scan-cap">Scan for history</div>
+                <div className="nm">{a.name}</div>
+                <span className="code">{a.code}</span>
+                <div className="org">AMPS · {ORG.toUpperCase()}</div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        )}
     </>
   )
 }
@@ -798,7 +938,14 @@ function TagSheet() {
 
 const routeFromHash = () => location.hash.replace(/^#/, '') || '/'
 
-const NAV = [
+/* Live deployments only show modules whose backend exists; the rest join the
+   nav release by release. The demo build keeps the full walkthrough. */
+const NAV = LIVE ? [
+  ['/', 'Assets'],
+  ['/roster', 'Duty roster'],
+  ['/log', 'Log book'],
+  ['/tags', 'QR tags'],
+] : [
   ['/', 'Assets'],
   ['/planner', 'Planner'],
   ['/roster', 'Duty roster'],
@@ -808,6 +955,13 @@ const NAV = [
   ['/procurement', 'Procurement'],
   ['/tags', 'QR tags'],
 ]
+
+const NotYet = () => (
+  <div className="card"><p className="dim" style={{ margin: 0 }}>
+    This module isn't part of the installed release yet — it arrives with a
+    later version. <a className="crumb" href="#/">← Back to assets</a>
+  </p></div>
+)
 
 export default function App() {
   const [route, setRoute] = useState(routeFromHash)
@@ -836,21 +990,23 @@ export default function App() {
         </nav>
       </header>
 
-      {assetMatch ? <AssetDetail code={assetMatch[1]} />
-        : letterMatch ? <ProposalLetter prId={letterMatch[1]} />
-        : csMatch ? <Checksheet kind={csMatch[1]} a1={csMatch[2]} a2={csMatch[3]} />
-        : jcMatch ? <JobCard jcId={jcMatch[1]} />
-        : route === '/planner' ? <Planner />
+      {assetMatch ? (LIVE ? <LiveAssetDetail code={assetMatch[1]} /> : <AssetDetail code={assetMatch[1]} />)
+        : letterMatch ? (LIVE ? <NotYet /> : <ProposalLetter prId={letterMatch[1]} />)
+        : csMatch ? (LIVE ? <NotYet /> : <Checksheet kind={csMatch[1]} a1={csMatch[2]} a2={csMatch[3]} />)
+        : jcMatch ? (LIVE ? <NotYet /> : <JobCard jcId={jcMatch[1]} />)
+        : route === '/planner' ? (LIVE ? <NotYet /> : <Planner />)
         : route === '/roster' ? <DutyRoster />
         : route === '/log' ? <LogBook />
-        : route === '/failures' ? <Failures />
-        : route === '/spares' ? <Spares />
-        : route === '/procurement' ? <Procurement />
+        : route === '/failures' ? (LIVE ? <NotYet /> : <Failures />)
+        : route === '/spares' ? (LIVE ? <NotYet /> : <Spares />)
+        : route === '/procurement' ? (LIVE ? <NotYet /> : <Procurement />)
         : route === '/tags' ? <TagSheet />
-        : <Dashboard go={go} />}
+        : (LIVE ? <LiveDashboard go={go} /> : <Dashboard go={go} />)}
 
       <footer className="foot">
-        Demonstration environment · synthetic data only · MIT © 2026 Arup Biswas
+        {LIVE
+          ? <>{ORG} · maintenance records · AMPS, MIT © 2026 Arup Biswas</>
+          : <>Demonstration environment · synthetic data only · MIT © 2026 Arup Biswas</>}
       </footer>
     </div>
   )

@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import audit, get_db
-from app.models import Asset, AssetClass, Criticality, Location, LocationKind, WorkOrder
+from app.models import Asset, AssetClass, AssetStatus, Criticality, Location, LocationKind, WorkOrder
 
 router = APIRouter()
 
@@ -17,11 +17,12 @@ class AssetIn(BaseModel):
     location: str
     make_model: str | None = None
     criticality: str = "B"  # A / B / C
+    system: str | None = None  # reporting rollup, e.g. "Traction / PS"
+    status: str = "in_service"
 
 
 class AssetOut(AssetIn):
     id: int
-    status: str = "in_service"
 
 
 def _to_out(a: Asset) -> AssetOut:
@@ -29,7 +30,7 @@ def _to_out(a: Asset) -> AssetOut:
         id=a.id, code=a.code, name=a.name,
         asset_class=a.asset_class.name, location=a.location.name,
         make_model=a.make_model, status=a.status.value,
-        criticality=a.criticality.value,
+        criticality=a.criticality.value, system=a.system,
     )
 
 
@@ -63,6 +64,7 @@ def create_asset(asset: AssetIn, db: Session = Depends(get_db)):
     obj = Asset(
         code=asset.code, name=asset.name, make_model=asset.make_model,
         criticality=Criticality(asset.criticality),
+        system=asset.system, status=AssetStatus(asset.status),
         asset_class=_get_or_create_class(db, asset.asset_class),
         location=_get_or_create_location(db, asset.location),
     )

@@ -21,6 +21,18 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False)
 
 def init_db():
     Base.metadata.create_all(engine)
+    _migrate(engine)
+
+
+def _migrate(engine):
+    """Additive micro-migrations for databases created before a column existed.
+    create_all() only creates missing tables, never missing columns."""
+    from sqlalchemy import inspect, text
+
+    cols = {c["name"] for c in inspect(engine).get_columns("assets")}
+    if "system" not in cols:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE assets ADD COLUMN system VARCHAR(80)"))
 
 
 def get_db():
