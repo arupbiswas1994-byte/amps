@@ -1101,6 +1101,8 @@ function Landing() {
     <div className="gate land">
       <div className="land-wrap">
         <header className="land-head">
+          <img className="land-emblem" src={`${import.meta.env.BASE_URL}ir-emblem.svg`}
+               alt="Indian Railways" />
           <div>
             <div className="gate-badge">⚡ AMPS <span className="gate-live">● LIVE</span></div>
             <h1 className="gate-title">{ORG}</h1>
