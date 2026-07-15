@@ -1088,6 +1088,12 @@ function useLines() {
   return lines
 }
 
+/* the watercolor train as a muted watermark — bottom corner, behind every page */
+const ArtWatermark = () => (
+  <img className="art-watermark" src={`${import.meta.env.BASE_URL}landing-art.webp`}
+       alt="" aria-hidden="true" />
+)
+
 /* the metro-map ribbon: every line's colour in running order, blended
    into one continuous band — no joints, colours flow into each other */
 const Ribbon = ({ lines }) => {
@@ -1106,6 +1112,7 @@ function Landing() {
   const lines = useLines()
   return (
     <div className="gate land">
+      <ArtWatermark />
       <div className="land-wrap">
         <header className="land-head">
           <img className="land-emblem" src={`${import.meta.env.BASE_URL}ir-emblem.svg`}
@@ -1119,27 +1126,22 @@ function Landing() {
           <a className="btn gate-signin-btn" href="#/login">Sign in</a>
         </header>
         <Ribbon lines={lines} />
-        <div className="land-body">
-          <div className="land-tiles">
-            {lines === null ? <p className="gate-dim">Loading…</p> : lines.length === 0 ? (
-              <p className="gate-dim">No lines registered yet — the administrator adds them with the first assets.</p>
-            ) : lines.map((l) => (
-              <a key={l.name} className={`land-tile${l.initiator ? ' initiator' : ''}`}
-                 href={`#/line/${encodeURIComponent(l.name)}`}
-                 style={{ '--line-c': lineColor(l.name) }}>
-                {l.initiator && <Alpona />}
-                <span className="gate-line-dot" />
-                <span className="land-tile-name">{l.name}
-                  {l.initiator && <span className="gate-initiator-chip">সূচনা · initiator</span>}
-                </span>
-                <span className="land-tile-sub">{l.assets} assets · {l.stations} locations</span>
-                <span className="land-tile-go">View →</span>
-              </a>
-            ))}
-          </div>
-          <div className="land-art-col" aria-hidden="true">
-            <img className="land-art" src={`${import.meta.env.BASE_URL}landing-art.webp`} alt="" />
-          </div>
+        <div className="land-tiles">
+          {lines === null ? <p className="gate-dim">Loading…</p> : lines.length === 0 ? (
+            <p className="gate-dim">No lines registered yet — the administrator adds them with the first assets.</p>
+          ) : lines.map((l) => (
+            <a key={l.name} className={`land-tile${l.initiator ? ' initiator' : ''}`}
+               href={`#/line/${encodeURIComponent(l.name)}`}
+               style={{ '--line-c': lineColor(l.name) }}>
+              {l.initiator && <Alpona />}
+              <span className="gate-line-dot" />
+              <span className="land-tile-name">{l.name}
+                {l.initiator && <span className="gate-initiator-chip">সূচনা · initiator</span>}
+              </span>
+              <span className="land-tile-sub">{l.assets} assets · {l.stations} locations</span>
+              <span className="land-tile-go">View →</span>
+            </a>
+          ))}
         </div>
         <div className="gate-foot">AMPS · MIT © 2026 Arup Biswas</div>
       </div>
@@ -1153,6 +1155,7 @@ function LoginPage() {
   const lines = useLines()
   return (
     <div className="gate">
+      <ArtWatermark />
       <div className="gate-panel solo">
         <div className="gate-auth">
           <Ribbon lines={lines} />
@@ -1204,6 +1207,7 @@ export default function App() {
     if (!assetMatch && !lineMatch) return <Landing /> // full-screen, own chrome
     return (
       <div className="shell">
+        <ArtWatermark />
         <header className="topbar">
           <a href="#/" className="brand"><span className="bolt">⚡</span>AMPS
             <span className="brand-sub">{ORG} · maintenance records</span>
@@ -1222,6 +1226,7 @@ export default function App() {
 
   return (
     <div className="shell">
+      <ArtWatermark />
       <header className="topbar">
         <a href="#/" className="brand"><span className="bolt">⚡</span>AMPS
           <span className="brand-sub">Asset Maintenance &amp; Preventive Scheduling</span>

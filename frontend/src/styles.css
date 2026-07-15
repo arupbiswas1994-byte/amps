@@ -453,7 +453,7 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 /* ---- print: tag sheet + proposal letter ---- */
 @media print {
   body { background: #fff; }
-  .topbar, .nav, .sheet-bar, .foot, .roadmap { display: none !important; }
+  .topbar, .nav, .sheet-bar, .foot, .roadmap, .art-watermark { display: none !important; }
   .shell { max-width: none; padding: 0; }
   /* standard sticker size — 9 tags per A4 (3 × 3, 60×86mm), pages flow
      naturally however many assets there are */
@@ -676,16 +676,13 @@ html:has(.gate), body:has(.gate) { background: #faf8f3; }
 }
 .gate-signin-btn:hover { background: color-mix(in srgb, var(--accent) 9%, transparent); border-color: var(--accent); }
 .land .metro-ribbon { margin: clamp(12px, 2.2vh, 20px) 0 clamp(12px, 2.4vh, 22px); }
-/* two columns below the ribbon: line tiles left, the watercolor train right;
-   the row soaks up the leftover viewport height and centers in it */
-.land-body {
-  flex: 1; min-height: 0;
-  display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 480px);
-  gap: clamp(18px, 4vw, 56px); align-items: center;
+/* tiles keep to the left; the right rail belongs to the train watermark.
+   The row soaks up the leftover viewport height and centers in it */
+.land-tiles {
+  flex: 1; min-height: 0; align-content: center;
+  display: grid; grid-template-columns: 1fr 1fr; gap: clamp(10px, 1.8vh, 16px) 16px;
+  margin-right: clamp(280px, 32vw, 470px);
 }
-/* the art column mirrors the tile block exactly — same top, same bottom */
-.land-art-col { align-self: stretch; position: relative; min-height: 0; }
-.land-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(10px, 1.8vh, 16px) 16px; }
 /* pastel fill: the line colour softened into paper, dark ink on top */
 .land-tile {
   display: flex; flex-direction: column; gap: 3px;
@@ -767,20 +764,19 @@ html:has(.gate), body:has(.gate) { background: #faf8f3; }
   .land-tile, .land-tile:hover { transform: none; transition: none; }
 }
 
-/* ---- entry-page motion + artwork (restrained, choreographed) ---- */
-/* the watercolor train rides its own column — full presence, never under the tiles */
-.land-art {
-  position: absolute; inset: 0; width: 100%; height: 100%;
-  object-fit: cover; object-position: 62% 74%;
+/* ---- motion + artwork (restrained, choreographed) ---- */
+/* the watercolor train as a watermark: muted, anchored to the bottom corner,
+   behind the content of every page */
+.art-watermark {
+  position: fixed; right: min(-1vw, -8px); bottom: -3vh; z-index: -1;
+  width: min(52vh, 36vw, 520px); height: auto;
+  opacity: 0.45; filter: saturate(0.7);
   mix-blend-mode: multiply; /* watercolor on white melts into the paper */
   pointer-events: none; user-select: none;
-  /* soften the crop line — the viaduct dissolves into the paper, not a hard edge */
-  -webkit-mask-image: linear-gradient(to bottom, black 78%, transparent 99%);
-  mask-image: linear-gradient(to bottom, black 78%, transparent 99%);
   animation: artFloat 9s ease-in-out infinite alternate, artIn 0.9s ease-out 0.15s both;
 }
 @keyframes artFloat { from { transform: translateY(0) } to { transform: translateY(-8px) } }
-@keyframes artIn { from { opacity: 0 } to { opacity: 1 } }
+@keyframes artIn { from { opacity: 0 } to { opacity: 0.45 } }
 
 /* a light streak runs the ribbon like a train on the map */
 .metro-ribbon { position: relative; }
@@ -805,16 +801,10 @@ html:has(.gate), body:has(.gate) { background: #faf8f3; }
 .land-tile.initiator .alpona { animation: alponaTurn 90s linear infinite; }
 @keyframes alponaTurn { to { transform: translateY(-50%) rotate(360deg) } }
 
-/* narrow screens: stack — tiles first, then the train as a wide cropped banner */
+/* narrow screens: tiles take the full width, the watermark stays in the corner */
 @media screen and (max-width: 920px) {
-  .land-body { grid-template-columns: minmax(0, 1fr); }
-  .land-art-col { align-self: auto; position: static; }
-  .land-art {
-    position: static; display: block; height: auto;
-    width: min(100%, 420px); margin: 6px auto 0;
-    aspect-ratio: 16 / 9; object-position: 58% 78%;
-  }
+  .land-tiles { margin-right: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .land-art, .metro-ribbon::after, .land-tile, .land-tile.initiator .alpona { animation: none; }
+  .art-watermark, .metro-ribbon::after, .land-tile, .land-tile.initiator .alpona { animation: none; }
 }
