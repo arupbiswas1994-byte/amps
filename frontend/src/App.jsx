@@ -1088,12 +1088,6 @@ function useLines() {
   return lines
 }
 
-/* the watercolor train as a muted watermark — bottom corner, behind every page */
-const ArtWatermark = () => (
-  <img className="art-watermark" src={`${import.meta.env.BASE_URL}landing-art.webp`}
-       alt="" aria-hidden="true" />
-)
-
 /* the metro-map ribbon: every line's colour in running order, blended
    into one continuous band — no joints, colours flow into each other */
 const Ribbon = ({ lines }) => {
@@ -1125,26 +1119,22 @@ function Landing() {
           <a className="btn gate-signin-btn" href="#/login">Sign in</a>
         </header>
         <Ribbon lines={lines} />
-        <div className="land-body">
-          <div className="land-tiles">
-            {lines === null ? <p className="gate-dim">Loading…</p> : lines.length === 0 ? (
-              <p className="gate-dim">No lines registered yet — the administrator adds them with the first assets.</p>
-            ) : lines.map((l) => (
-              <a key={l.name} className={`land-tile${l.initiator ? ' initiator' : ''}`}
-                 href={`#/line/${encodeURIComponent(l.name)}`}
-                 style={{ '--line-c': lineColor(l.name) }}>
-                {l.initiator && <Alpona />}
-                <span className="gate-line-dot" />
-                <span className="land-tile-name">{l.name}
-                  {l.initiator && <span className="gate-initiator-chip">সূচনা · initiator</span>}
-                </span>
-                <span className="land-tile-sub">{l.assets} assets · {l.stations} locations</span>
-                <span className="land-tile-go">View →</span>
-              </a>
-            ))}
-          </div>
-          <img className="land-art" src={`${import.meta.env.BASE_URL}landing-art.webp`}
-               alt="" aria-hidden="true" />
+        <div className="land-tiles">
+          {lines === null ? <p className="gate-dim">Loading…</p> : lines.length === 0 ? (
+            <p className="gate-dim">No lines registered yet — the administrator adds them with the first assets.</p>
+          ) : lines.map((l) => (
+            <a key={l.name} className={`land-tile${l.initiator ? ' initiator' : ''}`}
+               href={`#/line/${encodeURIComponent(l.name)}`}
+               style={{ '--line-c': lineColor(l.name) }}>
+              {l.initiator && <Alpona />}
+              <span className="gate-line-dot" />
+              <span className="land-tile-name">{l.name}
+                {l.initiator && <span className="gate-initiator-chip">সূচনা · initiator</span>}
+              </span>
+              <span className="land-tile-sub">{l.assets} assets · {l.stations} locations</span>
+              <span className="land-tile-go">View →</span>
+            </a>
+          ))}
         </div>
         <div className="gate-foot">AMPS · MIT © 2026 Arup Biswas</div>
       </div>
@@ -1158,7 +1148,6 @@ function LoginPage() {
   const lines = useLines()
   return (
     <div className="gate">
-      <ArtWatermark />
       <div className="gate-panel solo">
         <div className="gate-auth">
           <Ribbon lines={lines} />
@@ -1203,14 +1192,25 @@ export default function App() {
   const csMatch = route.match(/^\/checksheet\/(wo|pm)\/([^/]+)(?:\/(.+))?$/)
   const jcMatch = route.match(/^\/jobcard\/(.+)$/)
 
+  if (LIVE && meLoading) return null // one clean paint: landing or app, never both
+
+  // The train artwork is mounted once, outside the page switch — it never
+  // reloads on navigation; only its opacity changes (full on the landing,
+  // muted behind every other page).
+  const onLanding = anonymous && route !== '/login' && !assetMatch && !lineMatch
+  const siteArt = (
+    <img className={`site-art${onLanding ? '' : ' muted'}`} alt="" aria-hidden="true"
+         src={`${import.meta.env.BASE_URL}landing-art.webp`} />
+  )
+
   // Anonymous surface = landing (line squares + sign-in), a chosen line
   // view-only, and QR-scanned asset pages. Everything else routes home.
   if (anonymous) {
-    if (route === '/login') return <LoginPage />
-    if (!assetMatch && !lineMatch) return <Landing /> // full-screen, own chrome
+    if (route === '/login') return <>{siteArt}<LoginPage /></>
+    if (onLanding) return <>{siteArt}<Landing /></> // full-screen, own chrome
     return (
+      <>{siteArt}
       <div className="shell">
-        <ArtWatermark />
         <header className="topbar">
           <a href="#/" className="brand"><span className="bolt">⚡</span>AMPS
             <span className="brand-sub">{ORG} · maintenance records</span>
@@ -1223,13 +1223,13 @@ export default function App() {
           : <LineView name={decodeURIComponent(lineMatch[1])} />}
         <footer className="foot">{ORG} · maintenance records · AMPS, MIT © 2026 Arup Biswas</footer>
       </div>
+      </>
     )
   }
-  if (LIVE && meLoading) return null // one clean paint: landing or app, never both
 
   return (
+    <>{siteArt}
     <div className="shell">
-      <ArtWatermark />
       <header className="topbar">
         <a href="#/" className="brand"><span className="bolt">⚡</span>AMPS
           <span className="brand-sub">Asset Maintenance &amp; Preventive Scheduling</span>
@@ -1268,5 +1268,6 @@ export default function App() {
           : <>Demonstration environment · synthetic data only · MIT © 2026 Arup Biswas</>}
       </footer>
     </div>
+    </>
   )
 }
