@@ -1088,12 +1088,19 @@ function useLines() {
   return lines
 }
 
-/* the metro-map ribbon: one segment per line, in running order */
-const Ribbon = ({ lines }) => !lines?.length ? null : (
-  <div className="metro-ribbon" aria-hidden="true">
-    {lines.map((l) => <i key={l.name} style={{ background: lineColor(l.name) }} />)}
-  </div>
-)
+/* the metro-map ribbon: every line's colour in running order, blended
+   into one continuous band — no joints, colours flow into each other */
+const Ribbon = ({ lines }) => {
+  if (!lines?.length) return null
+  const n = lines.length
+  const blend = Math.min(4, 20 / n) // soft crossfade zone between neighbours
+  const stops = lines.map((l, i) => {
+    const c = lineColor(l.name)
+    return `${c} ${(i / n) * 100 + blend}%, ${c} ${((i + 1) / n) * 100 - blend}%`
+  }).join(', ')
+  return <div className="metro-ribbon" aria-hidden="true"
+              style={{ background: `linear-gradient(90deg, ${stops})` }} />
+}
 
 function Landing() {
   const lines = useLines()
@@ -1130,8 +1137,9 @@ function Landing() {
               </a>
             ))}
           </div>
-          <img className="land-art" src={`${import.meta.env.BASE_URL}landing-art.webp`}
-               alt="" aria-hidden="true" />
+          <div className="land-art-col" aria-hidden="true">
+            <img className="land-art" src={`${import.meta.env.BASE_URL}landing-art.webp`} alt="" />
+          </div>
         </div>
         <div className="gate-foot">AMPS · MIT © 2026 Arup Biswas</div>
       </div>

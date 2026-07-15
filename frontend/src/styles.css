@@ -635,9 +635,8 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 }
 html:has(.gate), body:has(.gate) { background: #faf8f3; }
 
-/* the metro-map ribbon: one slim rounded segment per line, in line colours */
-.metro-ribbon { display: flex; height: 4px; overflow: hidden; gap: 10px; }
-.metro-ribbon i { flex: 1; border-radius: 99px; }
+/* the metro-map ribbon: one continuous blended band of the line colours */
+.metro-ribbon { height: 4px; border-radius: 99px; overflow: hidden; }
 
 /* landing — one screen, no scroll: header / ribbon / tiles+art / foot
    share the viewport, heights breathing with vh so short displays fit */
@@ -671,10 +670,11 @@ html:has(.gate), body:has(.gate) { background: #faf8f3; }
 }
 .gate-dim { color: var(--ink-3); font-size: 14px; }
 .gate-signin-btn {
-  background: var(--accent); color: #fff; font-weight: 650; border-radius: 10px;
-  padding: 12px 26px; font-size: 15.5px; flex: none;
+  background: transparent; color: var(--accent); font-weight: 650; border-radius: 10px;
+  border: 1.5px solid color-mix(in srgb, var(--accent) 60%, #e8e2d5);
+  padding: 11px 26px; font-size: 15.5px; flex: none;
 }
-.gate-signin-btn:hover { filter: brightness(1.08); }
+.gate-signin-btn:hover { background: color-mix(in srgb, var(--accent) 9%, transparent); border-color: var(--accent); }
 .land .metro-ribbon { margin: clamp(12px, 2.2vh, 20px) 0 clamp(12px, 2.4vh, 22px); }
 /* two columns below the ribbon: line tiles left, the watercolor train right;
    the row soaks up the leftover viewport height and centers in it */
@@ -683,6 +683,8 @@ html:has(.gate), body:has(.gate) { background: #faf8f3; }
   display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 480px);
   gap: clamp(18px, 4vw, 56px); align-items: center;
 }
+/* the art column mirrors the tile block exactly — same top, same bottom */
+.land-art-col { align-self: stretch; position: relative; min-height: 0; }
 .land-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(10px, 1.8vh, 16px) 16px; }
 /* pastel fill: the line colour softened into paper, dark ink on top */
 .land-tile {
@@ -768,8 +770,8 @@ html:has(.gate), body:has(.gate) { background: #faf8f3; }
 /* ---- entry-page motion + artwork (restrained, choreographed) ---- */
 /* the watercolor train rides its own column — full presence, never under the tiles */
 .land-art {
-  width: 100%; aspect-ratio: 4 / 5; object-fit: cover; object-position: 62% 74%;
-  max-height: 62vh; /* never taller than the row the viewport affords */
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; object-position: 62% 74%;
   mix-blend-mode: multiply; /* watercolor on white melts into the paper */
   pointer-events: none; user-select: none;
   /* soften the crop line — the viaduct dissolves into the paper, not a hard edge */
@@ -806,7 +808,12 @@ html:has(.gate), body:has(.gate) { background: #faf8f3; }
 /* narrow screens: stack — tiles first, then the train as a wide cropped banner */
 @media screen and (max-width: 920px) {
   .land-body { grid-template-columns: minmax(0, 1fr); }
-  .land-art { width: min(100%, 420px); margin: 6px auto 0; aspect-ratio: 16 / 9; object-position: 58% 78%; }
+  .land-art-col { align-self: auto; position: static; }
+  .land-art {
+    position: static; display: block; height: auto;
+    width: min(100%, 420px); margin: 6px auto 0;
+    aspect-ratio: 16 / 9; object-position: 58% 78%;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .land-art, .metro-ribbon::after, .land-tile, .land-tile.initiator .alpona { animation: none; }
