@@ -9,6 +9,7 @@ import { LIVE, ORG, useLiveAssets, useLiveAsset } from './api.js'
 import QR, { assetUrl } from './qr.jsx'
 import DutyRoster from './roster.jsx'
 import LogBook from './logbook.jsx'
+import LiveFailures from './failures.jsx'
 
 const STATUS_LABEL = {
   in_service: 'In service',
@@ -186,7 +187,7 @@ function Dashboard({ go }) {
 /* ---------- asset detail (live) ---------- */
 
 function LiveAssetDetail({ code }) {
-  const { asset: a, history, loading, error } = useLiveAsset(code)
+  const { asset: a, history, failures, loading, error } = useLiveAsset(code)
   if (loading) return <p className="dim">Loading {code}…</p>
   if (error || !a) {
     return (
@@ -216,6 +217,28 @@ function LiveAssetDetail({ code }) {
               <StatusChip status={a.status} />
             </div>
           </div>
+
+          {failures.length > 0 && (
+            <div className="sect">
+              <h3>Failures</h3>
+              {failures.map((f) => (
+                <div className="wo" key={f.id}>
+                  <div className="row1">
+                    <span className="t">{f.fault_type || 'Breakdown'}</span>
+                    {f.ended_at
+                      ? <span className="chip d-ok"><span className="dot" />Recovered · {f.downtime_hrs}h down</span>
+                      : <span className="chip d-overdue"><span className="dot" />Ongoing</span>}
+                  </div>
+                  <div className="findings">{f.description}</div>
+                  <div className="sub">
+                    {new Date(f.started_at).toLocaleString()}
+                    {f.work_done && <> · {f.work_done}</>}
+                    {f.attended_by && <> · by <b>{f.attended_by}</b></>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="sect">
             <h3>History — every job on this asset, newest first</h3>
@@ -970,6 +993,7 @@ const routeFromHash = () => location.hash.replace(/^#/, '') || '/'
    nav release by release. The demo build keeps the full walkthrough. */
 const NAV = LIVE ? [
   ['/', 'Assets'],
+  ['/failures', 'Failures'],
   ['/log', 'Log book'],
   ['/tags', 'QR tags'],
 ] : [
@@ -1024,7 +1048,7 @@ export default function App() {
         : route === '/planner' ? (LIVE ? <NotYet /> : <Planner />)
         : route === '/roster' ? (LIVE ? <NotYet /> : <DutyRoster />)
         : route === '/log' ? <LogBook />
-        : route === '/failures' ? (LIVE ? <NotYet /> : <Failures />)
+        : route === '/failures' ? (LIVE ? <LiveFailures /> : <Failures />)
         : route === '/spares' ? (LIVE ? <NotYet /> : <Spares />)
         : route === '/procurement' ? (LIVE ? <NotYet /> : <Procurement />)
         : route === '/tags' ? <TagSheet />

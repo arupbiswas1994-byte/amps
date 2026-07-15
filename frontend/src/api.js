@@ -49,18 +49,20 @@ export function useLiveAssets() {
   return state
 }
 
-/** Asset page source: the record plus its work-order history (QR scan target). */
+/** Asset page source: the record plus its work-order and failure history
+    (the QR scan target — everything ever recorded against the asset). */
 export function useLiveAsset(code) {
-  const [state, set] = useState({ asset: null, history: [], loading: true, error: null })
+  const [state, set] = useState({ asset: null, history: [], failures: [], loading: true, error: null })
   useEffect(() => {
     let alive = true
-    set({ asset: null, history: [], loading: true, error: null })
+    set({ asset: null, history: [], failures: [], loading: true, error: null })
     Promise.all([
       getJSON(`/api/assets/${encodeURIComponent(code)}`),
       getJSON(`/api/assets/${encodeURIComponent(code)}/history`).catch(() => []),
+      getJSON(`/api/failures?asset_code=${encodeURIComponent(code)}`).catch(() => []),
     ])
-      .then(([a, history]) => alive && set({ asset: toView(a), history, loading: false, error: null }))
-      .catch((e) => alive && set({ asset: null, history: [], loading: false, error: String(e) }))
+      .then(([a, history, failures]) => alive && set({ asset: toView(a), history, failures, loading: false, error: null }))
+      .catch((e) => alive && set({ asset: null, history: [], failures: [], loading: false, error: String(e) }))
     return () => { alive = false }
   }, [code])
   return state

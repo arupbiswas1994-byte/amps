@@ -220,6 +220,27 @@ class LogEntry(Base):
     asset: Mapped["Asset | None"] = relationship()
 
 
+class Failure(Base):
+    """A breakdown record: from the moment an asset fails to its recovery.
+
+    Mirrors how power-supply sections actually log failures on paper:
+    start/end time, fault type, what was done, who attended. Downtime is
+    derived (end − start), never entered — one source of truth."""
+    __tablename__ = "failures"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id"))
+    started_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    ended_at: Mapped[datetime | None]
+    fault_type: Mapped[str | None] = mapped_column(String(120))  # e.g. "DC earth fault"
+    description: Mapped[str] = mapped_column(Text)               # what happened / how noticed
+    work_done: Mapped[str | None] = mapped_column(Text)          # rectification, on close
+    attended_by: Mapped[str | None] = mapped_column(String(160))
+    work_order_id: Mapped[int | None] = mapped_column(ForeignKey("work_orders.id"))
+
+    asset: Mapped[Asset] = relationship()
+
+
 class AuditLog(Base):
     """Append-only trail of every mutation: the register is only 'the truth'
     if every change is attributable. Written via app.db.audit()."""

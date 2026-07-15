@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import assets, logbook, maintenance, qr, roster
+from app.api import assets, failures, logbook, maintenance, qr, roster
 from app.db import init_db
 
 
@@ -41,6 +41,7 @@ app.include_router(maintenance.router, prefix="/api/maintenance", tags=["mainten
 app.include_router(qr.router, prefix="/api/qr", tags=["qr"])
 app.include_router(roster.router, prefix="/api/roster", tags=["roster"])
 app.include_router(logbook.router, prefix="/api/logbook", tags=["logbook"])
+app.include_router(failures.router, prefix="/api/failures", tags=["failures"])
 
 
 @app.get("/")
