@@ -1075,7 +1075,7 @@ function Alpona({ size = 120 }) {
   )
 }
 
-function Landing() {
+function useLines() {
   const [lines, setLines] = useState(null)
   useEffect(() => {
     let alive = true
@@ -1085,35 +1085,68 @@ function Landing() {
       .catch(() => alive && setLines([]))
     return () => { alive = false }
   }, [])
+  return lines
+}
+
+/* the metro-map ribbon: one segment per line, in running order */
+const Ribbon = ({ lines }) => !lines?.length ? null : (
+  <div className="metro-ribbon" aria-hidden="true">
+    {lines.map((l) => <i key={l.name} style={{ background: lineColor(l.name) }} />)}
+  </div>
+)
+
+function Landing() {
+  const lines = useLines()
+  return (
+    <div className="gate land">
+      <div className="land-wrap">
+        <img className="land-art" src={`${import.meta.env.BASE_URL}landing-art.webp`}
+             alt="" aria-hidden="true" />
+        <header className="land-head">
+          <div>
+            <div className="gate-badge">⚡ AMPS <span className="gate-live">● LIVE</span></div>
+            <h1 className="gate-title">{ORG}</h1>
+            <p className="gate-sub">Pick a line to view its assets and records — no account needed. Sign in to operate.</p>
+          </div>
+          <a className="btn gate-signin-btn" href="#/login">Sign in</a>
+        </header>
+        <Ribbon lines={lines} />
+        <div className="land-tiles">
+          {lines === null ? <p className="gate-dim">Loading…</p> : lines.length === 0 ? (
+            <p className="gate-dim">No lines registered yet — the administrator adds them with the first assets.</p>
+          ) : lines.map((l) => (
+            <a key={l.name} className={`land-tile${l.initiator ? ' initiator' : ''}`}
+               href={`#/line/${encodeURIComponent(l.name)}`}
+               style={{ '--line-c': lineColor(l.name) }}>
+              {l.initiator && <Alpona />}
+              <span className="gate-line-dot" />
+              <span className="land-tile-name">{l.name}
+                {l.initiator && <span className="gate-initiator-chip">সূচনা · initiator</span>}
+              </span>
+              <span className="land-tile-sub">{l.assets} assets · {l.stations} locations</span>
+              <span className="land-tile-go">View →</span>
+            </a>
+          ))}
+        </div>
+        <div className="gate-foot">AMPS · MIT © 2026 Arup Biswas</div>
+      </div>
+    </div>
+  )
+}
+
+/* ---------- standalone sign-in page ---------- */
+
+function LoginPage() {
+  const lines = useLines()
   return (
     <div className="gate">
-      <div className="gate-panel">
-        <div className="gate-hero">
-          <div className="gate-badge">⚡ AMPS <span className="gate-live">● LIVE</span></div>
-          <h1 className="gate-title">{ORG}<br />maintenance, on the record.</h1>
-          <p className="gate-sub">Asset registers · QR-tagged equipment history · failures &amp; recovery · shift log book. Pick a line to view; sign in to operate.</p>
-          <div className="gate-lines">
-            {lines === null ? <p className="gate-dim">Loading…</p> : lines.length === 0 ? (
-              <p className="gate-dim">No lines registered yet — the administrator adds them with the first assets.</p>
-            ) : lines.map((l) => (
-              <a key={l.name} className={`gate-line${l.initiator ? ' initiator' : ''}`}
-                 href={`#/line/${encodeURIComponent(l.name)}`}
-                 style={{ '--line-c': lineColor(l.name) }}>
-                {l.initiator && <Alpona />}
-                <span className="gate-line-dot" />
-                <span className="gate-line-name">{l.name}
-                  {l.initiator && <span className="gate-initiator-chip">সূচনা · initiator</span>}
-                </span>
-                <span className="gate-line-sub">{l.assets} assets · {l.stations} locations</span>
-                <span className="gate-line-go">View →</span>
-              </a>
-            ))}
-          </div>
-        </div>
+      <div className="gate-panel solo">
         <div className="gate-auth">
+          <Ribbon lines={lines} />
           <div className="gate-auth-brand"><span className="bolt">⚡</span> Sign in to AMPS</div>
-          <p className="gate-auth-sub">Operational access for your line — report failures, write the log, register assets. Viewing needs no account.</p>
-          <LoginForm />
+          <p className="gate-auth-sub">{ORG} — operational access for your line: report failures, write the log, register assets. Viewing needs no account.</p>
+          <LoginForm autoFocus />
+          <a className="gate-back" href="#/">← Back to lines</a>
           <div className="gate-foot">AMPS · MIT © 2026 Arup Biswas</div>
         </div>
       </div>
@@ -1154,7 +1187,8 @@ export default function App() {
   // Anonymous surface = landing (line squares + sign-in), a chosen line
   // view-only, and QR-scanned asset pages. Everything else routes home.
   if (anonymous) {
-    if (!assetMatch && !lineMatch) return <Landing /> // full-screen gate, own chrome
+    if (route === '/login') return <LoginPage />
+    if (!assetMatch && !lineMatch) return <Landing /> // full-screen, own chrome
     return (
       <div className="shell">
         <header className="topbar">
@@ -1162,7 +1196,7 @@ export default function App() {
             <span className="brand-sub">{ORG} · maintenance records</span>
           </a>
           <nav className="nav">
-            <a href="#/" className="btn login-btn">Sign in</a>
+            <a href="#/login" className="btn login-btn">Sign in</a>
           </nav>
         </header>
         {assetMatch ? <LiveAssetDetail code={assetMatch[1]} />

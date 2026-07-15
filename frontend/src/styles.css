@@ -620,98 +620,157 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
   .line-sq { min-height: 0; padding: 20px; }
 }
 
-/* ---- landing gate (fiber-console-inspired dark entry) ---- */
+/* ---- entry pages: landing (line tiles) + standalone sign-in ----
+   Light, warm and deliberate: paper ground, pastel line tiles carrying the
+   colour story, a metro-map ribbon as the running signature, and the alpona
+   motif on the initiator line. */
 .gate {
-  position: fixed; inset: 0; z-index: 60; display: flex; align-items: center;
-  justify-content: center; padding: 18px; overflow: auto;
-  background: #0b1220;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  position: fixed; inset: 0; z-index: 60; overflow: auto;
+  display: flex; align-items: center; justify-content: center; padding: 18px;
+  background:
+    radial-gradient(1100px 520px at 85% -10%, #fdf1dd 0%, rgba(253, 241, 221, 0) 60%),
+    radial-gradient(900px 500px at -10% 110%, #f3f6ef 0%, rgba(243, 246, 239, 0) 55%),
+    #faf8f3;
+  color: var(--ink); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
-.gate-panel {
-  display: grid; grid-template-columns: 1.3fr 0.9fr; width: min(980px, 94vw);
-  max-height: 94vh; overflow: auto; border-radius: 18px;
-  background: #111a2e; border: 1px solid #1f2d4a;
-  box-shadow: 0 40px 100px rgba(0, 0, 0, 0.6); color: #e2e8f0;
-}
-.gate-hero {
-  padding: 36px 32px; border-right: 1px solid #1f2d4a; display: flex;
-  flex-direction: column;
-  background: linear-gradient(160deg, #17223a 0%, #0a1120 55%, #0c1426 100%);
-}
+html:has(.gate), body:has(.gate) { background: #faf8f3; }
+
+/* the metro-map ribbon: one segment per line, in line colours */
+.metro-ribbon { display: flex; height: 5px; border-radius: 99px; overflow: hidden; gap: 3px; }
+.metro-ribbon i { flex: 1; }
+
+/* landing */
+.land { align-items: flex-start; }
+.land-wrap { width: min(880px, 94vw); margin: clamp(14px, 7vh, 70px) auto; }
+.land-head { display: flex; align-items: flex-start; gap: 18px; }
+.land-head > div { flex: 1; }
 .gate-badge { font-size: 15px; font-weight: 800; letter-spacing: 0.3px; display: flex; align-items: center; gap: 10px; }
+.gate-badge, .gate-auth-brand { color: var(--ink); }
 .gate-live {
-  font-size: 9px; font-weight: 700; color: #5cf0a8; letter-spacing: 1px;
-  border: 1px solid rgba(92, 240, 168, 0.35); border-radius: 999px; padding: 2px 8px;
-  animation: gatePulse 2.4s infinite;
+  font-size: 9px; font-weight: 700; color: #0f7a3d; letter-spacing: 1px;
+  border: 1px solid rgba(15, 122, 61, 0.35); background: rgba(15, 122, 61, 0.07);
+  border-radius: 999px; padding: 2px 8px; animation: gatePulse 2.4s infinite;
 }
 @keyframes gatePulse { 0%, 100% { opacity: 1 } 50% { opacity: 0.45 } }
-.gate-title { font-size: 26px; line-height: 1.18; margin: 18px 0 8px; font-weight: 800; letter-spacing: -0.01em; }
-.gate-sub { font-size: 13px; color: #94a3b8; line-height: 1.55; margin: 0 0 22px; }
-.gate-dim { color: #64748b; font-size: 13px; }
-.gate-lines { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: auto; }
-.gate-line {
-  display: flex; flex-direction: column; gap: 3px; padding: 16px 16px 13px;
-  background: rgba(7, 12, 22, 0.55); border: 1px solid #1f2d4a; border-radius: 12px;
-  border-top: 3px solid var(--line-c, #1f2d4a); color: #e2e8f0;
-  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+.gate-title { font-size: clamp(24px, 4vw, 30px); line-height: 1.15; margin: 14px 0 6px; font-weight: 800; letter-spacing: -0.015em; color: var(--ink); }
+.gate-sub { font-size: 13.5px; color: var(--ink-2); line-height: 1.55; margin: 0; max-width: 52ch; }
+.gate-dim { color: var(--ink-3); font-size: 13px; }
+.gate-signin-btn {
+  background: var(--accent); color: #fff; font-weight: 650; border-radius: 9px;
+  padding: 10px 22px; font-size: 14px; flex: none; margin-top: 4px;
 }
-.gate-line:hover { transform: translateY(-2px); background: rgba(7, 12, 22, 0.8); border-color: var(--line-c, #3b82f6); }
-.gate-line:focus-visible { outline: 2px solid var(--line-c, #3b82f6); outline-offset: 2px; }
+.gate-signin-btn:hover { filter: brightness(1.08); }
+.land .metro-ribbon { margin: 20px 0 22px; }
+.land-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+/* pastel fill: the line colour softened into paper, dark ink on top */
+.land-tile {
+  display: flex; flex-direction: column; gap: 3px; padding: 20px 20px 16px;
+  min-height: 128px; position: relative; overflow: hidden;
+  background: color-mix(in srgb, var(--line-c, #a8a29e) 14%, #fffdf8);
+  border: 1px solid color-mix(in srgb, var(--line-c, #a8a29e) 28%, #f1ede4);
+  border-radius: 14px; color: #26221d;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.land-tile:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(28, 25, 23, 0.12); }
+.land-tile:focus-visible { outline: 2px solid var(--line-c, var(--accent)); outline-offset: 2px; }
 .gate-line-dot {
-  width: 9px; height: 9px; border-radius: 50%; background: var(--line-c, #64748b);
-  box-shadow: 0 0 8px var(--line-c, transparent); margin-bottom: 4px;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--line-c, #a8a29e); margin-bottom: 5px;
 }
-.gate-line-name { font-size: 15px; font-weight: 700; }
-.gate-line-sub { font-size: 10.5px; color: #94a3b8; font-variant-numeric: tabular-nums; }
-.gate-line-go { font-size: 11px; font-weight: 600; color: var(--line-c, #94a3b8); margin-top: 6px; }
-.gate-auth { padding: 36px 30px; display: flex; flex-direction: column; justify-content: center; }
-.gate-auth-brand { font-size: 17px; font-weight: 800; letter-spacing: 0.2px; margin-bottom: 6px; }
-.gate-auth-brand .bolt { color: #f59e0b; }
-.gate-auth-sub { font-size: 12px; color: #94a3b8; line-height: 1.5; margin: 0 0 18px; }
-.gate-auth .login-form-fields input {
-  background: #16223b; border: 1px solid #1f2d4a; color: #e2e8f0;
-  border-radius: 9px; padding: 12px; font-size: 14px;
+.land-tile-name { font-size: 17px; font-weight: 750; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; letter-spacing: -0.01em; }
+.land-tile-sub { font-size: 11.5px; color: #5a544c; font-variant-numeric: tabular-nums; }
+.land-tile-go { font-size: 12px; font-weight: 650; margin-top: 8px; color: color-mix(in srgb, var(--line-c, #5a544c) 65%, #26221d); }
+.land-tile.initiator {
+  grid-column: 1 / -1; min-height: 150px; padding: 24px 22px 18px;
+  background: color-mix(in srgb, var(--line-c, #a8a29e) 20%, #fffdf8);
 }
-.gate-auth .login-form-fields input::placeholder { color: #64748b; }
-.gate-auth .login-form-fields input:focus-visible { outline: none; border-color: #f59e0b; }
-.gate-auth .login-form-fields .btn {
-  background: #f59e0b; color: #0b1220; font-weight: 700; border-radius: 9px;
-  padding: 12px; font-size: 14px; margin-top: 4px;
-}
-.gate-auth .login-err { color: #fca5a5; }
-.gate-foot { font-size: 10.5px; color: #64748b; margin-top: 22px; text-align: center; }
-@media screen and (max-width: 760px) {
-  .gate { padding: 0; }
-  .gate-panel { grid-template-columns: 1fr; border-radius: 0; max-height: none; min-height: 100vh; }
-  .gate-hero { border-right: none; border-bottom: 1px solid #1f2d4a; padding: 26px 20px; }
-  .gate-lines { margin-top: 18px; }
-  .gate-auth { padding: 26px 20px 34px; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .gate-live { animation: none; }
-  .gate-line, .gate-line:hover { transform: none; transition: none; }
-}
-
-/* ---- initiator line (where the system began) — abstract alpona accent ---- */
-.gate-line.initiator {
-  grid-column: 1 / -1; position: relative; overflow: hidden;
-  padding: 20px 18px 16px;
-  background: linear-gradient(120deg, rgba(7, 12, 22, 0.55) 55%, rgba(28, 122, 68, 0.16) 100%);
-}
-.gate-line.initiator .gate-line-name { font-size: 17px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.land-tile.initiator .land-tile-name { font-size: 20px; }
 .gate-initiator-chip {
   font-size: 9px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase;
-  color: var(--line-c, #5cf0a8); border: 1px solid color-mix(in srgb, var(--line-c, #5cf0a8) 45%, transparent);
+  color: color-mix(in srgb, var(--line-c, #0f7a3d) 62%, #26221d);
+  border: 1px solid color-mix(in srgb, var(--line-c, #0f7a3d) 40%, transparent);
   border-radius: 999px; padding: 2.5px 9px; white-space: nowrap;
 }
 .alpona {
   position: absolute; right: -14px; top: 50%; transform: translateY(-50%);
-  color: var(--line-c, #5cf0a8); opacity: 0.22; pointer-events: none;
+  color: var(--line-c, #0f7a3d); opacity: 0.3; pointer-events: none;
 }
-@media screen and (max-width: 760px) {
+.gate-foot { font-size: 10.5px; color: var(--ink-3); margin-top: 24px; text-align: center; }
+
+/* standalone sign-in card */
+.gate-panel.solo {
+  width: min(400px, 94vw); background: #fffdf8; border: 1px solid #eae5da;
+  border-radius: 18px; box-shadow: 0 24px 70px rgba(28, 25, 23, 0.14);
+  overflow: hidden;
+}
+.gate-auth { padding: 30px 28px 26px; display: flex; flex-direction: column; }
+.gate-auth .metro-ribbon { margin-bottom: 22px; }
+.gate-auth-brand { font-size: 17px; font-weight: 800; letter-spacing: 0.2px; margin-bottom: 6px; }
+.gate-auth-brand .bolt { color: var(--accent); }
+.gate-auth-sub { font-size: 12.5px; color: var(--ink-2); line-height: 1.5; margin: 0 0 18px; }
+.gate-auth .login-form-fields input {
+  background: #fff; border: 1px solid #e3ddd1; color: var(--ink);
+  border-radius: 9px; padding: 12px; font-size: 14px;
+}
+.gate-auth .login-form-fields input:focus-visible { outline: none; border-color: var(--accent); }
+.gate-auth .login-form-fields .btn { padding: 12px; font-size: 14px; border-radius: 9px; margin-top: 4px; }
+.gate-back { display: block; text-align: center; font-size: 12.5px; color: var(--ink-2); margin-top: 16px; }
+.gate-back:hover { color: var(--accent); }
+
+@media screen and (max-width: 640px) {
+  .land-head { flex-direction: column; }
+  .land-tiles { grid-template-columns: 1fr; }
+  .land-tile, .land-tile.initiator { min-height: 0; }
   .alpona { right: -30px; }
 }
+@media (prefers-reduced-motion: reduce) {
+  .gate-live { animation: none; }
+  .land-tile, .land-tile:hover { transform: none; transition: none; }
+}
 
-/* While the gate is mounted, the whole document goes dark — no light bleed
-   at viewport edges or overscroll. */
-html:has(.gate), body:has(.gate) { background: #0b1220; }
+/* ---- entry-page motion + artwork (restrained, choreographed) ---- */
+.land-wrap { position: relative; }
+.land-art {
+  position: absolute; top: -28px; right: -40px; width: min(400px, 42vw);
+  mix-blend-mode: multiply; /* watercolor on white melts into the paper */
+  pointer-events: none; user-select: none;
+  animation: artFloat 9s ease-in-out infinite alternate;
+}
+.land-head, .land .metro-ribbon, .land .gate-foot { position: relative; z-index: 1; }
+@keyframes artFloat { from { transform: translateY(0) } to { transform: translateY(-8px) } }
+
+/* a light streak runs the ribbon like a train on the map */
+.metro-ribbon { position: relative; }
+.metro-ribbon::after {
+  content: ""; position: absolute; top: 0; bottom: 0; width: 64px; left: -70px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.9), transparent);
+  animation: ribbonTrain 5.5s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+}
+@keyframes ribbonTrain { to { left: calc(100% + 6px) } }
+
+/* tiles arrive like stations on a timetable */
+.land-tile { animation: tileIn 0.55s cubic-bezier(0.2, 0.7, 0.3, 1) both; }
+.land-tile:nth-child(1) { animation-delay: 0.05s }
+.land-tile:nth-child(2) { animation-delay: 0.13s }
+.land-tile:nth-child(3) { animation-delay: 0.21s }
+.land-tile:nth-child(4) { animation-delay: 0.29s }
+.land-tile:nth-child(5) { animation-delay: 0.37s }
+.land-tile:nth-child(6) { animation-delay: 0.45s }
+@keyframes tileIn { from { opacity: 0; transform: translateY(14px) } to { opacity: 1; transform: none } }
+
+/* the alpona turns, slowly enough to be discovered rather than noticed */
+.land-tile.initiator .alpona { animation: alponaTurn 90s linear infinite; }
+@keyframes alponaTurn { to { transform: translateY(-50%) rotate(360deg) } }
+
+@media screen and (max-width: 760px) {
+  .land-art { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .land-art, .metro-ribbon::after, .land-tile, .land-tile.initiator .alpona { animation: none; }
+}
+
+/* the artwork stays in the header air — fade it out before the tile rows */
+.land-art {
+  -webkit-mask-image: linear-gradient(to bottom, black 50%, transparent 76%);
+  mask-image: linear-gradient(to bottom, black 50%, transparent 76%);
+}
