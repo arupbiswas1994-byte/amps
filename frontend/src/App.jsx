@@ -1103,10 +1103,11 @@ function Landing() {
         <header className="land-head">
           <img className="land-emblem" src={`${import.meta.env.BASE_URL}ir-emblem.svg`}
                alt="Indian Railways" />
+          <div className="land-head-rule" aria-hidden="true" />
           <div>
             <div className="gate-badge">⚡ AMPS <span className="gate-live">● LIVE</span></div>
             <h1 className="gate-title">{ORG}</h1>
-            <p className="gate-sub">Pick a line to view its assets and records — no account needed. Sign in to operate.</p>
+            <p className="gate-sub">Asset Maintenance &amp; Preventive Scheduling</p>
           </div>
           <a className="btn gate-signin-btn" href="#/login">Sign in</a>
         </header>

@@ -635,9 +635,9 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 }
 html:has(.gate), body:has(.gate) { background: #faf8f3; }
 
-/* the metro-map ribbon: one segment per line, in line colours */
-.metro-ribbon { display: flex; height: 5px; border-radius: 99px; overflow: hidden; gap: 3px; }
-.metro-ribbon i { flex: 1; }
+/* the metro-map ribbon: one slim rounded segment per line, in line colours */
+.metro-ribbon { display: flex; height: 4px; overflow: hidden; gap: 10px; }
+.metro-ribbon i { flex: 1; border-radius: 99px; }
 
 /* landing — one screen, no scroll: header / ribbon / tiles+art / foot
    share the viewport, heights breathing with vh so short displays fit */
@@ -647,9 +647,14 @@ html:has(.gate), body:has(.gate) { background: #faf8f3; }
   display: flex; flex-direction: column;
   padding-top: clamp(6px, 3vh, 30px);
 }
-.land-head { display: flex; align-items: flex-start; gap: 22px; }
-.land-head > div { flex: 1; }
-.land-emblem { width: clamp(64px, 9.5vh, 92px); height: auto; flex: none; margin-top: 4px; }
+/* header as a letterhead: emblem · hairline rule · type stack · action */
+.land-head { display: flex; align-items: center; gap: 22px; }
+.land-head > div:not(.land-head-rule) { flex: 1; }
+.land-emblem { width: clamp(64px, 9.5vh, 92px); height: auto; flex: none; }
+.land-head-rule {
+  flex: none; width: 1px; align-self: stretch; margin: 6px 0;
+  background: linear-gradient(180deg, transparent, #d9d2c2 22%, #d9d2c2 78%, transparent);
+}
 .gate-badge { font-size: 16.5px; font-weight: 800; letter-spacing: 0.3px; display: flex; align-items: center; gap: 10px; }
 .gate-badge, .gate-auth-brand { color: var(--ink); }
 .gate-live {
@@ -658,12 +663,16 @@ html:has(.gate), body:has(.gate) { background: #faf8f3; }
   border-radius: 999px; padding: 2px 8px; animation: gatePulse 2.4s infinite;
 }
 @keyframes gatePulse { 0%, 100% { opacity: 1 } 50% { opacity: 0.45 } }
-.gate-title { font-size: clamp(28px, 3vw, 40px); line-height: 1.12; margin: clamp(8px, 1.6vh, 14px) 0 6px; font-weight: 800; letter-spacing: -0.015em; color: var(--ink); }
-.gate-sub { font-size: 15.5px; color: var(--ink-2); line-height: 1.5; margin: 0; max-width: 58ch; }
+.gate-title { font-size: clamp(28px, 3vw, 40px); line-height: 1.12; margin: clamp(5px, 1vh, 9px) 0 5px; font-weight: 800; letter-spacing: -0.015em; color: var(--ink); }
+/* the full form reads as an engraved tagline, not a sentence */
+.gate-sub {
+  font-size: 12.5px; font-weight: 600; letter-spacing: 2.4px; text-transform: uppercase;
+  color: var(--ink-3); line-height: 1.5; margin: 0;
+}
 .gate-dim { color: var(--ink-3); font-size: 14px; }
 .gate-signin-btn {
   background: var(--accent); color: #fff; font-weight: 650; border-radius: 10px;
-  padding: 12px 26px; font-size: 15.5px; flex: none; margin-top: 4px;
+  padding: 12px 26px; font-size: 15.5px; flex: none;
 }
 .gate-signin-btn:hover { filter: brightness(1.08); }
 .land .metro-ribbon { margin: clamp(12px, 2.2vh, 20px) 0 clamp(12px, 2.4vh, 22px); }
@@ -745,7 +754,8 @@ html:has(.gate), body:has(.gate) { background: #faf8f3; }
 .gate-back:hover { color: var(--accent); }
 
 @media screen and (max-width: 640px) {
-  .land-head { flex-direction: column; }
+  .land-head { flex-direction: column; align-items: flex-start; }
+  .land-head-rule { display: none; }
   .land-tiles { grid-template-columns: 1fr; }
   .land-tile, .land-tile.initiator { min-height: 0; }
   .alpona { right: -30px; }
