@@ -18,20 +18,25 @@ class LineOut(BaseModel):
     name: str
     stations: int
     assets: int
+    initiator: bool  # the first site registered — where the system began
 
 
 @lines_router.get("", response_model=list[LineOut])
 def list_lines(db: Session = Depends(get_db)):
     """Every SITE in the location tree (e.g. each metro line), with counts.
-    Public: this is the walk-up landing surface."""
+    Creation order — the first site is the deployment's initiator and leads
+    the landing page. Public: this is the walk-up surface."""
     out = []
-    for site in db.scalars(select(Location).where(Location.kind == LocationKind.SITE)).all():
+    sites = db.scalars(select(Location).where(Location.kind == LocationKind.SITE)
+                       .order_by(Location.id)).all()
+    for i, site in enumerate(sites):
         child_ids = [c.id for c in site.children]
         n_assets = 0
         if child_ids:
             n_assets = len(db.scalars(select(Asset.id).where(Asset.location_id.in_(child_ids))).all())
-        out.append(LineOut(name=site.name, stations=len(child_ids), assets=n_assets))
-    return sorted(out, key=lambda l: l.name)
+        out.append(LineOut(name=site.name, stations=len(child_ids),
+                           assets=n_assets, initiator=(i == 0)))
+    return out
 
 
 class AssetIn(BaseModel):

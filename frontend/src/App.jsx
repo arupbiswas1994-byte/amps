@@ -1050,6 +1050,31 @@ function LoginForm({ autoFocus = false }) {
 
 /* ---------- landing: four line squares + sign-in (anonymous home) ---------- */
 
+/* Abstract alpona — the Bengali dot-and-petal floor motif, geometrized:
+   a centre dot, two dotted rings, eight petal arcs. Watermark, not ornament. */
+function Alpona({ size = 120 }) {
+  const dots = (r, n, key) => Array.from({ length: n }, (_, i) => {
+    const a = (i / n) * Math.PI * 2
+    return <circle key={`${key}${i}`} cx={60 + r * Math.cos(a)} cy={60 + r * Math.sin(a)} r="1.6" />
+  })
+  const petals = Array.from({ length: 8 }, (_, i) => {
+    const a = (i / 8) * 360
+    return <path key={`p${i}`} d="M 60 22 Q 66 34 60 44 Q 54 34 60 22 Z"
+                 transform={`rotate(${a} 60 60)`} fill="currentColor" opacity="0.5" stroke="none" />
+  })
+  return (
+    <svg className="alpona" width={size} height={size} viewBox="0 0 120 120" aria-hidden="true"
+         fill="currentColor" stroke="currentColor" strokeWidth="1">
+      <circle cx="60" cy="60" r="4" stroke="none" />
+      <circle cx="60" cy="60" r="12" fill="none" opacity="0.7" />
+      {petals}
+      {dots(30, 16, 'a')}
+      <circle cx="60" cy="60" r="50" fill="none" strokeDasharray="2 6" opacity="0.6" />
+      {dots(57, 24, 'b')}
+    </svg>
+  )
+}
+
 function Landing() {
   const [lines, setLines] = useState(null)
   useEffect(() => {
@@ -1061,27 +1086,36 @@ function Landing() {
     return () => { alive = false }
   }, [])
   return (
-    <div className="landing">
-      <div className="landing-lines">
-        {lines === null ? <p className="dim">Loading…</p> : lines.length === 0 ? (
-          <div className="card landing-empty"><p className="dim" style={{ margin: 0 }}>
-            No lines registered yet — the administrator adds them with the first assets.
-          </p></div>
-        ) : lines.map((l) => (
-          <a key={l.name} className="line-sq card" href={`#/line/${encodeURIComponent(l.name)}`}
-             style={{ '--line-c': lineColor(l.name) }}>
-            <span className="line-sq-dot" />
-            <span className="line-sq-name">{l.name}</span>
-            <span className="line-sq-sub">{l.assets} assets · {l.stations} locations</span>
-            <span className="line-sq-go">View →</span>
-          </a>
-        ))}
-      </div>
-      <div className="login-sq card">
-        <div className="login-brand"><span className="bolt">⚡</span>AMPS</div>
-        <h2>Sign in</h2>
-        <p className="dim">Operational access for your line. Choose a line on the left to view without signing in.</p>
-        <LoginForm />
+    <div className="gate">
+      <div className="gate-panel">
+        <div className="gate-hero">
+          <div className="gate-badge">⚡ AMPS <span className="gate-live">● LIVE</span></div>
+          <h1 className="gate-title">{ORG}<br />maintenance, on the record.</h1>
+          <p className="gate-sub">Asset registers · QR-tagged equipment history · failures &amp; recovery · shift log book. Pick a line to view; sign in to operate.</p>
+          <div className="gate-lines">
+            {lines === null ? <p className="gate-dim">Loading…</p> : lines.length === 0 ? (
+              <p className="gate-dim">No lines registered yet — the administrator adds them with the first assets.</p>
+            ) : lines.map((l) => (
+              <a key={l.name} className={`gate-line${l.initiator ? ' initiator' : ''}`}
+                 href={`#/line/${encodeURIComponent(l.name)}`}
+                 style={{ '--line-c': lineColor(l.name) }}>
+                {l.initiator && <Alpona />}
+                <span className="gate-line-dot" />
+                <span className="gate-line-name">{l.name}
+                  {l.initiator && <span className="gate-initiator-chip">সূচনা · initiator</span>}
+                </span>
+                <span className="gate-line-sub">{l.assets} assets · {l.stations} locations</span>
+                <span className="gate-line-go">View →</span>
+              </a>
+            ))}
+          </div>
+        </div>
+        <div className="gate-auth">
+          <div className="gate-auth-brand"><span className="bolt">⚡</span> Sign in to AMPS</div>
+          <p className="gate-auth-sub">Operational access for your line — report failures, write the log, register assets. Viewing needs no account.</p>
+          <LoginForm />
+          <div className="gate-foot">AMPS · MIT © 2026 Arup Biswas</div>
+        </div>
       </div>
     </div>
   )
@@ -1120,16 +1154,19 @@ export default function App() {
   // Anonymous surface = landing (line squares + sign-in), a chosen line
   // view-only, and QR-scanned asset pages. Everything else routes home.
   if (anonymous) {
+    if (!assetMatch && !lineMatch) return <Landing /> // full-screen gate, own chrome
     return (
       <div className="shell">
         <header className="topbar">
           <a href="#/" className="brand"><span className="bolt">⚡</span>AMPS
             <span className="brand-sub">{ORG} · maintenance records</span>
           </a>
+          <nav className="nav">
+            <a href="#/" className="btn login-btn">Sign in</a>
+          </nav>
         </header>
         {assetMatch ? <LiveAssetDetail code={assetMatch[1]} />
-          : lineMatch ? <LineView name={decodeURIComponent(lineMatch[1])} />
-          : <Landing />}
+          : <LineView name={decodeURIComponent(lineMatch[1])} />}
         <footer className="foot">{ORG} · maintenance records · AMPS, MIT © 2026 Arup Biswas</footer>
       </div>
     )
