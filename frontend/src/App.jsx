@@ -942,7 +942,6 @@ const routeFromHash = () => location.hash.replace(/^#/, '') || '/'
    nav release by release. The demo build keeps the full walkthrough. */
 const NAV = LIVE ? [
   ['/', 'Assets'],
-  ['/roster', 'Duty roster'],
   ['/log', 'Log book'],
   ['/tags', 'QR tags'],
 ] : [
@@ -995,7 +994,7 @@ export default function App() {
         : csMatch ? (LIVE ? <NotYet /> : <Checksheet kind={csMatch[1]} a1={csMatch[2]} a2={csMatch[3]} />)
         : jcMatch ? (LIVE ? <NotYet /> : <JobCard jcId={jcMatch[1]} />)
         : route === '/planner' ? (LIVE ? <NotYet /> : <Planner />)
-        : route === '/roster' ? <DutyRoster />
+        : route === '/roster' ? (LIVE ? <NotYet /> : <DutyRoster />)
         : route === '/log' ? <LogBook />
         : route === '/failures' ? (LIVE ? <NotYet /> : <Failures />)
         : route === '/spares' ? (LIVE ? <NotYet /> : <Spares />)
