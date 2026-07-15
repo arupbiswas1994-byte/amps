@@ -39,9 +39,10 @@ const StageChip = ({ stage }) => (
 
 /* ---------- dashboard (live) ---------- */
 
-function LiveDashboard({ go }) {
+function LiveDashboard({ go, initialLine = null }) {
   const { assets: all, due: dueAll, loading, error } = useLiveAssets()
-  const [line, setLine] = useState('all')
+  const [line, setLine] = useState(initialLine ?? 'all')
+  useEffect(() => { setLine(initialLine ?? 'all') }, [initialLine])
   const lines = [...new Set(all.map((a) => a.line).filter(Boolean))].sort()
   const assets = line === 'all' ? all : all.filter((a) => a.line === line)
   const codes = new Set(assets.map((a) => a.code))
@@ -1016,7 +1017,7 @@ const NotYet = () => (
 
 /* ---------- sign in (line-scoped operations) ---------- */
 
-function LoginModal({ onClose }) {
+function LoginForm({ autoFocus = false }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [err, setErr] = useState(null)
@@ -1026,6 +1027,7 @@ function LoginModal({ onClose }) {
     setBusy(true); setErr(null)
     try {
       await apiLogin(username.trim(), password)
+      location.hash = '/'
       location.reload() // fresh session everywhere: nav, scope, authorship
     } catch (ex) {
       setErr(String(ex.message || 'login failed'))
@@ -1033,30 +1035,72 @@ function LoginModal({ onClose }) {
     }
   }
   return (
-    <div className="login-overlay" role="dialog" aria-modal="true" aria-label="Sign in"
-         onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <form className="login-card card" onSubmit={submit}>
+    <form className="login-form-fields" onSubmit={submit}>
+      <input autoFocus={autoFocus} autoComplete="username" placeholder="Username"
+             value={username} onChange={(e) => setUsername(e.target.value)} />
+      <input type="password" autoComplete="current-password" placeholder="Password"
+             value={password} onChange={(e) => setPassword(e.target.value)} />
+      {err && <div className="login-err">{err}</div>}
+      <button className="btn" type="submit" disabled={busy || !username.trim() || !password}>
+        {busy ? 'Signing in…' : 'Sign in'}
+      </button>
+    </form>
+  )
+}
+
+/* ---------- landing: four line squares + sign-in (anonymous home) ---------- */
+
+function Landing() {
+  const [lines, setLines] = useState(null)
+  useEffect(() => {
+    let alive = true
+    fetch(`${import.meta.env.VITE_AMPS_API ?? ''}/api/lines`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((l) => alive && setLines(l))
+      .catch(() => alive && setLines([]))
+    return () => { alive = false }
+  }, [])
+  return (
+    <div className="landing">
+      <div className="landing-lines">
+        {lines === null ? <p className="dim">Loading…</p> : lines.length === 0 ? (
+          <div className="card landing-empty"><p className="dim" style={{ margin: 0 }}>
+            No lines registered yet — the administrator adds them with the first assets.
+          </p></div>
+        ) : lines.map((l) => (
+          <a key={l.name} className="line-sq card" href={`#/line/${encodeURIComponent(l.name)}`}
+             style={{ '--line-c': lineColor(l.name) }}>
+            <span className="line-sq-dot" />
+            <span className="line-sq-name">{l.name}</span>
+            <span className="line-sq-sub">{l.assets} assets · {l.stations} locations</span>
+            <span className="line-sq-go">View →</span>
+          </a>
+        ))}
+      </div>
+      <div className="login-sq card">
         <div className="login-brand"><span className="bolt">⚡</span>AMPS</div>
         <h2>Sign in</h2>
-        <p className="dim">Operational access for your line. Viewing needs no login.</p>
-        <input autoFocus autoComplete="username" placeholder="Username"
-               value={username} onChange={(e) => setUsername(e.target.value)} />
-        <input type="password" autoComplete="current-password" placeholder="Password"
-               value={password} onChange={(e) => setPassword(e.target.value)} />
-        {err && <div className="login-err">{err}</div>}
-        <button className="btn" type="submit" disabled={busy || !username.trim() || !password}>
-          {busy ? 'Signing in…' : 'Sign in'}
-        </button>
-        <button className="btn muted" type="button" onClick={onClose}>Continue viewing</button>
-      </form>
+        <p className="dim">Operational access for your line. Choose a line on the left to view without signing in.</p>
+        <LoginForm />
+      </div>
     </div>
+  )
+}
+
+/* ---------- one line, view-only (from a landing square) ---------- */
+
+function LineView({ name }) {
+  return (
+    <>
+      <a className="crumb" href="#/">← All lines</a>
+      <LiveDashboard go={(r) => { location.hash = r }} initialLine={name} />
+    </>
   )
 }
 
 export default function App() {
   const [route, setRoute] = useState(routeFromHash)
-  const { me, canWrite } = useMe()
-  const [showLogin, setShowLogin] = useState(false)
+  const { me, loading: meLoading } = useMe()
   useEffect(() => {
     const onHash = () => { setRoute(routeFromHash()); window.scrollTo(0, 0) }
     window.addEventListener('hashchange', onHash)
@@ -1065,11 +1109,32 @@ export default function App() {
   const go = (r) => { location.hash = r }
   const authOn = LIVE && me?.auth_enabled
   const signedIn = authOn && me.username !== 'viewer'
+  const anonymous = authOn && !signedIn
 
   const assetMatch = route.match(/^\/asset\/(.+)$/)
+  const lineMatch = route.match(/^\/line\/(.+)$/)
   const letterMatch = route.match(/^\/procurement\/([^/]+)\/letter$/)
   const csMatch = route.match(/^\/checksheet\/(wo|pm)\/([^/]+)(?:\/(.+))?$/)
   const jcMatch = route.match(/^\/jobcard\/(.+)$/)
+
+  // Anonymous surface = landing (line squares + sign-in), a chosen line
+  // view-only, and QR-scanned asset pages. Everything else routes home.
+  if (anonymous) {
+    return (
+      <div className="shell">
+        <header className="topbar">
+          <a href="#/" className="brand"><span className="bolt">⚡</span>AMPS
+            <span className="brand-sub">{ORG} · maintenance records</span>
+          </a>
+        </header>
+        {assetMatch ? <LiveAssetDetail code={assetMatch[1]} />
+          : lineMatch ? <LineView name={decodeURIComponent(lineMatch[1])} />
+          : <Landing />}
+        <footer className="foot">{ORG} · maintenance records · AMPS, MIT © 2026 Arup Biswas</footer>
+      </div>
+    )
+  }
+  if (LIVE && meLoading) return null // one clean paint: landing or app, never both
 
   return (
     <div className="shell">
@@ -1081,20 +1146,18 @@ export default function App() {
           {NAV.map(([path, label]) => (
             <a key={path} href={`#${path}`} className={route === path ? 'active' : ''}>{label}</a>
           ))}
-          {authOn && (signedIn ? (
+          {signedIn && (
             <span className="who">
               <span className="dot" style={{ background: lineColor(me.line || '') }} />
               {me.full_name}{me.line ? ` · ${me.line}` : ''}
               <button className="mini-btn muted" type="button" onClick={apiLogout}>Sign out</button>
             </span>
-          ) : (
-            <button className="btn login-btn" type="button" onClick={() => setShowLogin(true)}>Sign in</button>
-          ))}
+          )}
         </nav>
       </header>
-      {showLogin && !signedIn && <LoginModal onClose={() => setShowLogin(false)} />}
 
       {assetMatch ? (LIVE ? <LiveAssetDetail code={assetMatch[1]} /> : <AssetDetail code={assetMatch[1]} />)
+        : lineMatch ? (LIVE ? <LineView name={decodeURIComponent(lineMatch[1])} /> : <NotYet />)
         : letterMatch ? (LIVE ? <NotYet /> : <ProposalLetter prId={letterMatch[1]} />)
         : csMatch ? (LIVE ? <NotYet /> : <Checksheet kind={csMatch[1]} a1={csMatch[2]} a2={csMatch[3]} />)
         : jcMatch ? (LIVE ? <NotYet /> : <JobCard jcId={jcMatch[1]} />)

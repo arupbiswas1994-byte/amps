@@ -10,6 +10,29 @@ from app.models import Asset, AssetClass, AssetStatus, Criticality, Location, Lo
 
 router = APIRouter()
 
+# Mounted at /api/lines — the landing page's public directory of sites.
+lines_router = APIRouter()
+
+
+class LineOut(BaseModel):
+    name: str
+    stations: int
+    assets: int
+
+
+@lines_router.get("", response_model=list[LineOut])
+def list_lines(db: Session = Depends(get_db)):
+    """Every SITE in the location tree (e.g. each metro line), with counts.
+    Public: this is the walk-up landing surface."""
+    out = []
+    for site in db.scalars(select(Location).where(Location.kind == LocationKind.SITE)).all():
+        child_ids = [c.id for c in site.children]
+        n_assets = 0
+        if child_ids:
+            n_assets = len(db.scalars(select(Asset.id).where(Asset.location_id.in_(child_ids))).all())
+        out.append(LineOut(name=site.name, stations=len(child_ids), assets=n_assets))
+    return sorted(out, key=lambda l: l.name)
+
 
 class AssetIn(BaseModel):
     code: str
