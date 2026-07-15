@@ -1208,11 +1208,14 @@ export default function App() {
   if (anonymous) {
     if (route === '/login') return <>{siteArt}<LoginPage /></>
     if (onLanding) return <>{siteArt}<Landing /></> // full-screen, own chrome
+    const navLine = lineMatch ? decodeURIComponent(lineMatch[1]) : null
     return (
       <>{siteArt}
-      <div className="shell">
+      <div className="shell" style={navLine ? { '--nav-c': lineColor(navLine) } : undefined}>
         <header className="topbar">
-          <a href="#/" className="brand"><span className="bolt">⚡</span>AMPS
+          <a href="#/" className="brand">
+            <img className="brand-emblem" src={`${import.meta.env.BASE_URL}ir-emblem.svg`} alt="" />
+            <span className="bolt">⚡</span>AMPS
             <span className="brand-sub">{ORG} · maintenance records</span>
           </a>
           <nav className="nav">
@@ -1227,11 +1230,14 @@ export default function App() {
     )
   }
 
+  const navLine = lineMatch ? decodeURIComponent(lineMatch[1]) : (signedIn && me.line) || null
   return (
     <>{siteArt}
-    <div className="shell">
+    <div className="shell" style={navLine ? { '--nav-c': lineColor(navLine) } : undefined}>
       <header className="topbar">
-        <a href="#/" className="brand"><span className="bolt">⚡</span>AMPS
+        <a href="#/" className="brand">
+          <img className="brand-emblem" src={`${import.meta.env.BASE_URL}ir-emblem.svg`} alt="" />
+          <span className="bolt">⚡</span>AMPS
           <span className="brand-sub">Asset Maintenance &amp; Preventive Scheduling</span>
         </a>
         <nav className="nav">
