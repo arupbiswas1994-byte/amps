@@ -225,6 +225,8 @@ class LogEntry(Base):
     type: Mapped[LogEntryType] = mapped_column(default=LogEntryType.GENERAL)
     # maintenance frequency (Monthly / Quarterly / Half-Yearly / Yearly / Special)
     subtype: Mapped[str | None] = mapped_column(String(40))
+    # equipment category — the asset class (auto-filled from the asset, editable)
+    category: Mapped[str | None] = mapped_column(String(80))
     asset_id: Mapped[int | None] = mapped_column(ForeignKey("assets.id"))
     text: Mapped[str] = mapped_column(Text)
     entered_by: Mapped[str] = mapped_column(String(120), default="unknown")

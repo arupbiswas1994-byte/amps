@@ -28,6 +28,7 @@ class LogEntryIn(BaseModel):
     shift: str = "G"                    # M/E/N/G (R retired from the book)
     type: str = "general"               # maintenance/failure/rectification/general
     subtype: str | None = None          # maintenance frequency (Monthly … Special)
+    category: str | None = None         # asset class (auto-filled from the asset)
     time: str | None = None             # optional HH:MM — a single moment, no start/end
     text: str = Field(min_length=3)
     entered_by: str = ""                # ignored on authenticated deployments
@@ -42,6 +43,7 @@ class LogEntryOut(BaseModel):
     shift: str
     type: str
     subtype: str | None
+    category: str | None
     text: str
     entered_by: str
     asset_code: str | None
@@ -51,9 +53,18 @@ class LogEntryOut(BaseModel):
 def _to_out(e: LogEntry) -> LogEntryOut:
     return LogEntryOut(
         id=e.id, at=e.at, log_date=e.log_date, shift=e.shift.value,
-        type=e.type.value, subtype=e.subtype, text=e.text, entered_by=e.entered_by,
+        type=e.type.value, subtype=e.subtype, category=e.category, text=e.text,
+        entered_by=e.entered_by,
         asset_code=e.asset.code if e.asset else None, corrects_id=e.corrects_id,
     )
+
+
+def _category_of(asset) -> str | None:
+    """The asset's class — the entry's equipment category."""
+    if not asset:
+        return None
+    cls = asset.asset_class.name if asset.asset_class else None
+    return cls[:80] if cls else None
 
 
 @router.post("", response_model=LogEntryOut, status_code=201)
@@ -75,10 +86,15 @@ def add_entry(entry: LogEntryIn, db: Session = Depends(get_db), user=Depends(cur
     at = datetime.combine(entry.log_date, when) if when else datetime.combine(entry.log_date, datetime.min.time())
     # Logged-in deployments: authorship comes from the session, never the form.
     author = user.full_name if AUTH_ON else (entry.entered_by or "unknown")
+    # category: explicit choice wins; else the asset's class
+    category = (entry.category or "").strip()[:80] or _category_of(asset)
+    etype = LogEntryType(entry.type)
+    # maintenance is a night-shift job — enforce it regardless of client
+    shift = ShiftCode.NIGHT if etype == LogEntryType.MAINTENANCE else ShiftCode(entry.shift)
     obj = LogEntry(
-        at=at, log_date=entry.log_date, shift=ShiftCode(entry.shift),
-        type=LogEntryType(entry.type), subtype=(entry.subtype or None),
-        text=entry.text,
+        at=at, log_date=entry.log_date, shift=shift,
+        type=etype, subtype=(entry.subtype or None),
+        category=(category or None), text=entry.text,
         entered_by=author, asset=asset, corrects_id=entry.corrects_id,
         line_id=user.line_id,  # NULL = department-wide entry (HQ/admin)
     )
@@ -94,6 +110,7 @@ def add_entry(entry: LogEntryIn, db: Session = Depends(get_db), user=Depends(cur
 @router.get("", response_model=list[LogEntryOut])
 def list_entries(log_date: date | None = None, shift: str | None = None,
                  asset_code: str | None = None, entry_type: str | None = None,
+                 category: str | None = None,
                  limit: int = 200, db: Session = Depends(get_db), user=Depends(optional_user)):
     """The day's log, a shift's log, or one asset's complete logged history.
     Line-scoped users read their line's book plus department-wide entries."""
@@ -107,6 +124,8 @@ def list_entries(log_date: date | None = None, shift: str | None = None,
         q = q.where(LogEntry.shift == ShiftCode(shift))
     if entry_type:
         q = q.where(LogEntry.type == LogEntryType(entry_type))
+    if category:
+        q = q.where(LogEntry.category == category)
     if asset_code:
         asset = visible_asset(db, asset_code, user)
         q = q.where(LogEntry.asset_id == asset.id)
@@ -126,8 +145,6 @@ import io as _io
 
 from fastapi import Request, Response
 from sqlalchemy.exc import SQLAlchemyError
-
-from app.models import Failure, Location
 
 LOG_SAMPLE_CSV = """kind,type,group,asset_id,station,location,equipment,start,end,fault_type,details,action_taken,attended_by,reported_by,repercussion
 maintenance,YEARLY MAINTENANCE,HT,B2HB11,Baranagar,TSS/ASS,VCB,2026-01-05,2026-01-05,,Maintenance done,,PS Staff,,
@@ -180,13 +197,12 @@ async def import_history(request: Request, db: Session = Depends(get_db),
         raise HTTPException(422, "expected the standard logbook CSV "
                                  "(see /api/logbook/import/sample)")
 
-    # preload once: register codes and already-imported content keys
+    # preload once: register codes and already-imported content keys.
+    # ONE ledger — every row (maintenance and failure) becomes a log entry.
     assets = {a.code: a for a in db.scalars(select(Asset)).all()}
     have_logs = {(str(e[0]), e[1] or '', e[2]) for e in
                  db.execute(select(LogEntry.log_date, Asset.code, LogEntry.text)
                             .outerjoin(Asset, LogEntry.asset_id == Asset.id)).all()}
-    have_fails = {(f[0], f[1] and f[1].isoformat()) for f in
-                  db.execute(select(Failure.asset_id, Failure.started_at)).all()}
 
     n_logs = n_fails = skipped = failed = 0
     errors: list[str] = []
@@ -203,50 +219,37 @@ async def import_history(request: Request, db: Session = Depends(get_db),
         asset = assets.get(get("asset_id"))
         is_failure = get("kind").lower() == "failure"
         try:
-            if is_failure and asset:
-                key = (asset.id, start.isoformat())
-                if key in have_fails:
-                    skipped += 1
-                    continue
-                have_fails.add(key)
-                end = _parse_dt(get("end"))
-                if end and end < start:  # day/month-swapped source cells
-                    end = None
-                desc = details
-                for label, col in (("reported by", "reported_by"),
-                                   ("repercussion", "repercussion")):
-                    if get(col):
-                        desc += f" · {label}: {get(col)}"
-                if not end:
-                    desc += " · [historical import — end time not recorded]"
-                db.add(Failure(
-                    asset_id=asset.id, started_at=start, ended_at=end or start,
-                    fault_type=get("fault_type")[:120] or None, description=desc,
-                    work_done=get("action_taken") or None,
-                    attended_by=get("attended_by")[:160] or None))
+            bits = [details]
+            if get("fault_type"): bits.append(f"fault: {get('fault_type')}")
+            if get("action_taken"): bits.append(f"action: {get('action_taken')}")
+            if is_failure and get("reported_by"): bits.append(f"reported by: {get('reported_by')}")
+            if is_failure and get("repercussion"): bits.append(f"repercussion: {get('repercussion')}")
+            if get("equipment"): bits.append(f"equipment: {get('equipment')}")
+            if not asset and get("asset_id"): bits.append(f"asset: {get('asset_id')}")
+            if not asset and get("station"): bits.append(f"at: {get('station')} {get('location')}".strip())
+            typ = get("type") or get("kind") or "entry"
+            body_text = f"[{typ}] " + " · ".join(bits)
+            key = (start.date().isoformat(), asset.code if asset else '', body_text)
+            if key in have_logs:
+                skipped += 1
+                continue
+            have_logs.add(key)
+            line_id = (asset.location.parent_id if asset and asset.location
+                       else None) or user.line_id
+            # category = the asset's class; fall back to the CSV group cell
+            category = _category_of(asset) or (get("group")[:80] or None)
+            # maintenance runs on the night shift; failures keep the general marker
+            db.add(LogEntry(
+                at=start, log_date=start.date(),
+                shift=ShiftCode.GENERAL if is_failure else ShiftCode.NIGHT,
+                type=LogEntryType.FAILURE if is_failure else LogEntryType.MAINTENANCE,
+                subtype=None if is_failure else _maint_subtype(get("type")),
+                category=category,
+                text=body_text, entered_by=(get("attended_by") or "imported record")[:120],
+                asset=asset, line_id=line_id))
+            if is_failure:
                 n_fails += 1
             else:
-                bits = [details]
-                if get("fault_type"): bits.append(f"fault: {get('fault_type')}")
-                if get("action_taken"): bits.append(f"action: {get('action_taken')}")
-                if get("equipment"): bits.append(f"equipment: {get('equipment')}")
-                if not asset and get("asset_id"): bits.append(f"asset: {get('asset_id')}")
-                if not asset and get("station"): bits.append(f"at: {get('station')} {get('location')}".strip())
-                typ = get("type") or get("kind") or "entry"
-                body_text = f"[{typ}] " + " · ".join(bits)
-                key = (start.date().isoformat(), asset.code if asset else '', body_text)
-                if key in have_logs:
-                    skipped += 1
-                    continue
-                have_logs.add(key)
-                line_id = (asset.location.parent_id if asset and asset.location
-                           else None) or user.line_id
-                db.add(LogEntry(
-                    at=start, log_date=start.date(), shift=ShiftCode.GENERAL,
-                    type=LogEntryType.FAILURE if is_failure else LogEntryType.MAINTENANCE,
-                    subtype=_maint_subtype(get("type")),
-                    text=body_text, entered_by=(get("attended_by") or "imported record")[:120],
-                    asset=asset, line_id=line_id))
                 n_logs += 1
             batch += 1
             if batch >= 500:

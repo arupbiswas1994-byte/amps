@@ -9,7 +9,6 @@ import { LIVE, ORG, useLiveAssets, useLiveAsset, useMe, apiLogin, apiLogout } fr
 import QR, { assetUrl } from './qr.jsx'
 import DutyRoster from './roster.jsx'
 import LogBook from './logbook.jsx'
-import LiveFailures from './failures.jsx'
 
 const STATUS_LABEL = {
   in_service: 'In service',
@@ -234,7 +233,7 @@ function Dashboard({ go }) {
 /* ---------- asset detail (live) ---------- */
 
 function LiveAssetDetail({ code }) {
-  const { asset: a, history, failures, loading, error } = useLiveAsset(code)
+  const { asset: a, history, log, loading, error } = useLiveAsset(code)
   if (loading) return <p className="dim">Loading {code}…</p>
   if (error || !a) {
     return (
@@ -265,30 +264,27 @@ function LiveAssetDetail({ code }) {
             </div>
           </div>
 
-          {failures.length > 0 && (
+          {log.length > 0 && (
             <div className="sect">
-              <h3>Failures</h3>
-              {failures.map((f) => (
-                <div className="wo" key={f.id}>
+              <h3>Log book — maintenance, failures & notes, newest first</h3>
+              {log.map((en) => (
+                <div className="wo" key={en.id}>
                   <div className="row1">
-                    <span className="t">{f.fault_type || 'Breakdown'}</span>
-                    {f.ended_at
-                      ? <span className="chip d-ok"><span className="dot" />Recovered · {f.downtime_hrs}h down</span>
-                      : <span className="chip d-overdue"><span className="dot" />Ongoing</span>}
+                    {en.category && <span className="chip grp"><span className="dot" />{en.category}</span>}
+                    <span className={`chip ${en.type === 'failure' ? 'd-overdue' : ''}`}>
+                      <span className="dot" />{en.type}{en.subtype ? ` · ${en.subtype}` : ''}
+                    </span>
+                    <span className="sub dt">{en.log_date}</span>
                   </div>
-                  <div className="findings">{f.description}</div>
-                  <div className="sub">
-                    {new Date(f.started_at).toLocaleString()}
-                    {f.work_done && <> · {f.work_done}</>}
-                    {f.attended_by && <> · by <b>{f.attended_by}</b></>}
-                  </div>
+                  <div className="findings">{en.text}</div>
+                  {en.entered_by && <div className="sub">by <b>{en.entered_by}</b></div>}
                 </div>
               ))}
             </div>
           )}
 
           <div className="sect">
-            <h3>History — every job on this asset, newest first</h3>
+            <h3>Work-order history — completed jobs, newest first</h3>
             {history.length === 0 ? <p className="dim">No records yet. Completed job cards and PM work appear here.</p> : history.map((w) => (
               <div className="wo" key={w.work_order_id}>
                 <div className="row1">
@@ -1040,7 +1036,6 @@ const routeFromHash = () => location.hash.replace(/^#/, '') || '/'
    nav release by release. The demo build keeps the full walkthrough. */
 const NAV = LIVE ? [
   ['/', 'Assets'],
-  ['/failures', 'Failures'],
   ['/log', 'Log book'],
   ['/tags', 'QR tags'],
 ] : [
@@ -1308,7 +1303,8 @@ export default function App() {
         : route === '/planner' ? (LIVE ? <NotYet /> : <Planner />)
         : route === '/roster' ? (LIVE ? <NotYet /> : <DutyRoster />)
         : route === '/log' ? <LogBook />
-        : route === '/failures' ? (LIVE ? <LiveFailures /> : <Failures />)
+        /* failures folded into the one logbook — old links land on the log */
+        : route === '/failures' ? (LIVE ? <LogBook /> : <Failures />)
         : route === '/spares' ? (LIVE ? <NotYet /> : <Spares />)
         : route === '/procurement' ? (LIVE ? <NotYet /> : <Procurement />)
         : route === '/tags' ? <TagSheet />

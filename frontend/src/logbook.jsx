@@ -113,6 +113,8 @@ export default function LogBook() {
   const [logDate, setLogDate] = useState(today())  // the ruler: write + read date
   const [allDates, setAllDates] = useState(false)  // ruler off → full history
   const [fShift, setFShift] = useState('')         // '' = all shifts
+  const [fCat, setFCat] = useState('')             // '' = all categories (classes)
+  const [fType, setFType] = useState('')           // '' = all types
   const [apiOk, setApiOk] = useState(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -121,21 +123,27 @@ export default function LogBook() {
   const [shift, setShift] = useState('M')
   const [type, setType] = useState('general')
   const [subtype, setSubtype] = useState('Monthly')
+  const [category, setCategory] = useState('')     // asset class
   const [tim, setTim] = useState('')               // optional HH:MM
   const [assetCode, setAssetCode] = useState('')   // cross-reference to the register
   const [author, setAuthor] = useState('demo.visitor')
-  const [assets, setAssets] = useState([])         // register codes for the datalist
+  const [assets, setAssets] = useState([])         // register rows for the datalist
 
   useEffect(() => {
     fetch(`${API}/api/assets`).then((r) => (r.ok ? r.json() : []))
       .then(setAssets).catch(() => {})
   }, [])
+  // distinct asset classes, sorted — the category dropdown's options
+  const classes = [...new Set(assets.map((a) => a.asset_class).filter(Boolean))].sort()
 
   const load = async () => {
     try {
       const q = new URLSearchParams()
       if (!allDates) q.set('log_date', logDate)
       if (fShift) q.set('shift', fShift)
+      if (fCat) q.set('category', fCat)
+      if (fType) q.set('entry_type', fType)
+      if (allDates) q.set('limit', '500')
       const res = await fetch(`${API}/api/logbook?${q}`)
       if (!res.ok) throw new Error(res.status)
       setEntries(await res.json())
@@ -145,7 +153,7 @@ export default function LogBook() {
     }
   }
 
-  useEffect(() => { load() }, [logDate, allDates, fShift])  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load() }, [logDate, allDates, fShift, fCat, fType])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const add = async (e) => {
     e.preventDefault()
@@ -159,6 +167,7 @@ export default function LogBook() {
         body: JSON.stringify({
           log_date: logDate, shift, type,
           subtype: type === 'maintenance' ? subtype : null,
+          category: category || null,
           time: tim || null,
           asset_code: assetCode.trim() || null,
           text: text.trim(), entered_by: author.trim() || 'demo.visitor',
@@ -206,10 +215,21 @@ export default function LogBook() {
 
       {canWrite ? (
         <form className="log-form card" onSubmit={add}>
-          <select value={shift} onChange={(e) => setShift(e.target.value)} aria-label="Shift">
+          {/* maintenance is always a night-shift job — lock the shift to N */}
+          <select value={type === 'maintenance' ? 'N' : shift} disabled={type === 'maintenance'}
+                  onChange={(e) => setShift(e.target.value)} aria-label="Shift"
+                  title={type === 'maintenance' ? 'Maintenance runs on the night shift' : 'Shift'}>
             {ENTRY_SHIFTS.map((s) => <option key={s} value={s}>{s} — {SHIFT_LABEL[s]}</option>)}
           </select>
-          <select value={type} onChange={(e) => setType(e.target.value)} aria-label="Entry type">
+          <input value={category} list="asset-classes" placeholder="Asset class…"
+                 className="log-cat" aria-label="Asset class / category"
+                 onChange={(e) => setCategory(e.target.value)} />
+          <datalist id="asset-classes">
+            {classes.map((c) => <option key={c} value={c} />)}
+          </datalist>
+          <select value={type}
+                  onChange={(e) => { setType(e.target.value); if (e.target.value === 'maintenance') setShift('N') }}
+                  aria-label="Entry type">
             {ENTRY_TYPES.map((t) => <option key={t} value={t}>{t[0].toUpperCase() + t.slice(1)}</option>)}
           </select>
           {type === 'maintenance' && (
@@ -219,9 +239,14 @@ export default function LogBook() {
           )}
           <input type="time" value={tim} onChange={(e) => setTim(e.target.value)}
                  aria-label="Time (optional)" title="Time (optional)" className="log-time" />
-          <input value={assetCode} onChange={(e) => setAssetCode(e.target.value)}
-                 list="register-codes" placeholder="Asset ID…" className="log-asset"
-                 aria-label="Asset code (optional)" />
+          <input value={assetCode} list="register-codes" placeholder="Asset ID…"
+                 className="log-asset" aria-label="Asset code (optional)"
+                 onChange={(e) => {
+                   const v = e.target.value
+                   setAssetCode(v)
+                   const hit = assets.find((a) => a.code === v)  // auto-set class from the asset
+                   if (hit?.asset_class) setCategory(hit.asset_class)
+                 }} />
           <datalist id="register-codes">
             {assets.map((a) => <option key={a.code} value={a.code}>{a.name} · {a.location}</option>)}
           </datalist>
@@ -245,6 +270,14 @@ export default function LogBook() {
       <div className="log-filters">
         <button type="button" className={`btn preset${allDates ? ' active' : ''}`}
                 onClick={() => setAllDates(true)}>All dates</button>
+        <label className="dim">Class <select value={fCat} onChange={(e) => setFCat(e.target.value)}>
+          <option value="">All</option>
+          {classes.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select></label>
+        <label className="dim">Type <select value={fType} onChange={(e) => setFType(e.target.value)}>
+          <option value="">All</option>
+          {ENTRY_TYPES.map((t) => <option key={t} value={t}>{t[0].toUpperCase() + t.slice(1)}</option>)}
+        </select></label>
         <label className="dim">Shift <select value={fShift} onChange={(e) => setFShift(e.target.value)}>
           <option value="">All</option>
           {ENTRY_SHIFTS.map((s) => <option key={s} value={s}>{s} — {SHIFT_LABEL[s]}</option>)}
@@ -259,6 +292,7 @@ export default function LogBook() {
               <div className="log-entry" key={en.id}>
                 <div className="log-meta">
                   {!en.at.includes('T00:00:00') && <span className="dt">{fmtTime(en.at)}</span>}
+                  {en.category && <span className="chip grp"><span className="dot" />{en.category}</span>}
                   <span className="chip"><span className="dot" />{en.shift} · {SHIFT_LABEL[en.shift]}</span>
                   <span className={`chip ${['defect', 'failure'].includes(en.type) ? 'd-overdue' : ''}`}>
                     <span className="dot" />{en.type}{en.subtype ? ` · ${en.subtype}` : ''}

@@ -85,20 +85,22 @@ export function useLiveAssets() {
   return state
 }
 
-/** Asset page source: the record plus its work-order and failure history
-    (the QR scan target — everything ever recorded against the asset). */
+/** Asset page source: the record, its work-order history, and its logbook
+    (the QR scan target — everything ever recorded against the asset). The
+    logbook is the single ledger now: failures, maintenance and notes all
+    live there, filtered to this asset. */
 export function useLiveAsset(code) {
-  const [state, set] = useState({ asset: null, history: [], failures: [], loading: true, error: null })
+  const [state, set] = useState({ asset: null, history: [], log: [], loading: true, error: null })
   useEffect(() => {
     let alive = true
-    set({ asset: null, history: [], failures: [], loading: true, error: null })
+    set({ asset: null, history: [], log: [], loading: true, error: null })
     Promise.all([
       getJSON(`/api/assets/${encodeURIComponent(code)}`),
       getJSON(`/api/assets/${encodeURIComponent(code)}/history`).catch(() => []),
-      getJSON(`/api/failures?asset_code=${encodeURIComponent(code)}`).catch(() => []),
+      getJSON(`/api/logbook?asset_code=${encodeURIComponent(code)}&limit=500`).catch(() => []),
     ])
-      .then(([a, history, failures]) => alive && set({ asset: toView(a), history, failures, loading: false, error: null }))
-      .catch((e) => alive && set({ asset: null, history: [], failures: [], loading: false, error: String(e) }))
+      .then(([a, history, log]) => alive && set({ asset: toView(a), history, log, loading: false, error: null }))
+      .catch((e) => alive && set({ asset: null, history: [], log: [], loading: false, error: String(e) }))
     return () => { alive = false }
   }, [code])
   return state

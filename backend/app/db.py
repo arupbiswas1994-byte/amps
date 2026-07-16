@@ -32,7 +32,7 @@ def _migrate(engine):
     wanted = {
         "assets": {"system": "VARCHAR(80)"},
         "users": {"password_hash": "VARCHAR(200)", "line_id": "INTEGER"},
-        "log_entries": {"line_id": "INTEGER", "subtype": "VARCHAR(40)"},
+        "log_entries": {"line_id": "INTEGER", "subtype": "VARCHAR(40)", "category": "VARCHAR(80)"},
     }
     # widen columns that real-world data outgrew (no-op where already wide;
     # SQLite ignores VARCHAR lengths so this only matters on Postgres).
@@ -56,7 +56,8 @@ def _migrate(engine):
             have = {c["name"] for c in insp.get_columns(table)}
             for col, ddl in columns.items():
                 if col not in have:
-                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
+                    # quote — some column names (e.g. "group") are reserved words
+                    conn.execute(text(f'ALTER TABLE {table} ADD COLUMN "{col}" {ddl}'))
 
 
 def get_db():

@@ -266,8 +266,11 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 .ruler-pick.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 
 .log-form { display: flex; gap: 8px; padding: 10px; margin-bottom: 20px; align-items: center; flex-wrap: wrap; }
+.chip.grp { background: #eef2f7; border-color: #d7e0ea; color: #395168; font-weight: 600; }
+.chip.grp .dot { background: #5a7799; }
 .log-form .log-time { flex: none; width: 108px; }
-.log-form .log-asset { flex: none; width: 180px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
+.log-form .log-cat { flex: none; width: 170px; }
+.log-form .log-asset { flex: none; width: 170px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
 .log-form select, .log-form input {
   font: inherit; font-size: 14px; border: 1px solid var(--border); border-radius: 8px;
   padding: 8px 10px; background: var(--bg); color: var(--ink);
