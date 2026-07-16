@@ -76,10 +76,11 @@ function LiveDashboard({ go, initialLine = null }) {
       </div>
 
       <h2>Assets</h2>
+      <ImportBar />
       {assets.length === 0 ? (
         <div className="card"><p className="dim" style={{ margin: 0 }}>
-          The register is empty. Add assets via the API (<a href="/docs">/docs</a>) or bulk-import a
-          CSV with <span className="code">tools/import_assets.py</span> — the register, QR tags and
+          The register is empty. Download the sample CSV above, fill one row per asset
+          (the standard register format), and import it back — the register, QR tags and
           asset pages fill in from here.
         </p></div>
       ) : (
@@ -110,6 +111,50 @@ function LiveDashboard({ go, initialLine = null }) {
         </div>
       )}
     </>
+  )
+}
+
+/* bulk import: download the standard CSV template, upload the filled one.
+   The Green Line register format is the base for every line. */
+function ImportBar() {
+  const { canWrite } = useMe()
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState(null)
+  if (!canWrite) return null
+  const base = import.meta.env.VITE_AMPS_API ?? ''
+  const onFile = async (e) => {
+    const file = e.target.files[0]
+    e.target.value = ''
+    if (!file) return
+    setBusy(true); setResult(null)
+    try {
+      const r = await fetch(`${base}/api/assets/import`, {
+        method: 'POST', headers: { 'Content-Type': 'text/csv' },
+        body: await file.text(),
+      })
+      const body = await r.json().catch(() => null)
+      if (!r.ok) setResult({ error: body?.detail || `HTTP ${r.status}` })
+      else setResult(body)
+    } catch (err) {
+      setResult({ error: String(err) })
+    }
+    setBusy(false)
+  }
+  return (
+    <div className="import-bar">
+      <a className="btn ghost" href={`${base}/api/assets/import/sample`} download>⬇ Sample CSV</a>
+      <label className={`btn ghost${busy ? ' disabled' : ''}`}>
+        {busy ? 'Importing…' : '⬆ Import CSV'}
+        <input type="file" accept=".csv,text/csv" onChange={onFile} disabled={busy} hidden />
+      </label>
+      {result && (result.error
+        ? <span className="import-msg err">{result.error}</span>
+        : <span className="import-msg">
+            {result.created} created · {result.skipped} skipped · {result.failed} failed
+            {result.errors?.length ? ` — ${result.errors[0]}` : ''}
+            {result.created > 0 && <button type="button" className="mini-btn" onClick={() => location.reload()}>Reload register</button>}
+          </span>)}
+    </div>
   )
 }
 

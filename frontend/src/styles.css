@@ -67,6 +67,19 @@ a { color: inherit; text-decoration: none; }
   .topbar { row-gap: 8px; padding-top: 12px; }
 }
 
+/* ---- bulk import bar (register) ---- */
+.import-bar { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; flex-wrap: wrap; }
+.btn.ghost {
+  background: transparent; color: var(--accent);
+  border: 1.5px solid color-mix(in srgb, var(--accent) 55%, #e8e2d5);
+  cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+}
+.btn.ghost:hover { background: color-mix(in srgb, var(--accent) 9%, transparent); border-color: var(--accent); filter: none; }
+.btn.ghost.disabled { opacity: 0.6; pointer-events: none; }
+.import-msg { font-size: 13.5px; color: var(--ink-2); display: inline-flex; align-items: center; gap: 10px; }
+.import-msg.err { color: #a32e2e; }
+.import-msg .mini-btn { border: 1px solid var(--border); border-radius: 7px; background: #fff; padding: 3px 10px; cursor: pointer; font-size: 12.5px; }
+
 /* ---- KPI row (stat tiles) ---- */
 .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 28px; }
 .tile {

@@ -38,11 +38,14 @@ def clean(row: dict) -> dict:
     return out
 
 
-def post_asset(base_url: str, payload: dict) -> tuple[bool, str]:
+def post_asset(base_url: str, payload: dict, cookie: str = "") -> tuple[bool, str]:
+    headers = {"Content-Type": "application/json"}
+    if cookie:
+        headers["Cookie"] = cookie
     req = urllib.request.Request(
         f"{base_url}/api/assets",
         data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"},
+        headers=headers,
         method="POST",
     )
     try:
@@ -63,6 +66,10 @@ def main() -> int:
                     help="AMPS instance URL (default: %(default)s)")
     ap.add_argument("--dry-run", action="store_true",
                     help="validate the CSV and show what would be sent")
+    ap.add_argument("--cookie", default="",
+                    help="session cookie for authenticated instances "
+                         '(e.g. "amps_session=..." from a signed-in browser '
+                         "or POST /api/auth/login)")
     args = ap.parse_args()
 
     with open(args.csv_file, newline="", encoding="utf-8-sig") as f:
@@ -89,7 +96,7 @@ def main() -> int:
             print(f"line {n}: OK   {json.dumps(payload)}")
             created += 1
             continue
-        ok, msg = post_asset(args.base_url, payload)
+        ok, msg = post_asset(args.base_url, payload, args.cookie)
         tag = payload["code"]
         if ok and msg == "created":
             created += 1

@@ -1,6 +1,9 @@
 """Asset register endpoints — v0.2, DB-backed."""
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+import csv
+import io
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -110,8 +113,8 @@ def list_assets(db: Session = Depends(get_db), user=Depends(optional_user)):
     return [_to_out(a) for a in db.scalars(q).all()]
 
 
-@router.post("", response_model=AssetOut, status_code=201)
-def create_asset(asset: AssetIn, db: Session = Depends(get_db), user=Depends(current_user)):
+def _create_one(db: Session, asset: AssetIn, user) -> Asset:
+    """Shared by single create and bulk import — same validation, same audit."""
     if db.scalar(select(Asset).where(Asset.code == asset.code)):
         raise HTTPException(409, f"asset code {asset.code} already exists")
     if user.line_id is not None:
@@ -119,19 +122,99 @@ def create_asset(asset: AssetIn, db: Session = Depends(get_db), user=Depends(cur
         if asset.line and asset.line != my_line:
             raise HTTPException(403, f"your account manages {my_line} only")
         asset.line = my_line  # scoped users always register into their own line
+    try:
+        crit = Criticality(asset.criticality)
+        status = AssetStatus(asset.status)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
     obj = Asset(
         code=asset.code, name=asset.name, make_model=asset.make_model,
-        criticality=Criticality(asset.criticality),
-        system=asset.system, status=AssetStatus(asset.status),
+        criticality=crit, system=asset.system, status=status,
         asset_class=_get_or_create_class(db, asset.asset_class),
         location=_get_or_create_location(db, asset.location, asset.line),
     )
     db.add(obj)
     db.flush()
     audit(db, "asset", obj.id, "created", detail=f"code={obj.code}", actor=user.username)
+    return obj
+
+
+@router.post("", response_model=AssetOut, status_code=201)
+def create_asset(asset: AssetIn, db: Session = Depends(get_db), user=Depends(current_user)):
+    obj = _create_one(db, asset, user)
     db.commit()
     db.refresh(obj)
     return _to_out(obj)
+
+
+# ---- bulk import: the sheet-to-register bridge -----------------------------
+# Every line fills the same CSV (the Green Line format is the standard);
+# supervisors download the sample, fill it for their line, upload it back.
+
+SAMPLE_CSV = """code,name,asset_class,location,line,system,make_model,criticality
+B2HB11,VCB,33KV SWITCHGEAR,Baranagar,Blue Line,HT · 33kV,"SIEMENS LTD.,INDIA",A
+LP-C-01(BARA),Concourse Light Panel,DISTRIBUTION BOARD,Baranagar,Blue Line,LT · LT Panels,,B
+AHU-M1(BARA),AHU Unit 1,ECS- AXIAL FLOW FAN,Baranagar,Blue Line,LT · ECS (AC),M/S VOLTAS,B
+"""
+
+REQUIRED_COLS = ("code", "name", "asset_class", "location")
+OPTIONAL_COLS = ("line", "system", "make_model", "criticality", "status")
+
+
+@router.get("/import/sample")
+def import_sample():
+    """The standard register template — one row per asset, any line."""
+    return Response(SAMPLE_CSV, media_type="text/csv", headers={
+        "Content-Disposition": 'attachment; filename="amps-asset-register-sample.csv"'})
+
+
+class ImportOut(BaseModel):
+    created: int
+    skipped: int
+    failed: int
+    errors: list[str]  # first errors, "line N: reason"
+
+
+@router.post("/import", response_model=ImportOut)
+async def import_csv(request: Request, db: Session = Depends(get_db),
+                     user=Depends(current_user)):
+    """Bulk-register assets from a CSV in the standard format.
+    Existing codes are skipped, so repeat uploads are safe."""
+    text = (await request.body()).decode("utf-8-sig", errors="replace")
+    rows = list(csv.DictReader(io.StringIO(text)))
+    if not rows:
+        raise HTTPException(422, "the CSV has no data rows")
+    missing = [c for c in REQUIRED_COLS if c not in (rows[0].keys() or [])]
+    if missing:
+        raise HTTPException(422, f"missing required columns: {', '.join(missing)}")
+
+    created = skipped = failed = 0
+    errors: list[str] = []
+    for n, raw in enumerate(rows, start=2):
+        fields = {k: (raw.get(k) or "").strip()
+                  for k in REQUIRED_COLS + OPTIONAL_COLS if (raw.get(k) or "").strip()}
+        empty = [c for c in REQUIRED_COLS if c not in fields]
+        if empty:
+            failed += 1
+            if len(errors) < 20:
+                errors.append(f"line {n}: empty required field(s): {', '.join(empty)}")
+            continue
+        try:
+            _create_one(db, AssetIn(**fields), user)
+            created += 1
+        except HTTPException as e:
+            if e.status_code == 409:
+                skipped += 1
+            else:
+                failed += 1
+                if len(errors) < 20:
+                    errors.append(f"line {n}: {e.detail}")
+        except ValidationError as e:
+            failed += 1
+            if len(errors) < 20:
+                errors.append(f"line {n}: {e.errors()[0].get('msg', 'invalid row')}")
+    db.commit()
+    return ImportOut(created=created, skipped=skipped, failed=failed, errors=errors)
 
 
 @router.get("/{code}", response_model=AssetOut)
