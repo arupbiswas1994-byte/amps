@@ -24,9 +24,11 @@ router = APIRouter()
 
 
 class LogEntryIn(BaseModel):
-    log_date: date
-    shift: str = "G"                    # M/E/N/G/R
-    type: str = "operation"             # operation/observation/defect/handover
+    log_date: date                      # the ruler date — backdating is normal
+    shift: str = "G"                    # M/E/N/G (R retired from the book)
+    type: str = "general"               # maintenance/failure/rectification/general
+    subtype: str | None = None          # maintenance frequency (Monthly … Special)
+    time: str | None = None             # optional HH:MM — a single moment, no start/end
     text: str = Field(min_length=3)
     entered_by: str = ""                # ignored on authenticated deployments
     asset_code: str | None = None
@@ -39,6 +41,7 @@ class LogEntryOut(BaseModel):
     log_date: date
     shift: str
     type: str
+    subtype: str | None
     text: str
     entered_by: str
     asset_code: str | None
@@ -48,7 +51,7 @@ class LogEntryOut(BaseModel):
 def _to_out(e: LogEntry) -> LogEntryOut:
     return LogEntryOut(
         id=e.id, at=e.at, log_date=e.log_date, shift=e.shift.value,
-        type=e.type.value, text=e.text, entered_by=e.entered_by,
+        type=e.type.value, subtype=e.subtype, text=e.text, entered_by=e.entered_by,
         asset_code=e.asset.code if e.asset else None, corrects_id=e.corrects_id,
     )
 
@@ -60,11 +63,22 @@ def add_entry(entry: LogEntryIn, db: Session = Depends(get_db), user=Depends(cur
         asset = visible_asset(db, entry.asset_code, user)
     if entry.corrects_id and not db.get(LogEntry, entry.corrects_id):
         raise HTTPException(404, "entry to correct not found")
+    # One date, optional time. `at` anchors the entry to its ruler date so a
+    # backdated entry files under its day, not under "now"; midnight = no time
+    # given (the UI hides 00:00).
+    when = None
+    if entry.time:
+        try:
+            when = datetime.strptime(entry.time, "%H:%M").time()
+        except ValueError:
+            raise HTTPException(422, "time must be HH:MM")
+    at = datetime.combine(entry.log_date, when) if when else datetime.combine(entry.log_date, datetime.min.time())
     # Logged-in deployments: authorship comes from the session, never the form.
     author = user.full_name if AUTH_ON else (entry.entered_by or "unknown")
     obj = LogEntry(
-        log_date=entry.log_date, shift=ShiftCode(entry.shift),
-        type=LogEntryType(entry.type), text=entry.text,
+        at=at, log_date=entry.log_date, shift=ShiftCode(entry.shift),
+        type=LogEntryType(entry.type), subtype=(entry.subtype or None),
+        text=entry.text,
         entered_by=author, asset=asset, corrects_id=entry.corrects_id,
         line_id=user.line_id,  # NULL = department-wide entry (HQ/admin)
     )
@@ -83,7 +97,8 @@ def list_entries(log_date: date | None = None, shift: str | None = None,
                  limit: int = 200, db: Session = Depends(get_db), user=Depends(optional_user)):
     """The day's log, a shift's log, or one asset's complete logged history.
     Line-scoped users read their line's book plus department-wide entries."""
-    q = select(LogEntry).order_by(LogEntry.at.desc()).limit(min(limit, 1000))
+    q = select(LogEntry).order_by(LogEntry.log_date.desc(), LogEntry.at.desc(),
+                                  LogEntry.id.desc()).limit(min(limit, 1000))
     if user.line_id is not None:
         q = q.where((LogEntry.line_id == user.line_id) | (LogEntry.line_id.is_(None)))
     if log_date:
@@ -125,6 +140,17 @@ def logbook_import_sample():
     """The standard logbook template — maintenance and failure rows, any line."""
     return Response(LOG_SAMPLE_CSV, media_type="text/csv", headers={
         "Content-Disposition": 'attachment; filename="amps-logbook-sample.csv"'})
+
+
+def _maint_subtype(type_text: str) -> str | None:
+    """Maintenance frequency from a sheet TYPE cell — 'HALF' before 'YEARLY'."""
+    t = (type_text or "").upper()
+    if "HALF" in t: return "Half-Yearly"
+    if "QUARTER" in t: return "Quarterly"
+    if "MONTH" in t: return "Monthly"
+    if "YEAR" in t: return "Yearly"
+    if "MAINT" in t or "TESTING" in t: return "Special"
+    return None
 
 
 def _parse_dt(s: str) -> datetime | None:
@@ -217,7 +243,8 @@ async def import_history(request: Request, db: Session = Depends(get_db),
                            else None) or user.line_id
                 db.add(LogEntry(
                     at=start, log_date=start.date(), shift=ShiftCode.GENERAL,
-                    type=LogEntryType.DEFECT if is_failure else LogEntryType.OPERATION,
+                    type=LogEntryType.FAILURE if is_failure else LogEntryType.MAINTENANCE,
+                    subtype=_maint_subtype(get("type")),
                     text=body_text, entered_by=(get("attended_by") or "imported record")[:120],
                     asset=asset, line_id=line_id))
                 n_logs += 1

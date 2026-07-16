@@ -32,7 +32,7 @@ def _migrate(engine):
     wanted = {
         "assets": {"system": "VARCHAR(80)"},
         "users": {"password_hash": "VARCHAR(200)", "line_id": "INTEGER"},
-        "log_entries": {"line_id": "INTEGER"},
+        "log_entries": {"line_id": "INTEGER", "subtype": "VARCHAR(40)"},
     }
     # widen columns that real-world data outgrew (no-op where already wide;
     # SQLite ignores VARCHAR lengths so this only matters on Postgres).
@@ -43,6 +43,12 @@ def _migrate(engine):
         with engine.begin() as conn:
             for (table, col), ddl in widen.items():
                 conn.execute(text(f"ALTER TABLE {table} ALTER COLUMN {col} TYPE {ddl}"))
+        # the 2026-07 logbook taxonomy: native enum needs the new labels
+        # (each in its own autocommitting statement; IF NOT EXISTS = rerun-safe)
+        for val in ("MAINTENANCE", "FAILURE", "RECTIFICATION", "GENERAL"):
+            with engine.begin() as conn:
+                conn.execute(text(
+                    f"ALTER TYPE logentrytype ADD VALUE IF NOT EXISTS '{val}'"))
 
     insp = inspect(engine)
     with engine.begin() as conn:

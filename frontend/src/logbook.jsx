@@ -11,8 +11,18 @@ import { useMe } from './api.js'
 const API = import.meta.env.VITE_AMPS_API ?? ''
 
 const SHIFT_LABEL = { M: 'Morning', E: 'Evening', N: 'Night', G: 'General', R: 'Rest' }
-const ENTRY_TYPES = ['operation', 'observation', 'defect', 'handover']
-const today = () => new Date().toISOString().slice(0, 10)
+const ENTRY_SHIFTS = ['M', 'E', 'N', 'G']  // R = roster-only, never a log shift
+const ENTRY_TYPES = ['maintenance', 'failure', 'rectification', 'general']
+const MAINT_SUBTYPES = ['Monthly', 'Quarterly', 'Half-Yearly', 'Yearly', 'Special']
+/* local-calendar ISO — toISOString() is UTC and shifts IST dates a day back */
+const isoLocal = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+const today = () => isoLocal(new Date())
+const addDays = (iso, n) => {
+  const d = new Date(iso + 'T00:00:00')
+  d.setDate(d.getDate() + n)
+  return isoLocal(d)
+}
 
 const fmtDate = (iso) =>
   new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
@@ -66,24 +76,65 @@ function LiveBadge({ ok }) {
   )
 }
 
+/* the date ruler — one strip picks the day for BOTH writing and reading.
+   Back-dating an entry = tap its day (or the picker for anything older). */
+function DateRuler({ value, onChange, days = 10 }) {
+  const t = today()
+  const strip = Array.from({ length: days }, (_, i) => addDays(t, i - (days - 1)))
+  const fmt = (iso) => {
+    const d = new Date(iso + 'T00:00:00')
+    return { dow: d.toLocaleDateString(undefined, { weekday: 'short' }), day: d.getDate() }
+  }
+  const inStrip = strip.includes(value)
+  return (
+    <div className="date-ruler" role="tablist" aria-label="Log date">
+      <input type="date" className={`ruler-pick${!inStrip && value ? ' active' : ''}`}
+             value={value} max={t} onChange={(e) => e.target.value && onChange(e.target.value)}
+             aria-label="Older date" />
+      {strip.map((iso) => {
+        const { dow, day } = fmt(iso)
+        return (
+          <button key={iso} type="button"
+                  className={`ruler-day${iso === value ? ' active' : ''}${iso === t ? ' today' : ''}`}
+                  onClick={() => onChange(iso)}>
+            <span className="rd-dow">{iso === t ? 'Today' : dow}</span>
+            <span className="rd-num">{day}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function LogBook() {
   const { me, canWrite } = useMe()
   const authOn = me?.auth_enabled
   const [entries, setEntries] = useState([])
-  const [fDate, setFDate] = useState('')          // '' = all dates
-  const [fShift, setFShift] = useState('')        // '' = all shifts
+  const [logDate, setLogDate] = useState(today())  // the ruler: write + read date
+  const [allDates, setAllDates] = useState(false)  // ruler off → full history
+  const [fShift, setFShift] = useState('')         // '' = all shifts
   const [apiOk, setApiOk] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
   // add-entry form
   const [text, setText] = useState('')
   const [shift, setShift] = useState('M')
-  const [type, setType] = useState('operation')
+  const [type, setType] = useState('general')
+  const [subtype, setSubtype] = useState('Monthly')
+  const [tim, setTim] = useState('')               // optional HH:MM
+  const [assetCode, setAssetCode] = useState('')   // cross-reference to the register
   const [author, setAuthor] = useState('demo.visitor')
+  const [assets, setAssets] = useState([])         // register codes for the datalist
+
+  useEffect(() => {
+    fetch(`${API}/api/assets`).then((r) => (r.ok ? r.json() : []))
+      .then(setAssets).catch(() => {})
+  }, [])
 
   const load = async () => {
     try {
       const q = new URLSearchParams()
-      if (fDate) q.set('log_date', fDate)
+      if (!allDates) q.set('log_date', logDate)
       if (fShift) q.set('shift', fShift)
       const res = await fetch(`${API}/api/logbook?${q}`)
       if (!res.ok) throw new Error(res.status)
@@ -94,26 +145,34 @@ export default function LogBook() {
     }
   }
 
-  useEffect(() => { load() }, [fDate, fShift])  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load() }, [logDate, allDates, fShift])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const add = async (e) => {
     e.preventDefault()
     if (!text.trim() || busy) return
     setBusy(true)
+    setErr('')
     try {
       const res = await fetch(`${API}/api/logbook`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          log_date: today(), shift, type,
+          log_date: logDate, shift, type,
+          subtype: type === 'maintenance' ? subtype : null,
+          time: tim || null,
+          asset_code: assetCode.trim() || null,
           text: text.trim(), entered_by: author.trim() || 'demo.visitor',
         }),
       })
-      if (!res.ok) throw new Error(res.status)
-      setText('')
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        throw new Error(body?.detail || `HTTP ${res.status}`)
+      }
+      setText(''); setAssetCode(''); setTim('')
+      setAllDates(false)  // show the day just written to
       await load()
-    } catch {
-      setApiOk(false)
+    } catch (ex) {
+      setErr(String(ex.message || ex).replace(/^Error: /, ''))
     } finally {
       setBusy(false)
     }
@@ -142,23 +201,40 @@ export default function LogBook() {
         </div>
       )}
 
+      <DateRuler value={allDates ? '' : logDate}
+                 onChange={(d) => { setLogDate(d); setAllDates(false) }} />
+
       {canWrite ? (
         <form className="log-form card" onSubmit={add}>
           <select value={shift} onChange={(e) => setShift(e.target.value)} aria-label="Shift">
-            {Object.keys(SHIFT_LABEL).map((s) => <option key={s} value={s}>{s} — {SHIFT_LABEL[s]}</option>)}
+            {ENTRY_SHIFTS.map((s) => <option key={s} value={s}>{s} — {SHIFT_LABEL[s]}</option>)}
           </select>
           <select value={type} onChange={(e) => setType(e.target.value)} aria-label="Entry type">
-            {ENTRY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            {ENTRY_TYPES.map((t) => <option key={t} value={t}>{t[0].toUpperCase() + t.slice(1)}</option>)}
           </select>
+          {type === 'maintenance' && (
+            <select value={subtype} onChange={(e) => setSubtype(e.target.value)} aria-label="Maintenance frequency">
+              {MAINT_SUBTYPES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          )}
+          <input type="time" value={tim} onChange={(e) => setTim(e.target.value)}
+                 aria-label="Time (optional)" title="Time (optional)" className="log-time" />
+          <input value={assetCode} onChange={(e) => setAssetCode(e.target.value)}
+                 list="register-codes" placeholder="Asset ID…" className="log-asset"
+                 aria-label="Asset code (optional)" />
+          <datalist id="register-codes">
+            {assets.map((a) => <option key={a.code} value={a.code}>{a.name} · {a.location}</option>)}
+          </datalist>
           {!authOn && ( /* signed-in deployments stamp the author from the session */
             <input value={author} onChange={(e) => setAuthor(e.target.value)}
                    aria-label="Entered by" placeholder="Entered by…" className="log-author" maxLength={40} />
           )}
           <input value={text} onChange={(e) => setText(e.target.value)}
-                 placeholder="New log entry — readings, events, handover notes…" />
+                 placeholder={`Log entry for ${fmtDate(logDate)} — work done, readings, events…`} />
           <button className="btn" type="submit" disabled={busy || apiOk === false || !text.trim()}>
             {busy ? 'Adding…' : 'Add entry'}
           </button>
+          {err && <span className="import-msg err">{err}</span>}
         </form>
       ) : (
         <p className="dim">Viewing only — sign in with your line account to add entries.</p>
@@ -167,14 +243,12 @@ export default function LogBook() {
       {canWrite && <HistoryImportBar />}
 
       <div className="log-filters">
-        <label className="dim">Date <input type="date" value={fDate} onChange={(e) => setFDate(e.target.value)} /></label>
+        <button type="button" className={`btn preset${allDates ? ' active' : ''}`}
+                onClick={() => setAllDates(true)}>All dates</button>
         <label className="dim">Shift <select value={fShift} onChange={(e) => setFShift(e.target.value)}>
           <option value="">All</option>
-          {Object.keys(SHIFT_LABEL).map((s) => <option key={s} value={s}>{s} — {SHIFT_LABEL[s]}</option>)}
+          {ENTRY_SHIFTS.map((s) => <option key={s} value={s}>{s} — {SHIFT_LABEL[s]}</option>)}
         </select></label>
-        {(fDate || fShift) && (
-          <button className="btn" onClick={() => { setFDate(''); setFShift('') }}>Clear filters</button>
-        )}
       </div>
 
       {Object.entries(byDay).map(([day, list]) => (
@@ -184,11 +258,13 @@ export default function LogBook() {
             {list.map((en) => (
               <div className="log-entry" key={en.id}>
                 <div className="log-meta">
-                  <span className="dt">{fmtTime(en.at)}</span>
+                  {!en.at.includes('T00:00:00') && <span className="dt">{fmtTime(en.at)}</span>}
                   <span className="chip"><span className="dot" />{en.shift} · {SHIFT_LABEL[en.shift]}</span>
-                  <span className={`chip ${en.type === 'defect' ? 'd-overdue' : ''}`}><span className="dot" />{en.type}</span>
+                  <span className={`chip ${['defect', 'failure'].includes(en.type) ? 'd-overdue' : ''}`}>
+                    <span className="dot" />{en.type}{en.subtype ? ` · ${en.subtype}` : ''}
+                  </span>
                   <span className="dim">{en.entered_by}</span>
-                  {en.asset_code && <span className="code">{en.asset_code}</span>}
+                  {en.asset_code && <a className="code" href={`#/asset/${en.asset_code}`}>{en.asset_code}</a>}
                   {en.corrects_id && <span className="dim">corrects #{en.corrects_id}</span>}
                 </div>
                 <div className="log-text">{en.text}</div>

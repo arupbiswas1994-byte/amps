@@ -197,6 +197,12 @@ class User(Base):
 
 
 class LogEntryType(str, Enum):
+    # Current taxonomy (2026-07, per the section's practice)
+    MAINTENANCE = "maintenance"      # PM work — subtype carries the frequency
+    FAILURE = "failure"              # breakdown noted in the book
+    RECTIFICATION = "rectification"  # repair/fix work
+    GENERAL = "general"              # everything else
+    # Legacy values — kept for rows written before the taxonomy change
     OPERATION = "operation"      # switching, isolations, normal ops events
     OBSERVATION = "observation"  # readings, conditions noticed
     DEFECT = "defect"            # something wrong, to become a work order
@@ -216,7 +222,9 @@ class LogEntry(Base):
     at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     log_date: Mapped[date]                     # the duty date the entry belongs to
     shift: Mapped[ShiftCode] = mapped_column(default=ShiftCode.GENERAL)
-    type: Mapped[LogEntryType] = mapped_column(default=LogEntryType.OPERATION)
+    type: Mapped[LogEntryType] = mapped_column(default=LogEntryType.GENERAL)
+    # maintenance frequency (Monthly / Quarterly / Half-Yearly / Yearly / Special)
+    subtype: Mapped[str | None] = mapped_column(String(40))
     asset_id: Mapped[int | None] = mapped_column(ForeignKey("assets.id"))
     text: Mapped[str] = mapped_column(Text)
     entered_by: Mapped[str] = mapped_column(String(120), default="unknown")
