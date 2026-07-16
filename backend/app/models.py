@@ -62,7 +62,7 @@ class Asset(Base):
     __tablename__ = "assets"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    code: Mapped[str] = mapped_column(String(60), unique=True, index=True)  # printed on QR tag
+    code: Mapped[str] = mapped_column(String(120), unique=True, index=True)  # printed on QR tag
     name: Mapped[str] = mapped_column(String(160))
     asset_class_id: Mapped[int] = mapped_column(ForeignKey("asset_classes.id"))
     location_id: Mapped[int] = mapped_column(ForeignKey("locations.id"))

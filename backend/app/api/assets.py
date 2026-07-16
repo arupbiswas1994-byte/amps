@@ -5,6 +5,7 @@ import io
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ValidationError
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.auth import current_user, optional_user, scope_location_ids
@@ -201,8 +202,10 @@ async def import_csv(request: Request, db: Session = Depends(get_db),
             continue
         try:
             _create_one(db, AssetIn(**fields), user)
+            db.commit()  # per row: one bad row can never sink the batch
             created += 1
         except HTTPException as e:
+            db.rollback()
             if e.status_code == 409:
                 skipped += 1
             else:
@@ -210,10 +213,15 @@ async def import_csv(request: Request, db: Session = Depends(get_db),
                 if len(errors) < 20:
                     errors.append(f"line {n}: {e.detail}")
         except ValidationError as e:
+            db.rollback()
             failed += 1
             if len(errors) < 20:
                 errors.append(f"line {n}: {e.errors()[0].get('msg', 'invalid row')}")
-    db.commit()
+        except SQLAlchemyError as e:
+            db.rollback()
+            failed += 1
+            if len(errors) < 20:
+                errors.append(f"line {n}: {type(e).__name__}: {str(e.orig or e)[:120]}")
     return ImportOut(created=created, skipped=skipped, failed=failed, errors=errors)
 
 

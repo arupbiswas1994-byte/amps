@@ -35,7 +35,13 @@ def _migrate(engine):
         "log_entries": {"line_id": "INTEGER"},
     }
     insp = inspect(engine)
+    # widen columns that real-world data outgrew (no-op where already wide;
+    # SQLite ignores VARCHAR lengths so this only matters on Postgres)
+    widen = {("assets", "code"): "VARCHAR(120)"}
     with engine.begin() as conn:
+        if engine.dialect.name == "postgresql":
+            for (table, col), ddl in widen.items():
+                conn.execute(text(f"ALTER TABLE {table} ALTER COLUMN {col} TYPE {ddl}"))
         for table, columns in wanted.items():
             have = {c["name"] for c in insp.get_columns(table)}
             for col, ddl in columns.items():
