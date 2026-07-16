@@ -1108,7 +1108,7 @@ function Landing() {
     <div className="gate land">
       <div className="land-wrap">
         <header className="land-head">
-          <img className="land-emblem" src={`${import.meta.env.BASE_URL}ir-emblem.svg`}
+          <img className="land-emblem" src={`${import.meta.env.BASE_URL}metro-logo.svg`}
                alt="Indian Railways" />
           <div className="land-head-rule" aria-hidden="true" />
           <div>
@@ -1214,7 +1214,7 @@ export default function App() {
       <div className="shell" style={navLine ? { '--nav-c': lineColor(navLine) } : undefined}>
         <header className="topbar">
           <a href="#/" className="brand">
-            <img className="brand-emblem" src={`${import.meta.env.BASE_URL}ir-emblem.svg`} alt="" />
+            <img className="brand-emblem" src={`${import.meta.env.BASE_URL}metro-logo.svg`} alt="" />
             <span className="bolt">⚡</span>AMPS
             <span className="brand-sub">{ORG} · maintenance records</span>
           </a>
@@ -1236,7 +1236,7 @@ export default function App() {
     <div className="shell" style={navLine ? { '--nav-c': lineColor(navLine) } : undefined}>
       <header className="topbar">
         <a href="#/" className="brand">
-          <img className="brand-emblem" src={`${import.meta.env.BASE_URL}ir-emblem.svg`} alt="" />
+          <img className="brand-emblem" src={`${import.meta.env.BASE_URL}metro-logo.svg`} alt="" />
           <span className="bolt">⚡</span>AMPS
           <span className="brand-sub">Asset Maintenance &amp; Preventive Scheduling</span>
         </a>

@@ -49,7 +49,7 @@ a { color: inherit; text-decoration: none; }
   background: var(--bg);
 }
 .brand { font-size: 20px; font-weight: 800; letter-spacing: 0.2px; display: flex; align-items: center; }
-.brand-emblem { width: 40px; height: auto; flex: none; margin-right: 12px; }
+.brand-emblem { width: 52px; height: auto; flex: none; margin-right: 12px; }
 .brand .bolt { color: var(--accent); margin-right: 2px; }
 .brand-sub {
   font-size: 10.5px; color: var(--ink-3); font-weight: 600; margin-left: 12px;
@@ -63,7 +63,7 @@ a { color: inherit; text-decoration: none; }
 .nav a.active { color: var(--accent); background: var(--accent-soft); font-weight: 650; }
 @media screen and (max-width: 680px) {
   .brand-sub { display: none; }
-  .brand-emblem { width: 32px; margin-right: 9px; }
+  .brand-emblem { width: 40px; margin-right: 9px; }
   .topbar { row-gap: 8px; padding-top: 12px; }
 }
 
