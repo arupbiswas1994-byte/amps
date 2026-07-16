@@ -41,10 +41,14 @@ const StageChip = ({ stage }) => (
 
 function LiveDashboard({ go, initialLine = null }) {
   const { assets: all, due: dueAll, loading, error } = useLiveAssets()
-  const [line, setLine] = useState(initialLine ?? 'all')
-  useEffect(() => { setLine(initialLine ?? 'all') }, [initialLine])
+  const { me } = useMe()
+  const [line, setLine] = useState(initialLine)
+  useEffect(() => { setLine(initialLine) }, [initialLine])
   const lines = [...new Set(all.map((a) => a.line).filter(Boolean))].sort()
-  const assets = line === 'all' ? all : all.filter((a) => a.line === line)
+  // each line stands alone — no aggregated all-lines view; default to the
+  // signed-in user's own line, else the first registered line
+  const effLine = line ?? me?.line ?? lines[0] ?? null
+  const assets = effLine ? all.filter((a) => a.line === effLine) : all
   const codes = new Set(assets.map((a) => a.code))
   const due = dueAll.filter((d) => codes.has(d.asset_code))
   const overdue = due.filter((d) => d.overdue_days > 0)
@@ -56,13 +60,10 @@ function LiveDashboard({ go, initialLine = null }) {
   if (error) return <div className="card offline-note">Backend unreachable — {error}. Check the server and reload.</div>
   return (
     <>
-      {lines.length > 0 && (
+      {!initialLine && lines.length > 1 && (
         <div className="preset-bar" role="tablist" aria-label="Line">
-          <button type="button" className={`btn preset ${line === 'all' ? 'active' : ''}`} onClick={() => setLine('all')}>
-            All lines
-          </button>
           {lines.map((l) => (
-            <button key={l} type="button" className={`btn preset ${line === l ? 'active' : ''}`} onClick={() => setLine(l)}>
+            <button key={l} type="button" className={`btn preset ${effLine === l ? 'active' : ''}`} onClick={() => setLine(l)}>
               <span className="dot" style={{ background: lineColor(l), display: 'inline-block', width: 8, height: 8, borderRadius: 99, marginRight: 6 }} />{l}
             </button>
           ))}
@@ -98,7 +99,7 @@ function LiveDashboard({ go, initialLine = null }) {
                     <td className="code" data-l="Code">{a.code}</td>
                     <td data-l="Asset">{a.name}</td>
                     <td className="dim" data-l="Class">{a.cls}</td>
-                    <td className="dim" data-l="Location">{a.location}{line === 'all' && a.line ? <span className="dim"> · {a.line}</span> : null}</td>
+                    <td className="dim" data-l="Location">{a.location}</td>
                     <td className="dim" data-l="System">{a.sys ?? '—'}</td>
                     <td data-l="Status"><StatusChip status={a.status} /></td>
                     <td className="dim dt" data-l="Next PM">{pm ? pm.next_due : '—'}</td>

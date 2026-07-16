@@ -107,7 +107,10 @@ th {
   text-transform: uppercase; letter-spacing: 0.05em;
   padding: 10px 14px; border-bottom: 1px solid var(--border); white-space: nowrap;
 }
-td { padding: 11px 12px; border-bottom: 1px solid #f0efee; vertical-align: middle; white-space: nowrap; }
+/* cells wrap — real-world asset names run long, and nowrap pushed every
+   column after ASSET off-screen; only codes and dates stay on one line */
+td { padding: 11px 12px; border-bottom: 1px solid #f0efee; vertical-align: middle; }
+td.code, td.dt { white-space: nowrap; }
 tr:last-child td { border-bottom: none; }
 tbody tr { cursor: pointer; }
 tbody tr:hover { background: #fafaf8; }

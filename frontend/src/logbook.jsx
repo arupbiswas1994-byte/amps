@@ -19,6 +19,45 @@ const fmtDate = (iso) =>
 const fmtTime = (ts) =>
   new Date(ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 
+/* bulk history import: the unified sheet-logbook CSV (Green Line standard) —
+   maintenance rows become log entries, failure rows become failure records */
+function HistoryImportBar() {
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState(null)
+  const onFile = async (e) => {
+    const file = e.target.files[0]
+    e.target.value = ''
+    if (!file) return
+    setBusy(true); setResult(null)
+    try {
+      const r = await fetch(`${API}/api/logbook/import`, {
+        method: 'POST', headers: { 'Content-Type': 'text/csv' },
+        body: await file.text(),
+      })
+      const body = await r.json().catch(() => null)
+      setResult(r.ok ? body : { error: body?.detail || `HTTP ${r.status}` })
+    } catch (err) {
+      setResult({ error: String(err) })
+    }
+    setBusy(false)
+  }
+  return (
+    <div className="import-bar">
+      <a className="btn ghost" href={`${API}/api/logbook/import/sample`} download>⬇ Sample CSV</a>
+      <label className={`btn ghost${busy ? ' disabled' : ''}`}>
+        {busy ? 'Importing…' : '⬆ Import history CSV'}
+        <input type="file" accept=".csv,text/csv" onChange={onFile} disabled={busy} hidden />
+      </label>
+      {result && (result.error
+        ? <span className="import-msg err">{result.error}</span>
+        : <span className="import-msg">
+            {result.log_entries} log entries · {result.failures} failures · {result.skipped} skipped · {result.failed} failed
+            {result.errors?.length ? ` — ${result.errors[0]}` : ''}
+          </span>)}
+    </div>
+  )
+}
+
 function LiveBadge({ ok }) {
   return (
     <span className={`chip ${ok ? 'live-ok' : 'live-off'}`}>
@@ -124,6 +163,8 @@ export default function LogBook() {
       ) : (
         <p className="dim">Viewing only — sign in with your line account to add entries.</p>
       )}
+
+      {canWrite && <HistoryImportBar />}
 
       <div className="log-filters">
         <label className="dim">Date <input type="date" value={fDate} onChange={(e) => setFDate(e.target.value)} /></label>
