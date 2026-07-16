@@ -184,6 +184,8 @@ async def import_history(request: Request, db: Session = Depends(get_db),
                     continue
                 have_fails.add(key)
                 end = _parse_dt(get("end"))
+                if end and end < start:  # day/month-swapped source cells
+                    end = None
                 desc = details
                 for label, col in (("reported by", "reported_by"),
                                    ("repercussion", "repercussion")):
