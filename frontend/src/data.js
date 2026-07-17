@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Arup Biswas and AMPS contributors (binidev)
+// AMPS - Asset & Preventive Maintenance System (https://github.com/arupbiswas1994-byte/amps)
+
 // Synthetic demo dataset — ALL FICTIONAL, themed for a metro-railway
 // power-supply & E&M context. No real organization's stations, assets or
 // records appear here; names, codes and makers are invented. Due dates are

@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Arup Biswas
+# AMPS - Asset & Preventive Maintenance System (https://github.com/arupbiswas1994-byte/amps)
+
 """AMPS pure computation engines — framework-free and unit-testable.
 
 Everything here is plain Python (no FastAPI/SQLAlchemy imports) so the

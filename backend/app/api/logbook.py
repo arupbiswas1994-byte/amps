@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Arup Biswas
+# AMPS - Asset & Preventive Maintenance System (https://github.com/arupbiswas1994-byte/amps)
+
 """Digital shift logbook — v0.3.
 
 Replaces the paper/spreadsheet running log a section keeps per shift.

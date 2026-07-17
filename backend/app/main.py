@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Arup Biswas
+# AMPS - Asset & Preventive Maintenance System (https://github.com/arupbiswas1994-byte/amps)
+
 """AMPS API — v0.3: DB-backed, audited, history-preserving, with a digital shift logbook."""
 import os
 from contextlib import asynccontextmanager

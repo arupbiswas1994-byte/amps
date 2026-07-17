@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Arup Biswas
+# AMPS - Asset & Preventive Maintenance System (https://github.com/arupbiswas1994-byte/amps)
+
 """Unit tests for the pure computation engines (no framework required)."""
 from datetime import date, timedelta
 

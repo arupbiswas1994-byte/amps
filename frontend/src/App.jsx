@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Arup Biswas and AMPS contributors (binidev)
+// AMPS - Asset & Preventive Maintenance System (https://github.com/arupbiswas1994-byte/amps)
+
 import { useEffect, useState } from 'react'
 import {
   ASSETS, PM_SCHEDULES, JOB_CARDS, SPECS, LOG_ENTRIES, PROCUREMENTS, PROC_STAGES,

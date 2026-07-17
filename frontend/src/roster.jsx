@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Arup Biswas and AMPS contributors (binidev)
+// AMPS - Asset & Preventive Maintenance System (https://github.com/arupbiswas1994-byte/amps)
+
 /* Duty roster — the first page driven by the LIVE v0.2 API instead of
    synthetic data.js. Talks to /api/roster/* (coverage analysis) and
    /api/maintenance/due via the shift work-package bundler.

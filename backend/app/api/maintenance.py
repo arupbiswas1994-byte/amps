@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Arup Biswas
+# AMPS - Asset & Preventive Maintenance System (https://github.com/arupbiswas1994-byte/amps)
+
 """Preventive-maintenance endpoints — v0.2.1: history-preserving, priority-ranked."""
 from datetime import date, datetime
 

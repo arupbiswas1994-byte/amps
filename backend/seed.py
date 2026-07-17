@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Arup Biswas
+# AMPS - Asset & Preventive Maintenance System (https://github.com/arupbiswas1994-byte/amps)
+
 """Synthetic demo data for AMPS — v0.2 seeds a live database.
 
 ALL DATA HERE IS FICTIONAL — generic industrial examples for demonstration.

@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Arup Biswas
+# AMPS - Asset & Preventive Maintenance System (https://github.com/arupbiswas1994-byte/amps)
+
 """Asset register endpoints — v0.2, DB-backed."""
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel

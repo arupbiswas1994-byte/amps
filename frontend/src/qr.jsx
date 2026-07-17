@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Arup Biswas and AMPS contributors (binidev)
+// AMPS - Asset & Preventive Maintenance System (https://github.com/arupbiswas1994-byte/amps)
+
 import { useMemo } from 'react'
 import qrcode from 'qrcode-generator'
 

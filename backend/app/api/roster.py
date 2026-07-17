@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Arup Biswas
+# AMPS - Asset & Preventive Maintenance System (https://github.com/arupbiswas1994-byte/amps)
+
 """Duty-roster endpoints — roster ↔ maintenance linkage.
 
 The roster here is a MAINTENANCE-PLANNING object, not an attendance system
