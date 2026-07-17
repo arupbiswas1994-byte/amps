@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Arup Biswas and AMPS contributors (binidev)
+// AMPS - Asset & Preventive Maintenance System (https://github.com/arupbiswas1994-byte/amps)
+
 /* Digital shift logbook — the v0.3 module, live on /api/logbook.
 
    Replaces the earlier local-state demo page: entries now persist through the
