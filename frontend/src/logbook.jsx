@@ -111,7 +111,11 @@ export default function LogBook() {
   const authOn = me?.auth_enabled
   const [entries, setEntries] = useState([])
   const [logDate, setLogDate] = useState(today())  // the ruler: write + read date
-  const [allDates, setAllDates] = useState(false)  // ruler off → full history
+  // Open on the whole book, not on today. A quiet day (or any day before the
+  // first entry is written) left the page blank, which reads as "the logbook
+  // is broken" rather than "nothing happened today". The ruler still drives
+  // both reading and writing the moment a day is picked.
+  const [allDates, setAllDates] = useState(true)
   const [fShift, setFShift] = useState('')         // '' = all shifts
   const [fCat, setFCat] = useState('')             // '' = all categories (classes)
   const [fType, setFType] = useState('')           // '' = all types
