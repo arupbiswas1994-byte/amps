@@ -6,7 +6,7 @@
 
    API base: same-origin by default; demo hosting builds with VITE_AMPS_API. */
 import { useEffect, useState } from 'react'
-import { useMe } from './api.js'
+import { LIVE, useMe } from './api.js'
 
 const API = import.meta.env.VITE_AMPS_API ?? ''
 
@@ -543,9 +543,13 @@ export default function LogBook() {
         </div>
       )}
 
+      {/* The demo build warns the visitor off logging anything real. On a live
+          deployment that sentence sits under thousands of genuine records and
+          tells the section not to use its own logbook — say the opposite. */}
       <p className="roadmap">
-        Entries persist in the demo database (reseeded on each demo restart).
-        Synthetic data only — do not log real operational information here.
+        {LIVE
+          ? 'Entries are permanent and append-only: nothing is edited or deleted. A mistake is corrected by a new entry, and every entry keeps the shift, date and team that made it.'
+          : 'Entries persist in the demo database (reseeded on each demo restart). Synthetic data only — do not log real operational information here.'}
       </p>
     </>
   )
