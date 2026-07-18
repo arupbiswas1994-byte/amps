@@ -255,6 +255,27 @@ function LogRow({ en }) {
 /* Maintenance and failures are the two things a section is judged on, so the
    asset card states them separately rather than as one blended stream — the
    same ledger, split by what the reader came to check. */
+/* Long histories are the norm (some assets carry 60+ maintenance entries), and
+   a full list would push the failure section off the bottom of the page — the
+   very thing that made maintenance look missing before. Show a window, with
+   the rest one click away. */
+const LOG_WINDOW = 8
+
+function LogList({ rows }) {
+  const [all, setAll] = useState(false)
+  const shown = all ? rows : rows.slice(0, LOG_WINDOW)
+  return (
+    <>
+      {shown.map((en) => <LogRow key={en.id} en={en} />)}
+      {rows.length > LOG_WINDOW && (
+        <button type="button" className="btn preset" onClick={() => setAll(!all)}>
+          {all ? `Show latest ${LOG_WINDOW}` : `Show all ${rows.length}`}
+        </button>
+      )}
+    </>
+  )
+}
+
 function AssetLogSections({ log }) {
   const maint = log.filter((e) => e.type === 'maintenance')
   const fails = log.filter((e) => e.type === 'failure')
@@ -271,7 +292,7 @@ function AssetLogSections({ log }) {
         </h3>
         {maint.length === 0
           ? <p className="dim">No maintenance logged against this asset yet.</p>
-          : maint.map((en) => <LogRow key={en.id} en={en} />)}
+          : <LogList rows={maint} />}
       </div>
 
       <div className="sect">
@@ -283,13 +304,13 @@ function AssetLogSections({ log }) {
         </h3>
         {fails.length === 0
           ? <p className="dim">No failures recorded against this asset — a clean sheet.</p>
-          : fails.map((en) => <LogRow key={en.id} en={en} />)}
+          : <LogList rows={fails} />}
       </div>
 
       {other.length > 0 && (
         <div className="sect">
           <h3>Other log entries — notes & rectifications, newest first</h3>
-          {other.map((en) => <LogRow key={en.id} en={en} />)}
+          <LogList rows={other} />
         </div>
       )}
     </>
