@@ -5,7 +5,7 @@ import {
   completedChecksheets, kpis, fmtDate, fmtTime, dueState, durationHrs, failureStats,
   failuresByMonth, classCountsAll, downtimeByAsset, recoveryStatus, pmOccurrencesInMonth,
 } from './data.js'
-import { LIVE, ORG, useLiveAssets, useLiveAsset, useMe, apiLogin, apiLogout } from './api.js'
+import { LIVE, ORG, getJSON, useLiveAssets, useLiveAsset, useMe, apiLogin, apiLogout } from './api.js'
 import QR, { assetUrl } from './qr.jsx'
 import DutyRoster from './roster.jsx'
 import LogBook from './logbook.jsx'
@@ -232,6 +232,67 @@ function Dashboard({ go }) {
 
 /* ---------- asset detail (live) ---------- */
 
+/* One entry row, shared by both history sections. */
+function LogRow({ en }) {
+  return (
+    <div className="wo">
+      <div className="row1">
+        {en.category && <span className="chip grp"><span className="dot" />{en.category}</span>}
+        <span className={`chip ${en.type === 'failure' ? 'd-overdue' : ''}`}>
+          <span className="dot" />{en.type}{en.subtype ? ` · ${en.subtype}` : ''}
+        </span>
+        {en.fault_type && <span className="chip"><span className="dot" />{en.fault_type}</span>}
+        <span className="sub dt">{en.log_date}</span>
+        {en.down_hours != null && <span className="sub">down <b>{en.down_hours}h</b></span>}
+        {en.type === 'failure' && !en.ended_at && <span className="chip d-overdue">still open</span>}
+      </div>
+      <div className="findings">{en.text}</div>
+      {en.entered_by && <div className="sub">by <b>{en.entered_by}</b></div>}
+    </div>
+  )
+}
+
+/* Maintenance and failures are the two things a section is judged on, so the
+   asset card states them separately rather than as one blended stream — the
+   same ledger, split by what the reader came to check. */
+function AssetLogSections({ log }) {
+  const maint = log.filter((e) => e.type === 'maintenance')
+  const fails = log.filter((e) => e.type === 'failure')
+  const other = log.filter((e) => e.type !== 'maintenance' && e.type !== 'failure')
+  const downtime = fails.reduce((s, e) => s + (e.down_hours || 0), 0)
+  const openFails = fails.filter((e) => !e.ended_at).length
+  return (
+    <>
+      <div className="sect">
+        <h3>
+          Maintenance history — {maint.length ? `${maint.length} entr${maint.length === 1 ? 'y' : 'ies'}, newest first` : 'none recorded'}
+        </h3>
+        {maint.length === 0
+          ? <p className="dim">No maintenance logged against this asset yet.</p>
+          : maint.map((en) => <LogRow key={en.id} en={en} />)}
+      </div>
+
+      <div className="sect">
+        <h3>
+          Failure history — {fails.length
+            ? <>{fails.length} · {downtime.toFixed(1)}h downtime{openFails > 0 ? ` · ${openFails} open` : ''}</>
+            : 'none recorded'}
+        </h3>
+        {fails.length === 0
+          ? <p className="dim">No failures recorded against this asset — a clean sheet.</p>
+          : fails.map((en) => <LogRow key={en.id} en={en} />)}
+      </div>
+
+      {other.length > 0 && (
+        <div className="sect">
+          <h3>Other log entries — notes & rectifications, newest first</h3>
+          {other.map((en) => <LogRow key={en.id} en={en} />)}
+        </div>
+      )}
+    </>
+  )
+}
+
 function LiveAssetDetail({ code }) {
   const { asset: a, history, log, loading, error } = useLiveAsset(code)
   if (loading) return <p className="dim">Loading {code}…</p>
@@ -264,24 +325,7 @@ function LiveAssetDetail({ code }) {
             </div>
           </div>
 
-          {log.length > 0 && (
-            <div className="sect">
-              <h3>Log book — maintenance, failures & notes, newest first</h3>
-              {log.map((en) => (
-                <div className="wo" key={en.id}>
-                  <div className="row1">
-                    {en.category && <span className="chip grp"><span className="dot" />{en.category}</span>}
-                    <span className={`chip ${en.type === 'failure' ? 'd-overdue' : ''}`}>
-                      <span className="dot" />{en.type}{en.subtype ? ` · ${en.subtype}` : ''}
-                    </span>
-                    <span className="sub dt">{en.log_date}</span>
-                  </div>
-                  <div className="findings">{en.text}</div>
-                  {en.entered_by && <div className="sub">by <b>{en.entered_by}</b></div>}
-                </div>
-              ))}
-            </div>
-          )}
+          <AssetLogSections log={log} />
 
           <div className="sect">
             <h3>Work-order history — completed jobs, newest first</h3>
@@ -634,6 +678,136 @@ function Failures() {
             ))}
           </tbody>
         </table>
+      </div>
+    </>
+  )
+}
+
+/* ---------- failures: live KPI surface over the one ledger ---------- */
+
+/* Reads failure entries straight from the logbook — no second table, no
+   pre-aggregation. The tiles answer the three questions a section head asks
+   at a glance: how often, how long down, and what is still open. */
+function LiveFailures() {
+  const [stats, setStats] = useState(null)
+  const [rows, setRows] = useState([])
+  const [error, setError] = useState(null)
+  const [cls, setCls] = useState('')
+
+  useEffect(() => {
+    let alive = true
+    Promise.all([
+      getJSON('/api/logbook/failure-stats?days=90&months=6'),
+      getJSON('/api/logbook?entry_type=failure&limit=1000'),
+    ])
+      .then(([s, l]) => { if (alive) { setStats(s); setRows(l) } })
+      .catch((e) => alive && setError(String(e)))
+    return () => { alive = false }
+  }, [])
+
+  if (error) return <div className="card offline-note">Backend unreachable — {error}.</div>
+  if (!stats) return <p className="dim">Loading failure record…</p>
+
+  const trend = stats.per_month.map((m) => ({
+    label: new Date(`${m.month}-01T00:00:00`).toLocaleString(undefined, { month: 'short' }),
+    count: m.count,
+  }))
+  const prev3 = trend.slice(0, 3).reduce((a, m) => a + m.count, 0)
+  const last3 = trend.slice(3).reduce((a, m) => a + m.count, 0)
+  const dir = last3 < prev3 ? 'down' : last3 > prev3 ? 'up' : 'flat'
+  const classRows = stats.by_class.map((c) => [c.name, c.count])
+  const faultRows = stats.by_fault.map((c) => [c.name, c.count])
+
+  const shown = cls ? rows.filter((r) => (r.category || 'Unclassified') === cls) : rows
+
+  return (
+    <>
+      <div className="kpis">
+        <div className="tile"><div className="v">{stats.total}</div><div className="k">Failures — last {stats.days} days</div></div>
+        <div className={stats.open ? 'tile alert' : 'tile'}><div className="v">{stats.open}</div><div className="k">Still open</div></div>
+        <div className="tile"><div className="v">{stats.downtime_hours} h</div><div className="k">Downtime — {stats.days} days</div></div>
+        <div className="tile"><div className="v">{stats.mttr_hours ?? '—'}{stats.mttr_hours != null && ' h'}</div><div className="k">Mean time to recover</div></div>
+        <div className="tile"><div className="v">{stats.all_time}</div><div className="k">Failures on record</div></div>
+      </div>
+
+      <div className="viz-grid2">
+        <section className="card viz-card">
+          <h2 className="viz-h">Failures per month <span className="viz-note">last 6 months</span></h2>
+          <TrendChart data={trend} />
+          <p className="viz-insight">
+            {dir === 'down' && <>Trend improving — {last3} failures in the last 3 months vs {prev3} in the previous 3.</>}
+            {dir === 'up' && <>Trend worsening — {last3} failures in the last 3 months vs {prev3} in the previous 3.</>}
+            {dir === 'flat' && <>Steady — {last3} failures in each of the last two quarters.</>}
+          </p>
+        </section>
+
+        <section className="card viz-card">
+          <h2 className="viz-h">Failures by asset class <span className="viz-note">last {stats.days} days</span></h2>
+          {classRows.length === 0 ? <p className="dim">Nothing recorded in this window.</p> : <>
+            <HBar rows={classRows} unit="" />
+            <p className="viz-insight">{classRows[0][0]} leads with {classRows[0][1]} — focus area for the next PM review.</p>
+          </>}
+        </section>
+
+        <section className="card viz-card">
+          <h2 className="viz-h">Fault types <span className="viz-note">last {stats.days} days</span></h2>
+          {faultRows.length === 0
+            ? <p className="dim">No fault types classified in this window.</p>
+            : <HBar rows={faultRows} unit="" seq />}
+        </section>
+
+        <section className="card viz-card">
+          <h2 className="viz-h">Open breakdowns <span className="viz-note">awaiting recovery</span></h2>
+          {stats.open_items.length === 0
+            ? <p className="viz-insight">Every recorded failure stands restored.</p>
+            : stats.open_items.map((o) => (
+                <div className="wo" key={o.id}>
+                  <div className="row1">
+                    {o.asset_code
+                      ? <a className="code" href={`#/asset/${o.asset_code}`}>{o.asset_code}</a>
+                      : <span className="dim">unmatched asset</span>}
+                    <span className="sub dt">{o.log_date}</span>
+                  </div>
+                  <div className="findings">{o.text}</div>
+                </div>
+              ))}
+        </section>
+      </div>
+
+      <h2>Failure &amp; recovery log</h2>
+      <div className="log-filters">
+        <label className="dim">Class <select value={cls} onChange={(e) => setCls(e.target.value)}>
+          <option value="">All</option>
+          {stats.by_class.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
+        </select></label>
+        <span className="dim">
+          Read-only view — report a failure in the <a href="#/log">Log book</a>.
+        </span>
+      </div>
+      <div className="card tbl-wrap">
+        <table>
+          <thead><tr><th>Asset</th><th>Class</th><th>Occurred</th><th>Restored</th><th>Downtime</th><th>State</th><th>Fault → what happened</th></tr></thead>
+          <tbody>
+            {shown.map((f) => (
+              <tr key={f.id} tabIndex={0}
+                  onClick={() => f.asset_code && (location.hash = `/asset/${f.asset_code}`)}
+                  onKeyDown={(e) => e.key === 'Enter' && f.asset_code && (location.hash = `/asset/${f.asset_code}`)}>
+                <td className="code" data-l="Asset">{f.asset_code || '—'}</td>
+                <td className="dim" data-l="Class">{f.category || '—'}</td>
+                <td className="dim dt" data-l="Occurred">{f.log_date}</td>
+                <td className="dim dt" data-l="Restored">{f.ended_at ? f.ended_at.slice(0, 16).replace('T', ' ') : '—'}</td>
+                <td className="dt" data-l="Downtime">{f.down_hours != null ? `${f.down_hours} h` : '—'}</td>
+                <td data-l="State">{f.ended_at
+                  ? <span className="chip w-done"><span className="dot" />Restored</span>
+                  : <span className="chip d-overdue"><span className="dot" />Open</span>}</td>
+                <td className="wrap-cell" data-l="Fault">
+                  {f.fault_type && <b>{f.fault_type} </b>}{f.text}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {shown.length === 0 && <p className="dim" style={{ padding: '1rem' }}>No failures recorded for this class.</p>}
       </div>
     </>
   )
@@ -1037,6 +1211,7 @@ const routeFromHash = () => location.hash.replace(/^#/, '') || '/'
 const NAV = LIVE ? [
   ['/', 'Assets'],
   ['/log', 'Log book'],
+  ['/failures', 'Failures'],
   ['/tags', 'QR tags'],
 ] : [
   ['/', 'Assets'],
@@ -1303,8 +1478,9 @@ export default function App() {
         : route === '/planner' ? (LIVE ? <NotYet /> : <Planner />)
         : route === '/roster' ? (LIVE ? <NotYet /> : <DutyRoster />)
         : route === '/log' ? <LogBook />
-        /* failures folded into the one logbook — old links land on the log */
-        : route === '/failures' ? (LIVE ? <LogBook /> : <Failures />)
+        /* one ledger still: this reads failure entries out of the logbook,
+           it is not a second record — reporting stays in the log book */
+        : route === '/failures' ? (LIVE ? <LiveFailures /> : <Failures />)
         : route === '/spares' ? (LIVE ? <NotYet /> : <Spares />)
         : route === '/procurement' ? (LIVE ? <NotYet /> : <Procurement />)
         : route === '/tags' ? <TagSheet />

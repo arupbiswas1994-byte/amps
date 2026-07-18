@@ -8,7 +8,7 @@ Design rules:
   * Optionally tied to an asset (by code), so scanning a QR tag can show
     everything ever logged against that equipment.
 """
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -34,6 +34,11 @@ class LogEntryIn(BaseModel):
     entered_by: str = ""                # ignored on authenticated deployments
     asset_code: str | None = None
     corrects_id: int | None = None
+    # failure rows only: when supply/equipment came back, and the fault class.
+    # Omitted (or null) on an open breakdown — downtime stays uncomputed.
+    end_date: date | None = None
+    end_time: str | None = None
+    fault_type: str | None = None
 
 
 class LogEntryOut(BaseModel):
@@ -47,7 +52,19 @@ class LogEntryOut(BaseModel):
     text: str
     entered_by: str
     asset_code: str | None
+    asset_name: str | None
     corrects_id: int | None
+    ended_at: datetime | None
+    fault_type: str | None
+    down_hours: float | None
+
+
+def _down_hours(e: LogEntry) -> float | None:
+    """Downtime in hours, derived — only meaningful once a failure is closed."""
+    if e.type != LogEntryType.FAILURE or not e.ended_at or not e.at:
+        return None
+    hrs = (e.ended_at - e.at).total_seconds() / 3600
+    return round(hrs, 2) if hrs >= 0 else None
 
 
 def _to_out(e: LogEntry) -> LogEntryOut:
@@ -55,7 +72,9 @@ def _to_out(e: LogEntry) -> LogEntryOut:
         id=e.id, at=e.at, log_date=e.log_date, shift=e.shift.value,
         type=e.type.value, subtype=e.subtype, category=e.category, text=e.text,
         entered_by=e.entered_by,
-        asset_code=e.asset.code if e.asset else None, corrects_id=e.corrects_id,
+        asset_code=e.asset.code if e.asset else None,
+        asset_name=e.asset.name if e.asset else None, corrects_id=e.corrects_id,
+        ended_at=e.ended_at, fault_type=e.fault_type, down_hours=_down_hours(e),
     )
 
 
@@ -91,10 +110,25 @@ def add_entry(entry: LogEntryIn, db: Session = Depends(get_db), user=Depends(cur
     etype = LogEntryType(entry.type)
     # maintenance is a night-shift job — enforce it regardless of client
     shift = ShiftCode.NIGHT if etype == LogEntryType.MAINTENANCE else ShiftCode(entry.shift)
+    # Recovery moment: failure rows only, and never before the start.
+    ended_at = None
+    if etype == LogEntryType.FAILURE and entry.end_date:
+        end_t = None
+        if entry.end_time:
+            try:
+                end_t = datetime.strptime(entry.end_time, "%H:%M").time()
+            except ValueError:
+                raise HTTPException(422, "end_time must be HH:MM")
+        ended_at = datetime.combine(entry.end_date, end_t or datetime.min.time())
+        if ended_at < at:
+            raise HTTPException(422, "recovery time cannot precede the failure")
     obj = LogEntry(
         at=at, log_date=entry.log_date, shift=shift,
         type=etype, subtype=(entry.subtype or None),
         category=(category or None), text=entry.text,
+        ended_at=ended_at,
+        fault_type=((entry.fault_type or "").strip()[:120] or None
+                    if etype == LogEntryType.FAILURE else None),
         entered_by=author, asset=asset, corrects_id=entry.corrects_id,
         line_id=user.line_id,  # NULL = department-wide entry (HQ/admin)
     )
@@ -130,6 +164,64 @@ def list_entries(log_date: date | None = None, shift: str | None = None,
         asset = visible_asset(db, asset_code, user)
         q = q.where(LogEntry.asset_id == asset.id)
     return [_to_out(e) for e in db.scalars(q).all()]
+
+
+@router.get("/failure-stats")
+def failure_stats(days: int = 90, months: int = 6, db: Session = Depends(get_db),
+                  user=Depends(optional_user)):
+    """Breakdown KPIs off the one ledger — counts, downtime, MTTR, trend.
+
+    Every figure is derived from failure log entries: nothing is stored
+    pre-aggregated, so the tiles can never drift from the book."""
+    from collections import Counter
+
+    q = select(LogEntry).where(LogEntry.type == LogEntryType.FAILURE)
+    if user.line_id is not None:
+        q = q.where((LogEntry.line_id == user.line_id) | (LogEntry.line_id.is_(None)))
+    rows = db.scalars(q).all()
+
+    today = date.today()
+    window = today - timedelta(days=days)
+    recent = [e for e in rows if e.log_date >= window]
+    closed = [e for e in recent if _down_hours(e) is not None]
+    down = [_down_hours(e) for e in closed]
+    open_now = [e for e in rows if e.ended_at is None]
+
+    # trend: failures per calendar month, oldest first, `months` buckets
+    buckets: list[dict] = []
+    y, m = today.year, today.month
+    keys = []
+    for _ in range(months):
+        keys.append(f"{y:04d}-{m:02d}")
+        m -= 1
+        if m == 0:
+            y, m = y - 1, 12
+    per_month = Counter(e.log_date.strftime("%Y-%m") for e in rows)
+    for k in reversed(keys):
+        buckets.append({"month": k, "count": per_month.get(k, 0)})
+
+    by_class = Counter((e.category or "Unclassified") for e in recent)
+    by_fault = Counter(e.fault_type for e in recent if e.fault_type)
+
+    return {
+        "days": days,
+        "total": len(recent),
+        "all_time": len(rows),
+        "open": len(open_now),
+        "downtime_hours": round(sum(down), 1) if down else 0.0,
+        "mttr_hours": round(sum(down) / len(down), 2) if down else None,
+        "longest_hours": round(max(down), 2) if down else None,
+        "closed": len(closed),
+        "unclosed_in_window": len(recent) - len(closed),
+        "per_month": buckets,
+        "by_class": [{"name": k, "count": v} for k, v in by_class.most_common(8)],
+        "by_fault": [{"name": k, "count": v} for k, v in by_fault.most_common(8)],
+        "open_items": [
+            {"id": e.id, "asset_code": e.asset.code if e.asset else None,
+             "log_date": e.log_date, "text": e.text[:160]}
+            for e in sorted(open_now, key=lambda x: x.log_date, reverse=True)[:10]
+        ],
+    }
 
 
 # ---- bulk history import: scattered sheet logbooks -> one digital book ----
@@ -239,12 +331,19 @@ async def import_history(request: Request, db: Session = Depends(get_db),
             # category = the asset's class; fall back to the CSV group cell
             category = _category_of(asset) or (get("group")[:80] or None)
             # maintenance runs on the night shift; failures keep the general marker
+            # failures carry their recovery moment so downtime stays derivable
+            # (a sheet end that predates the start is a day/month swap — drop it)
+            end = _parse_dt(get("end")) if is_failure else None
+            if end and end < start:
+                end = None
             db.add(LogEntry(
                 at=start, log_date=start.date(),
                 shift=ShiftCode.GENERAL if is_failure else ShiftCode.NIGHT,
                 type=LogEntryType.FAILURE if is_failure else LogEntryType.MAINTENANCE,
                 subtype=None if is_failure else _maint_subtype(get("type")),
                 category=category,
+                ended_at=end,
+                fault_type=(get("fault_type")[:120] or None) if is_failure else None,
                 text=body_text, entered_by=(get("attended_by") or "imported record")[:120],
                 asset=asset, line_id=line_id))
             if is_failure:

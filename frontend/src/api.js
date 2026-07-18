@@ -13,7 +13,7 @@ export const ORG = import.meta.env.VITE_AMPS_ORG || 'Demo Metro Line'
 
 const API = import.meta.env.VITE_AMPS_API ?? '' // same-origin by default
 
-async function getJSON(path) {
+export async function getJSON(path) {
   const r = await fetch(`${API}${path}`)
   if (!r.ok) throw new Error(`HTTP ${r.status}`)
   return r.json()

@@ -227,6 +227,12 @@ class LogEntry(Base):
     subtype: Mapped[str | None] = mapped_column(String(40))
     # equipment category — the asset class (auto-filled from the asset, editable)
     category: Mapped[str | None] = mapped_column(String(80))
+    # Failure rows only: recovery moment and fault classification. `at` is the
+    # start; downtime is derived (ended_at − at), never typed. NULL end on a
+    # failure entry = still down. Kept on the one ledger rather than a second
+    # table so the logbook stays the single source of truth.
+    ended_at: Mapped[datetime | None]
+    fault_type: Mapped[str | None] = mapped_column(String(120))
     asset_id: Mapped[int | None] = mapped_column(ForeignKey("assets.id"))
     text: Mapped[str] = mapped_column(Text)
     entered_by: Mapped[str] = mapped_column(String(120), default="unknown")
