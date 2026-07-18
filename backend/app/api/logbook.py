@@ -32,6 +32,7 @@ class LogEntryIn(BaseModel):
     time: str | None = None             # optional HH:MM — a single moment, no start/end
     text: str = Field(min_length=3)
     entered_by: str = ""                # ignored on authenticated deployments
+    attended_by: str | None = None      # the crew that actually did the work
     asset_code: str | None = None
     corrects_id: int | None = None
     # failure rows only: when supply/equipment came back, and the fault class.
@@ -57,6 +58,7 @@ class LogEntryOut(BaseModel):
     category: str | None
     text: str
     entered_by: str
+    attended_by: str | None
     asset_code: str | None
     asset_name: str | None
     corrects_id: int | None
@@ -102,7 +104,7 @@ def _to_out(e: LogEntry, recovered: datetime | None = None) -> LogEntryOut:
     return LogEntryOut(
         id=e.id, at=e.at, log_date=e.log_date, shift=e.shift.value,
         type=e.type.value, subtype=e.subtype, category=e.category, text=e.text,
-        entered_by=e.entered_by,
+        entered_by=e.entered_by, attended_by=e.attended_by,
         asset_code=e.asset.code if e.asset else None,
         asset_name=e.asset.name if e.asset else None, corrects_id=e.corrects_id,
         rectifies_id=e.rectifies_id,
@@ -198,7 +200,9 @@ def _create_entry(db: Session, entry: LogEntryIn, user, rectifies: LogEntry | No
         ended_at=ended_at,
         fault_type=((entry.fault_type or "").strip()[:120] or None
                     if etype == LogEntryType.FAILURE else None),
-        entered_by=author, asset=asset, corrects_id=entry.corrects_id,
+        entered_by=author,
+        attended_by=((entry.attended_by or "").strip()[:200] or None),
+        asset=asset, corrects_id=entry.corrects_id,
         line_id=user.line_id,  # NULL = department-wide entry (HQ/admin)
     )
     db.add(obj)
@@ -459,6 +463,7 @@ async def import_history(request: Request, db: Session = Depends(get_db),
                 ended_at=end,
                 fault_type=(get("fault_type")[:120] or None) if is_failure else None,
                 text=body_text, entered_by=(get("attended_by") or "imported record")[:120],
+                attended_by=(get("attended_by")[:200] or None),
                 asset=asset, line_id=line_id))
             if is_failure:
                 n_fails += 1

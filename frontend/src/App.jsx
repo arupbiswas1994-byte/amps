@@ -247,7 +247,11 @@ function LogRow({ en }) {
         {en.type === 'failure' && !en.ended_at && <span className="chip d-overdue">still open</span>}
       </div>
       <div className="findings">{en.text}</div>
-      {en.entered_by && <div className="sub">by <b>{en.entered_by}</b></div>}
+      {(en.attended_by || en.entered_by) && (
+        <div className="sub">by <b>{en.attended_by || en.entered_by}</b>
+          {en.attended_by && en.attended_by !== en.entered_by && <> · recorded by {en.entered_by}</>}
+        </div>
+      )}
     </div>
   )
 }
@@ -842,7 +846,7 @@ function LiveFailures() {
       <h2>Failure &amp; recovery log <span className="dim">· {shown.length}</span></h2>
       <div className="card tbl-wrap">
         <table>
-          <thead><tr><th>Asset</th><th>Class</th><th>Occurred</th><th>Restored</th><th>Down</th><th>State</th><th>Fault → what happened</th></tr></thead>
+          <thead><tr><th>Asset</th><th>Class</th><th>Occurred</th><th>Restored</th><th>Down</th><th>State</th><th>Team</th><th>Fault → what happened</th></tr></thead>
           <tbody>
             {shown.map((f) => (
               <tr key={f.id} tabIndex={0}
@@ -864,6 +868,7 @@ function LiveFailures() {
                   : f.ended_at
                     ? <span className="chip w-done"><span className="dot" />Restored</span>
                     : <span className="chip d-overdue"><span className="dot" />Open</span>}</td>
+                <td className="dim" data-l="Team">{f.attended_by || f.entered_by || '—'}</td>
                 <td className="wrap-cell" data-l="Fault">
                   {f.fault_type && <b>{f.fault_type} </b>}{f.text}
                 </td>

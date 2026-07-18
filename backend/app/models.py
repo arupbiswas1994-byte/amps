@@ -235,7 +235,12 @@ class LogEntry(Base):
     fault_type: Mapped[str | None] = mapped_column(String(120))
     asset_id: Mapped[int | None] = mapped_column(ForeignKey("assets.id"))
     text: Mapped[str] = mapped_column(Text)
+    # Who WROTE the entry (the session on authenticated deployments) versus
+    # who DID the work. The sheets only ever had the latter, and the import
+    # put it in entered_by for want of anywhere else; keeping them apart lets
+    # a supervisor log a night crew's job without claiming it.
     entered_by: Mapped[str] = mapped_column(String(120), default="unknown")
+    attended_by: Mapped[str | None] = mapped_column(String(200))
     corrects_id: Mapped[int | None] = mapped_column(ForeignKey("log_entries.id"))
     # Rectification rows only: the FAILURE entry this work fixes. Distinct from
     # corrects_id, which means "this entry corrects a mis-written entry" —

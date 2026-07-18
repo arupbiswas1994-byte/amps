@@ -134,6 +134,7 @@ function RectifyForm({ failure, busy, onCancel, onSubmit }) {
   const [time, setTime] = useState('')
   const [shift, setShift] = useState('G')
   const [text, setText] = useState('')
+  const [team, setTeam] = useState('')
   return (
     <div className="log-row2">
       <span className="log-row2-tag">Rectification</span>
@@ -144,10 +145,12 @@ function RectifyForm({ failure, busy, onCancel, onSubmit }) {
       <select value={shift} onChange={(e) => setShift(e.target.value)} aria-label="Shift">
         {ENTRY_SHIFTS.map((s) => <option key={s} value={s}>{s} — {SHIFT_LABEL[s]}</option>)}
       </select>
+      <input value={team} onChange={(e) => setTeam(e.target.value)}
+             placeholder="Team…" className="log-team" aria-label="Team" />
       <input value={text} onChange={(e) => setText(e.target.value)}
              placeholder="What was done to rectify it…" />
       <button type="button" className="btn" disabled={busy}
-              onClick={() => onSubmit({ date, time, shift, text })}>
+              onClick={() => onSubmit({ date, time, shift, text, team })}>
         {busy ? 'Saving…' : 'Log fix'}
       </button>
       <button type="button" className="btn ghost" onClick={onCancel}>Cancel</button>
@@ -180,6 +183,7 @@ export default function LogBook() {
   const [category, setCategory] = useState('')     // asset class
   const [tim, setTim] = useState('')               // optional HH:MM
   const [faultType, setFaultType] = useState('')   // failures: fault class
+  const [team, setTeam] = useState('')             // crew that did the work
   // A failure is logged either still-open or already-rectified. Rectified
   // expands a second row that becomes its own log entry — the fix keeps its
   // own date, time and shift, because a night breakdown fixed next morning
@@ -191,6 +195,7 @@ export default function LogBook() {
   const [rTim, setRTim] = useState('')
   const [rShift, setRShift] = useState('G')
   const [rText, setRText] = useState('')
+  const [rTeam, setRTeam] = useState('')
   // closing a failure that was logged open earlier — the two-row form can't
   // reach it, that entry already exists
   const [rectifying, setRectifying] = useState(null)
@@ -252,6 +257,7 @@ export default function LogBook() {
           fault_type: type === 'failure' ? (faultType.trim() || null) : null,
           asset_code: assetCode.trim() || null,
           text: text.trim(), entered_by: author.trim() || 'demo.visitor',
+          attended_by: team.trim() || null,
           // one submit, two immutable entries — the backend commits them together
           rectification: type === 'failure' && rectified ? {
             log_date: rDate || logDate,
@@ -262,6 +268,7 @@ export default function LogBook() {
             asset_code: assetCode.trim() || null,
             text: (rText.trim() || 'Rectified'),
             entered_by: author.trim() || 'demo.visitor',
+            attended_by: rTeam.trim() || team.trim() || null,
           } : null,
         }),
       })
@@ -270,7 +277,8 @@ export default function LogBook() {
         throw new Error(body?.detail || `HTTP ${res.status}`)
       }
       setText(''); setAssetCode(''); setTim(''); setFaultType('')
-      setRectified(false); setRDate(''); setRTim(''); setRText('')
+      setRectified(false); setRDate(''); setRTim(''); setRText(''); setRTeam('')
+      setTeam('')
       setAllDates(false)  // show the day just written to
       await load()
     } catch (ex) {
@@ -294,6 +302,7 @@ export default function LogBook() {
           asset_code: failure.asset_code || null,
           text: form.text.trim() || 'Rectified',
           entered_by: author.trim() || 'demo.visitor',
+          attended_by: form.team.trim() || null,
         }),
       })
       if (!res.ok) {
@@ -395,6 +404,9 @@ export default function LogBook() {
             <input value={author} onChange={(e) => setAuthor(e.target.value)}
                    aria-label="Entered by" placeholder="Entered by…" className="log-author" maxLength={40} />
           )}
+          <input value={team} onChange={(e) => setTeam(e.target.value)}
+                 placeholder="Team / attended by…" className="log-team"
+                 aria-label="Team — who did the work" maxLength={200} />
           <input value={text} onChange={(e) => setText(e.target.value)}
                  placeholder={`Log entry for ${fmtDate(logDate)} — work done, readings, events…`} />
           <button className="btn" type="submit" disabled={busy || apiOk === false || !text.trim()}>
@@ -414,6 +426,8 @@ export default function LogBook() {
                       aria-label="Rectification shift" title="Shift that did the work">
                 {ENTRY_SHIFTS.map((s) => <option key={s} value={s}>{s} — {SHIFT_LABEL[s]}</option>)}
               </select>
+              <input value={rTeam} onChange={(e) => setRTeam(e.target.value)}
+                     placeholder="Team…" className="log-team" aria-label="Rectification team" />
               <input value={rText} onChange={(e) => setRText(e.target.value)}
                      placeholder="What was done to rectify it…" />
             </div>
@@ -476,7 +490,9 @@ export default function LogBook() {
                         <span className={`chip ${['defect', 'failure'].includes(en.type) ? 'd-overdue' : ''}`}>
                           <span className="dot" />{en.type}{en.subtype ? ` · ${en.subtype}` : ''}
                         </span>
-                        <span className="dim">{en.entered_by}</span>
+                        <span className="dim">{en.attended_by || en.entered_by}</span>
+                        {en.attended_by && en.attended_by !== en.entered_by
+                          && <span className="dim">rec. {en.entered_by}</span>}
                         {en.asset_code && <a className="code" href={`#/asset/${en.asset_code}`}>{en.asset_code}</a>}
                         {en.corrects_id && <span className="dim">corrects #{en.corrects_id}</span>}
                         {en.rectifies_id && <span className="dim">rectifies #{en.rectifies_id}</span>}
