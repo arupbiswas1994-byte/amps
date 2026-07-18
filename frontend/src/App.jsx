@@ -712,22 +712,35 @@ function Failures() {
 /* Reads failure entries straight from the logbook — no second table, no
    pre-aggregation. The tiles answer the three questions a section head asks
    at a glance: how often, how long down, and what is still open. */
+/* Imported history runs to Feb 2026 while the calendar says July, so a 90-day
+   default would open the page on an empty window and read as broken. Default
+   to the whole record and let the user narrow. */
+const FAIL_PERIODS = [
+  ['All time', 36500, 12],
+  ['Last 12 months', 365, 12],
+  ['Last 90 days', 90, 6],
+]
+
 function LiveFailures() {
   const [stats, setStats] = useState(null)
   const [rows, setRows] = useState([])
   const [error, setError] = useState(null)
   const [cls, setCls] = useState('')
+  const [period, setPeriod] = useState(0)
+
+  const [periodLabel, days, months] = FAIL_PERIODS[period]
 
   useEffect(() => {
     let alive = true
+    setStats(null)
     Promise.all([
-      getJSON('/api/logbook/failure-stats?days=90&months=6'),
+      getJSON(`/api/logbook/failure-stats?days=${days}&months=${months}`),
       getJSON('/api/logbook?entry_type=failure&limit=1000'),
     ])
       .then(([s, l]) => { if (alive) { setStats(s); setRows(l) } })
       .catch((e) => alive && setError(String(e)))
     return () => { alive = false }
-  }, [])
+  }, [days, months])
 
   if (error) return <div className="card offline-note">Backend unreachable — {error}.</div>
   if (!stats) return <p className="dim">Loading failure record…</p>
@@ -746,8 +759,14 @@ function LiveFailures() {
 
   return (
     <>
+      <div className="log-filters">
+        <label className="dim">Period <select value={period} onChange={(e) => setPeriod(Number(e.target.value))}>
+          {FAIL_PERIODS.map(([lbl], i) => <option key={lbl} value={i}>{lbl}</option>)}
+        </select></label>
+      </div>
+
       <div className="kpis">
-        <div className="tile"><div className="v">{stats.total}</div><div className="k">Failures — last {stats.days} days</div></div>
+        <div className="tile"><div className="v">{stats.total}</div><div className="k">Failures — {periodLabel.toLowerCase()}</div></div>
         <div className={stats.open ? 'tile alert' : 'tile'}><div className="v">{stats.open}</div><div className="k">Still open</div></div>
         <div className="tile"><div className="v">{stats.measured ? `${stats.downtime_hours} h` : '—'}</div>
           <div className="k">Downtime — {stats.measured ? `${stats.measured} timed record${stats.measured === 1 ? '' : 's'}` : 'no timed records'}</div></div>
@@ -768,7 +787,7 @@ function LiveFailures() {
 
       <div className="viz-grid2">
         <section className="card viz-card">
-          <h2 className="viz-h">Failures per month <span className="viz-note">last 6 months</span></h2>
+          <h2 className="viz-h">Failures per month <span className="viz-note">last {months} months</span></h2>
           <TrendChart data={trend} />
           <p className="viz-insight">
             {dir === 'down' && <>Trend improving — {last3} failures in the last 3 months vs {prev3} in the previous 3.</>}
@@ -778,7 +797,7 @@ function LiveFailures() {
         </section>
 
         <section className="card viz-card">
-          <h2 className="viz-h">Failures by asset class <span className="viz-note">last {stats.days} days</span></h2>
+          <h2 className="viz-h">Failures by asset class <span className="viz-note">{periodLabel.toLowerCase()}</span></h2>
           {classRows.length === 0 ? <p className="dim">Nothing recorded in this window.</p> : <>
             <HBar rows={classRows} unit="" />
             <p className="viz-insight">{classRows[0][0]} leads with {classRows[0][1]} — focus area for the next PM review.</p>
@@ -786,7 +805,7 @@ function LiveFailures() {
         </section>
 
         <section className="card viz-card">
-          <h2 className="viz-h">Fault types <span className="viz-note">last {stats.days} days</span></h2>
+          <h2 className="viz-h">Fault types <span className="viz-note">{periodLabel.toLowerCase()}</span></h2>
           {faultRows.length === 0
             ? <p className="dim">No fault types classified in this window.</p>
             : <HBar rows={faultRows} unit="" seq />}
@@ -831,7 +850,13 @@ function LiveFailures() {
                 <td className="code" data-l="Asset">{f.asset_code || '—'}</td>
                 <td className="dim" data-l="Class">{f.category || '—'}</td>
                 <td className="dim dt" data-l="Occurred">{f.log_date}</td>
-                <td className="dim dt" data-l="Restored">{f.ended_at ? f.ended_at.slice(0, 16).replace('T', ' ') : '—'}</td>
+                {/* midnight means no clock time was recorded — show the date alone
+                    rather than an invented 00:00 (same rule as the log book) */}
+                <td className="dim dt" data-l="Restored">{f.ended_at
+                  ? (f.ended_at.slice(11, 16) === '00:00'
+                      ? f.ended_at.slice(0, 10)
+                      : f.ended_at.slice(0, 16).replace('T', ' '))
+                  : '—'}</td>
                 <td className="dt" data-l="Downtime">{f.down_hours != null ? `${f.down_hours} h` : '—'}</td>
                 <td data-l="State">{f.ended_at
                   ? <span className="chip w-done"><span className="dot" />Restored</span>
