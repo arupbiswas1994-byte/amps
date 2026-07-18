@@ -60,11 +60,18 @@ class LogEntryOut(BaseModel):
 
 
 def _down_hours(e: LogEntry) -> float | None:
-    """Downtime in hours, derived — only meaningful once a failure is closed."""
+    """Downtime in hours, derived from the two timestamps.
+
+    None means "not measurable", which is NOT the same as zero. Most imported
+    history carries a failure date with no clock time, so start and end land
+    on the same instant — that is a missing measurement, not an instant
+    recovery, and averaging it in would flatter the MTTR into meaninglessness.
+    Entries logged with real times measure properly.
+    """
     if e.type != LogEntryType.FAILURE or not e.ended_at or not e.at:
         return None
     hrs = (e.ended_at - e.at).total_seconds() / 3600
-    return round(hrs, 2) if hrs >= 0 else None
+    return round(hrs, 2) if hrs > 0 else None
 
 
 def _to_out(e: LogEntry) -> LogEntryOut:
@@ -183,8 +190,10 @@ def failure_stats(days: int = 90, months: int = 6, db: Session = Depends(get_db)
     today = date.today()
     window = today - timedelta(days=days)
     recent = [e for e in rows if e.log_date >= window]
-    closed = [e for e in recent if _down_hours(e) is not None]
-    down = [_down_hours(e) for e in closed]
+    closed = [e for e in recent if e.ended_at is not None]
+    # only entries with real clock times can contribute to a duration figure
+    measured = [e for e in recent if _down_hours(e) is not None]
+    down = [_down_hours(e) for e in measured]
     open_now = [e for e in rows if e.ended_at is None]
 
     # trend: failures per calendar month, oldest first, `months` buckets
@@ -212,6 +221,11 @@ def failure_stats(days: int = 90, months: int = 6, db: Session = Depends(get_db)
         "mttr_hours": round(sum(down) / len(down), 2) if down else None,
         "longest_hours": round(max(down), 2) if down else None,
         "closed": len(closed),
+        # how many of the closed failures actually carry a measurable duration:
+        # the UI needs this to say "based on N records" instead of implying
+        # the MTTR speaks for every failure in the window
+        "measured": len(measured),
+        "unmeasured": len(closed) - len(measured),
         "unclosed_in_window": len(recent) - len(closed),
         "per_month": buckets,
         "by_class": [{"name": k, "count": v} for k, v in by_class.most_common(8)],

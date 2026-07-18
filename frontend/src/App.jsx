@@ -259,7 +259,9 @@ function AssetLogSections({ log }) {
   const maint = log.filter((e) => e.type === 'maintenance')
   const fails = log.filter((e) => e.type === 'failure')
   const other = log.filter((e) => e.type !== 'maintenance' && e.type !== 'failure')
-  const downtime = fails.reduce((s, e) => s + (e.down_hours || 0), 0)
+  // only timed entries carry a duration — see _down_hours on the API side
+  const timed = fails.filter((e) => e.down_hours != null)
+  const downtime = timed.reduce((s, e) => s + e.down_hours, 0)
   const openFails = fails.filter((e) => !e.ended_at).length
   return (
     <>
@@ -275,7 +277,8 @@ function AssetLogSections({ log }) {
       <div className="sect">
         <h3>
           Failure history — {fails.length
-            ? <>{fails.length} · {downtime.toFixed(1)}h downtime{openFails > 0 ? ` · ${openFails} open` : ''}</>
+            ? <>{fails.length}{timed.length > 0 && <> · {downtime.toFixed(1)}h downtime</>}
+                {openFails > 0 ? ` · ${openFails} open` : ''}</>
             : 'none recorded'}
         </h3>
         {fails.length === 0
@@ -725,10 +728,22 @@ function LiveFailures() {
       <div className="kpis">
         <div className="tile"><div className="v">{stats.total}</div><div className="k">Failures — last {stats.days} days</div></div>
         <div className={stats.open ? 'tile alert' : 'tile'}><div className="v">{stats.open}</div><div className="k">Still open</div></div>
-        <div className="tile"><div className="v">{stats.downtime_hours} h</div><div className="k">Downtime — {stats.days} days</div></div>
-        <div className="tile"><div className="v">{stats.mttr_hours ?? '—'}{stats.mttr_hours != null && ' h'}</div><div className="k">Mean time to recover</div></div>
+        <div className="tile"><div className="v">{stats.measured ? `${stats.downtime_hours} h` : '—'}</div>
+          <div className="k">Downtime — {stats.measured ? `${stats.measured} timed record${stats.measured === 1 ? '' : 's'}` : 'no timed records'}</div></div>
+        <div className="tile"><div className="v">{stats.mttr_hours != null ? `${stats.mttr_hours} h` : '—'}</div>
+          <div className="k">{stats.mttr_hours != null ? `Mean time to recover · ${stats.measured} of ${stats.closed}` : 'MTTR — needs clock times'}</div></div>
         <div className="tile"><div className="v">{stats.all_time}</div><div className="k">Failures on record</div></div>
       </div>
+
+      {stats.unmeasured > 0 && (
+        <p className="viz-insight">
+          Downtime figures come from the {stats.measured} failure{stats.measured === 1 ? '' : 's'} logged
+          with clock times. {stats.unmeasured} imported record{stats.unmeasured === 1 ? ' carries' : 's carry'} a
+          date but no start/end time, so {stats.unmeasured === 1 ? 'it is' : 'they are'} counted as failures
+          but left out of the duration averages. Log the failure and recovery times in the Log book
+          and these fill in from here on.
+        </p>
+      )}
 
       <div className="viz-grid2">
         <section className="card viz-card">

@@ -125,6 +125,9 @@ export default function LogBook() {
   const [subtype, setSubtype] = useState('Monthly')
   const [category, setCategory] = useState('')     // asset class
   const [tim, setTim] = useState('')               // optional HH:MM
+  const [endDate, setEndDate] = useState('')       // failures: recovery date
+  const [endTim, setEndTim] = useState('')         // failures: recovery HH:MM
+  const [faultType, setFaultType] = useState('')   // failures: fault class
   const [assetCode, setAssetCode] = useState('')   // cross-reference to the register
   const [author, setAuthor] = useState('demo.visitor')
   const [assets, setAssets] = useState([])         // register rows for the datalist
@@ -169,6 +172,9 @@ export default function LogBook() {
           subtype: type === 'maintenance' ? subtype : null,
           category: category || null,
           time: tim || null,
+          end_date: type === 'failure' ? (endDate || null) : null,
+          end_time: type === 'failure' ? (endTim || null) : null,
+          fault_type: type === 'failure' ? (faultType.trim() || null) : null,
           asset_code: assetCode.trim() || null,
           text: text.trim(), entered_by: author.trim() || 'demo.visitor',
         }),
@@ -178,6 +184,7 @@ export default function LogBook() {
         throw new Error(body?.detail || `HTTP ${res.status}`)
       }
       setText(''); setAssetCode(''); setTim('')
+      setEndDate(''); setEndTim(''); setFaultType('')
       setAllDates(false)  // show the day just written to
       await load()
     } catch (ex) {
@@ -236,6 +243,20 @@ export default function LogBook() {
             <select value={subtype} onChange={(e) => setSubtype(e.target.value)} aria-label="Maintenance frequency">
               {MAINT_SUBTYPES.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
+          )}
+          {/* A failure needs its fault class and the moment supply came back —
+              downtime is derived from the two timestamps, never typed. Leave
+              the recovery blank while the breakdown is still open. */}
+          {type === 'failure' && (
+            <>
+              <input value={faultType} onChange={(e) => setFaultType(e.target.value)}
+                     placeholder="Fault type…" className="log-cat" aria-label="Fault type"
+                     maxLength={120} />
+              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
+                     aria-label="Restored on (optional)" title="Restored on — leave blank if still open" />
+              <input type="time" value={endTim} onChange={(e) => setEndTim(e.target.value)}
+                     aria-label="Restored at (optional)" title="Restored at" className="log-time" />
+            </>
           )}
           <input type="time" value={tim} onChange={(e) => setTim(e.target.value)}
                  aria-label="Time (optional)" title="Time (optional)" className="log-time" />
