@@ -216,7 +216,12 @@ def failure_stats(days: int = 90, months: int = 6, db: Session = Depends(get_db)
     # only entries with real clock times can contribute to a duration figure
     measured = [e for e in recent if _down_hours(e) is not None]
     down = [_down_hours(e) for e in measured]
-    open_now = [e for e in rows if e.ended_at is None]
+    # A breakdown is only genuinely OPEN if it names an asset and has no
+    # recovery. Imported rows whose asset code never matched the register are
+    # a data-quality problem, not outstanding work — counting them as open
+    # put a permanent red number on the board that no one could ever clear.
+    open_now = [e for e in rows if e.ended_at is None and e.asset_id is not None]
+    unlinked = [e for e in rows if e.asset_id is None]
 
     # trend: failures per calendar month, oldest first, `months` buckets
     buckets: list[dict] = []
@@ -233,12 +238,15 @@ def failure_stats(days: int = 90, months: int = 6, db: Session = Depends(get_db)
 
     by_class = Counter((e.category or "Unclassified") for e in recent)
     by_fault = Counter(e.fault_type for e in recent if e.fault_type)
+    # repeat offenders: which equipment actually keeps failing
+    by_asset = Counter(e.asset.code for e in recent if e.asset)
 
     return {
         "days": days,
         "total": len(recent),
         "all_time": len(rows),
         "open": len(open_now),
+        "unlinked": len(unlinked),
         "downtime_hours": round(sum(down), 1) if down else 0.0,
         "mttr_hours": round(sum(down) / len(down), 2) if down else None,
         "longest_hours": round(max(down), 2) if down else None,
@@ -250,8 +258,9 @@ def failure_stats(days: int = 90, months: int = 6, db: Session = Depends(get_db)
         "unmeasured": len(closed) - len(measured),
         "unclosed_in_window": len(recent) - len(closed),
         "per_month": buckets,
-        "by_class": [{"name": k, "count": v} for k, v in by_class.most_common(8)],
-        "by_fault": [{"name": k, "count": v} for k, v in by_fault.most_common(8)],
+        "by_class": [{"name": k, "count": v} for k, v in by_class.most_common(6)],
+        "by_fault": [{"name": k, "count": v} for k, v in by_fault.most_common(6)],
+        "by_asset": [{"name": k, "count": v} for k, v in by_asset.most_common(6)],
         "open_items": [
             {"id": e.id, "asset_code": e.asset.code if e.asset else None,
              "log_date": e.log_date, "text": e.text[:160]}

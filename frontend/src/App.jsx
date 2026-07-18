@@ -726,6 +726,7 @@ function LiveFailures() {
   const [rows, setRows] = useState([])
   const [error, setError] = useState(null)
   const [cls, setCls] = useState('')
+  const [state, setState] = useState('')   // '', 'open', 'unlinked'
   const [period, setPeriod] = useState(0)
 
   const [periodLabel, days, months] = FAIL_PERIODS[period]
@@ -752,10 +753,14 @@ function LiveFailures() {
   const prev3 = trend.slice(0, 3).reduce((a, m) => a + m.count, 0)
   const last3 = trend.slice(3).reduce((a, m) => a + m.count, 0)
   const dir = last3 < prev3 ? 'down' : last3 > prev3 ? 'up' : 'flat'
-  const classRows = stats.by_class.map((c) => [c.name, c.count])
-  const faultRows = stats.by_fault.map((c) => [c.name, c.count])
+  const asRows = (a) => a.map((c) => [c.name, c.count])
 
-  const shown = cls ? rows.filter((r) => (r.category || 'Unclassified') === cls) : rows
+  const shown = rows.filter((r) => {
+    if (cls && (r.category || 'Unclassified') !== cls) return false
+    if (state === 'open') return !r.ended_at && r.asset_code
+    if (state === 'unlinked') return !r.asset_code
+    return true
+  })
 
   return (
     <>
@@ -763,25 +768,37 @@ function LiveFailures() {
         <label className="dim">Period <select value={period} onChange={(e) => setPeriod(Number(e.target.value))}>
           {FAIL_PERIODS.map(([lbl], i) => <option key={lbl} value={i}>{lbl}</option>)}
         </select></label>
+        <label className="dim">Class <select value={cls} onChange={(e) => setCls(e.target.value)}>
+          <option value="">All</option>
+          {stats.by_class.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
+        </select></label>
+        <label className="dim">State <select value={state} onChange={(e) => setState(e.target.value)}>
+          <option value="">All</option>
+          <option value="open">Open</option>
+          <option value="unlinked">Unlinked records</option>
+        </select></label>
+        <span className="dim">Read-only — report a failure in the <a href="#/log">Log book</a>.</span>
       </div>
 
       <div className="kpis">
-        <div className="tile"><div className="v">{stats.total}</div><div className="k">Failures — {periodLabel.toLowerCase()}</div></div>
-        <div className={stats.open ? 'tile alert' : 'tile'}><div className="v">{stats.open}</div><div className="k">Still open</div></div>
+        <div className="tile"><div className="v">{stats.total}</div>
+          <div className="k">Failures — {periodLabel.toLowerCase()}</div></div>
+        <div className={stats.open ? 'tile alert' : 'tile'}><div className="v">{stats.open}</div>
+          <div className="k">Open breakdowns</div></div>
         <div className="tile"><div className="v">{stats.measured ? `${stats.downtime_hours} h` : '—'}</div>
-          <div className="k">Downtime — {stats.measured ? `${stats.measured} timed record${stats.measured === 1 ? '' : 's'}` : 'no timed records'}</div></div>
+          <div className="k">Downtime{stats.measured ? ` · ${stats.measured} timed` : ' — none timed'}</div></div>
         <div className="tile"><div className="v">{stats.mttr_hours != null ? `${stats.mttr_hours} h` : '—'}</div>
-          <div className="k">{stats.mttr_hours != null ? `Mean time to recover · ${stats.measured} of ${stats.closed}` : 'MTTR — needs clock times'}</div></div>
-        <div className="tile"><div className="v">{stats.all_time}</div><div className="k">Failures on record</div></div>
+          <div className="k">{stats.mttr_hours != null ? `MTTR · ${stats.measured} of ${stats.closed}` : 'MTTR — needs clock times'}</div></div>
+        <div className={stats.unlinked ? 'tile warn' : 'tile'}><div className="v">{stats.unlinked}</div>
+          <div className="k">Unlinked records</div></div>
       </div>
 
-      {stats.unmeasured > 0 && (
+      {(stats.unmeasured > 0 || stats.unlinked > 0) && (
         <p className="viz-insight">
-          Downtime figures come from the {stats.measured} failure{stats.measured === 1 ? '' : 's'} logged
-          with clock times. {stats.unmeasured} imported record{stats.unmeasured === 1 ? ' carries' : 's carry'} a
-          date but no start/end time, so {stats.unmeasured === 1 ? 'it is' : 'they are'} counted as failures
-          but left out of the duration averages. Log the failure and recovery times in the Log book
-          and these fill in from here on.
+          {stats.unmeasured > 0 && <>Downtime and MTTR come from the {stats.measured} failure{stats.measured === 1 ? '' : 's'} logged
+            with clock times; {stats.unmeasured} imported record{stats.unmeasured === 1 ? '' : 's'} carry a date only and sit outside the averages. </>}
+          {stats.unlinked > 0 && <>{stats.unlinked} record{stats.unlinked === 1 ? '' : 's'} never matched an asset code in the register —
+            they are a data-quality backlog, not open work.</>}
         </p>
       )}
 
@@ -790,58 +807,42 @@ function LiveFailures() {
           <h2 className="viz-h">Failures per month <span className="viz-note">last {months} months</span></h2>
           <TrendChart data={trend} />
           <p className="viz-insight">
-            {dir === 'down' && <>Trend improving — {last3} failures in the last 3 months vs {prev3} in the previous 3.</>}
-            {dir === 'up' && <>Trend worsening — {last3} failures in the last 3 months vs {prev3} in the previous 3.</>}
-            {dir === 'flat' && <>Steady — {last3} failures in each of the last two quarters.</>}
+            {dir === 'down' && <>Improving — {last3} in the last 3 months vs {prev3} in the previous 3.</>}
+            {dir === 'up' && <>Worsening — {last3} in the last 3 months vs {prev3} in the previous 3.</>}
+            {dir === 'flat' && <>Steady — {last3} in each of the last two quarters.</>}
           </p>
         </section>
 
         <section className="card viz-card">
-          <h2 className="viz-h">Failures by asset class <span className="viz-note">{periodLabel.toLowerCase()}</span></h2>
-          {classRows.length === 0 ? <p className="dim">Nothing recorded in this window.</p> : <>
-            <HBar rows={classRows} unit="" />
-            <p className="viz-insight">{classRows[0][0]} leads with {classRows[0][1]} — focus area for the next PM review.</p>
+          <h2 className="viz-h">By asset class <span className="viz-note">{periodLabel.toLowerCase()}</span></h2>
+          {stats.by_class.length === 0 ? <p className="dim">Nothing in this window.</p> : <>
+            <HBar rows={asRows(stats.by_class)} unit="" />
+            <p className="viz-insight">{stats.by_class[0].name} leads with {stats.by_class[0].count} — focus for the next PM review.</p>
           </>}
         </section>
 
         <section className="card viz-card">
           <h2 className="viz-h">Fault types <span className="viz-note">{periodLabel.toLowerCase()}</span></h2>
-          {faultRows.length === 0
+          {stats.by_fault.length === 0
             ? <p className="dim">No fault types classified in this window.</p>
-            : <HBar rows={faultRows} unit="" seq />}
+            : <HBar rows={asRows(stats.by_fault)} unit="" seq />}
         </section>
 
         <section className="card viz-card">
-          <h2 className="viz-h">Open breakdowns <span className="viz-note">awaiting recovery</span></h2>
-          {stats.open_items.length === 0
-            ? <p className="viz-insight">Every recorded failure stands restored.</p>
-            : stats.open_items.map((o) => (
-                <div className="wo" key={o.id}>
-                  <div className="row1">
-                    {o.asset_code
-                      ? <a className="code" href={`#/asset/${o.asset_code}`}>{o.asset_code}</a>
-                      : <span className="dim">unmatched asset</span>}
-                    <span className="sub dt">{o.log_date}</span>
-                  </div>
-                  <div className="findings">{o.text}</div>
-                </div>
-              ))}
+          <h2 className="viz-h">Repeat offenders <span className="viz-note">most failures</span></h2>
+          {stats.by_asset.length === 0
+            ? <p className="dim">Nothing in this window.</p>
+            : <>
+                <HBar rows={asRows(stats.by_asset)} unit="" seq />
+                <p className="viz-insight">{stats.by_asset[0].name} has failed {stats.by_asset[0].count} times — worth a condition review.</p>
+              </>}
         </section>
       </div>
 
-      <h2>Failure &amp; recovery log</h2>
-      <div className="log-filters">
-        <label className="dim">Class <select value={cls} onChange={(e) => setCls(e.target.value)}>
-          <option value="">All</option>
-          {stats.by_class.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
-        </select></label>
-        <span className="dim">
-          Read-only view — report a failure in the <a href="#/log">Log book</a>.
-        </span>
-      </div>
+      <h2>Failure &amp; recovery log <span className="dim">· {shown.length}</span></h2>
       <div className="card tbl-wrap">
         <table>
-          <thead><tr><th>Asset</th><th>Class</th><th>Occurred</th><th>Restored</th><th>Downtime</th><th>State</th><th>Fault → what happened</th></tr></thead>
+          <thead><tr><th>Asset</th><th>Class</th><th>Occurred</th><th>Restored</th><th>Down</th><th>State</th><th>Fault → what happened</th></tr></thead>
           <tbody>
             {shown.map((f) => (
               <tr key={f.id} tabIndex={0}
@@ -857,10 +858,12 @@ function LiveFailures() {
                       ? f.ended_at.slice(0, 10)
                       : f.ended_at.slice(0, 16).replace('T', ' '))
                   : '—'}</td>
-                <td className="dt" data-l="Downtime">{f.down_hours != null ? `${f.down_hours} h` : '—'}</td>
-                <td data-l="State">{f.ended_at
-                  ? <span className="chip w-done"><span className="dot" />Restored</span>
-                  : <span className="chip d-overdue"><span className="dot" />Open</span>}</td>
+                <td className="dt" data-l="Down">{f.down_hours != null ? `${f.down_hours} h` : '—'}</td>
+                <td data-l="State">{!f.asset_code
+                  ? <span className="chip"><span className="dot" />Unlinked</span>
+                  : f.ended_at
+                    ? <span className="chip w-done"><span className="dot" />Restored</span>
+                    : <span className="chip d-overdue"><span className="dot" />Open</span>}</td>
                 <td className="wrap-cell" data-l="Fault">
                   {f.fault_type && <b>{f.fault_type} </b>}{f.text}
                 </td>
@@ -868,7 +871,7 @@ function LiveFailures() {
             ))}
           </tbody>
         </table>
-        {shown.length === 0 && <p className="dim" style={{ padding: '1rem' }}>No failures recorded for this class.</p>}
+        {shown.length === 0 && <p className="dim" style={{ padding: '1rem' }}>Nothing matches this filter.</p>}
       </div>
     </>
   )
