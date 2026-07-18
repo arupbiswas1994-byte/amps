@@ -10,9 +10,9 @@ Design rules:
 """
 from datetime import date, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.assets import visible_asset
@@ -221,29 +221,42 @@ def list_entries(log_date: date | None = None, shift: str | None = None,
                  asset_code: str | None = None, entry_type: str | None = None,
                  category: str | None = None,
                  date_from: date | None = None, date_to: date | None = None,
-                 limit: int = 200, db: Session = Depends(get_db), user=Depends(optional_user)):
+                 limit: int = 200, offset: int = 0, response: Response = None,
+                 db: Session = Depends(get_db), user=Depends(optional_user)):
     """The day's log, a shift's log, or one asset's complete logged history.
     Line-scoped users read their line's book plus department-wide entries.
-    date_from/date_to bound the week/month/year views."""
-    q = select(LogEntry).order_by(LogEntry.log_date.desc(), LogEntry.at.desc(),
-                                  LogEntry.id.desc()).limit(min(limit, 1000))
+    date_from/date_to bound the week/month/year views.
+
+    Paged: the total row count comes back in X-Total-Count so the caller can
+    say "1-100 of 3,966" instead of silently showing a truncated page — a
+    year of this book is thousands of entries."""
+    filters = []
     if user.line_id is not None:
-        q = q.where((LogEntry.line_id == user.line_id) | (LogEntry.line_id.is_(None)))
+        filters.append((LogEntry.line_id == user.line_id) | (LogEntry.line_id.is_(None)))
     if log_date:
-        q = q.where(LogEntry.log_date == log_date)
+        filters.append(LogEntry.log_date == log_date)
     if date_from:
-        q = q.where(LogEntry.log_date >= date_from)
+        filters.append(LogEntry.log_date >= date_from)
     if date_to:
-        q = q.where(LogEntry.log_date <= date_to)
+        filters.append(LogEntry.log_date <= date_to)
     if shift:
-        q = q.where(LogEntry.shift == ShiftCode(shift))
+        filters.append(LogEntry.shift == ShiftCode(shift))
     if entry_type:
-        q = q.where(LogEntry.type == LogEntryType(entry_type))
+        filters.append(LogEntry.type == LogEntryType(entry_type))
     if category:
-        q = q.where(LogEntry.category == category)
+        filters.append(LogEntry.category == category)
     if asset_code:
         asset = visible_asset(db, asset_code, user)
-        q = q.where(LogEntry.asset_id == asset.id)
+        filters.append(LogEntry.asset_id == asset.id)
+
+    if response is not None:
+        total = db.scalar(select(func.count()).select_from(LogEntry).where(*filters))
+        response.headers["X-Total-Count"] = str(total)
+        response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
+
+    q = (select(LogEntry).where(*filters)
+         .order_by(LogEntry.log_date.desc(), LogEntry.at.desc(), LogEntry.id.desc())
+         .offset(max(offset, 0)).limit(min(limit, 1000)))
     rows = db.scalars(q).all()
     rec = _recovery_map(db, rows)
     return [_to_out(e, rec.get(e.id)) for e in rows]

@@ -298,6 +298,9 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 }
 .btn.sm { padding: 3px 10px; font-size: 12px; margin-top: 6px; }
 .log-team { flex: 0 1 190px; min-width: 130px; }
+.log-pager { display: flex; gap: 14px; align-items: center; justify-content: center;
+  margin: 18px 0 6px; font-size: 13.5px; }
+.log-pager .btn[disabled] { opacity: .45; pointer-events: none; }
 
 /* every shift shows every day: a worked shift gets a titled block, a quiet
    one collapses to a single line so "nothing logged" is visible but cheap */

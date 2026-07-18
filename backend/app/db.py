@@ -61,6 +61,23 @@ def _migrate(engine):
                     # quote — some column names (e.g. "group") are reserved words
                     conn.execute(text(f'ALTER TABLE {table} ADD COLUMN "{col}" {ddl}'))
 
+    # The logbook only ever carried its primary key, so every filtered read was
+    # a sequential scan of the whole book — fine at a hundred rows, not at the
+    # tens of thousands a few years of real history produce. These cover the
+    # queries the app actually issues: the date-ordered window, one asset's
+    # history, the type/class filters and the rectification lookup.
+    indexes = {
+        "ix_log_entries_date": "log_entries (log_date DESC, at DESC, id DESC)",
+        "ix_log_entries_asset": "log_entries (asset_id)",
+        "ix_log_entries_type": "log_entries (type)",
+        "ix_log_entries_rectifies": "log_entries (rectifies_id)",
+        "ix_log_entries_line": "log_entries (line_id)",
+        "ix_log_entries_category": "log_entries (category)",
+    }
+    with engine.begin() as conn:
+        for name, defn in indexes.items():
+            conn.execute(text(f"CREATE INDEX IF NOT EXISTS {name} ON {defn}"))
+
 
 def get_db():
     db = SessionLocal()

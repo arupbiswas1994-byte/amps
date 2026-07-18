@@ -27,6 +27,8 @@ const addDays = (iso, n) => {
 /* Week/month/year windows, anchored on the newest RECORDED date rather than
    on today — imported history can end months back, and anchoring on the
    calendar would open the book on an empty window. */
+const PAGE_SIZE = 100
+
 const PERIODS = [
   ['Week', 'week'], ['Month', 'month'], ['Year', 'year'], ['All time', 'all'],
 ]
@@ -170,6 +172,10 @@ export default function LogBook() {
   const [allDates, setAllDates] = useState(true)
   const [period, setPeriod] = useState('month')
   const [anchor, setAnchor] = useState(null)   // newest recorded date
+  // A year of this book is thousands of entries — page it rather than pull a
+  // truncated slice and imply it is the whole thing.
+  const [page, setPage] = useState(0)
+  const [total, setTotal] = useState(0)
   const [fCat, setFCat] = useState('')             // '' = all categories (classes)
   const [fType, setFType] = useState('')           // '' = all types
   const [apiOk, setApiOk] = useState(null)
@@ -227,10 +233,13 @@ export default function LogBook() {
       if (allDates) {
         if (from) q.set('date_from', from)
         if (to) q.set('date_to', to)
-        q.set('limit', '500')
       }
+      q.set('limit', String(PAGE_SIZE))
+      q.set('offset', String(page * PAGE_SIZE))
       const res = await fetch(`${API}/api/logbook?${q}`)
       if (!res.ok) throw new Error(res.status)
+      const n = Number(res.headers.get('X-Total-Count'))
+      setTotal(Number.isFinite(n) ? n : 0)
       setEntries(await res.json())
       setApiOk(true)
     } catch {
@@ -238,7 +247,9 @@ export default function LogBook() {
     }
   }
 
-  useEffect(() => { load() }, [logDate, allDates, fCat, fType, from, to])  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load() }, [logDate, allDates, fCat, fType, from, to, page])  // eslint-disable-line react-hooks/exhaustive-deps
+  // any change of what we are looking at starts again at the first page
+  useEffect(() => { setPage(0) }, [logDate, allDates, fCat, fType, from, to])
 
   const add = async (e) => {
     e.preventDefault()
@@ -518,6 +529,19 @@ export default function LogBook() {
         </div>
       ))}
       {apiOk && !entries.length && <p className="dim">No entries for this filter.</p>}
+
+      {total > PAGE_SIZE && (
+        <div className="log-pager">
+          <button type="button" className="btn ghost" disabled={page === 0}
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}>← Newer</button>
+          <span className="dim">
+            {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total.toLocaleString()}
+          </span>
+          <button type="button" className="btn ghost"
+                  disabled={(page + 1) * PAGE_SIZE >= total}
+                  onClick={() => setPage((p) => p + 1)}>Older →</button>
+        </div>
+      )}
 
       <p className="roadmap">
         Entries persist in the demo database (reseeded on each demo restart).
