@@ -24,6 +24,27 @@ const addDays = (iso, n) => {
   return isoLocal(d)
 }
 
+/* Week/month/year windows, anchored on the newest RECORDED date rather than
+   on today — imported history can end months back, and anchoring on the
+   calendar would open the book on an empty window. */
+const PERIODS = [
+  ['Week', 'week'], ['Month', 'month'], ['Year', 'year'], ['All time', 'all'],
+]
+const periodRange = (period, anchorIso) => {
+  if (period === 'all' || !anchorIso) return [null, null]
+  const a = new Date(anchorIso + 'T00:00:00')
+  if (period === 'year') return [`${a.getFullYear()}-01-01`, `${a.getFullYear()}-12-31`]
+  if (period === 'month') {
+    const m = String(a.getMonth() + 1).padStart(2, '0')
+    const last = new Date(a.getFullYear(), a.getMonth() + 1, 0).getDate()
+    return [`${a.getFullYear()}-${m}-01`, `${a.getFullYear()}-${m}-${last}`]
+  }
+  // week: Monday..Sunday containing the anchor
+  const dow = (a.getDay() + 6) % 7
+  const start = addDays(anchorIso, -dow)
+  return [start, addDays(start, 6)]
+}
+
 const fmtDate = (iso) =>
   new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
 const fmtTime = (ts) =>
@@ -111,12 +132,13 @@ export default function LogBook() {
   const authOn = me?.auth_enabled
   const [entries, setEntries] = useState([])
   const [logDate, setLogDate] = useState(today())  // the ruler: write + read date
-  // Open on the whole book, not on today. A quiet day (or any day before the
-  // first entry is written) left the page blank, which reads as "the logbook
-  // is broken" rather than "nothing happened today". The ruler still drives
-  // both reading and writing the moment a day is picked.
+  // Open on a period window, not on today. A quiet day left the page blank,
+  // which reads as "the logbook is broken" rather than "nothing happened
+  // today". The ruler still drives both reading and writing once a day is
+  // picked; clearing it returns to the period window.
   const [allDates, setAllDates] = useState(true)
-  const [fShift, setFShift] = useState('')         // '' = all shifts
+  const [period, setPeriod] = useState('month')
+  const [anchor, setAnchor] = useState(null)   // newest recorded date
   const [fCat, setFCat] = useState('')             // '' = all categories (classes)
   const [fType, setFType] = useState('')           // '' = all types
   const [apiOk, setApiOk] = useState(null)
@@ -143,14 +165,25 @@ export default function LogBook() {
   // distinct asset classes, sorted — the category dropdown's options
   const classes = [...new Set(assets.map((a) => a.asset_class).filter(Boolean))].sort()
 
+  // anchor the period windows on the newest date the book actually holds
+  useEffect(() => {
+    fetch(`${API}/api/logbook/bounds`).then((r) => (r.ok ? r.json() : null))
+      .then((b) => b?.last && setAnchor(b.last)).catch(() => {})
+  }, [])
+
+  const [from, to] = periodRange(period, anchor)
+
   const load = async () => {
     try {
       const q = new URLSearchParams()
       if (!allDates) q.set('log_date', logDate)
-      if (fShift) q.set('shift', fShift)
       if (fCat) q.set('category', fCat)
       if (fType) q.set('entry_type', fType)
-      if (allDates) q.set('limit', '500')
+      if (allDates) {
+        if (from) q.set('date_from', from)
+        if (to) q.set('date_to', to)
+        q.set('limit', '500')
+      }
       const res = await fetch(`${API}/api/logbook?${q}`)
       if (!res.ok) throw new Error(res.status)
       setEntries(await res.json())
@@ -160,7 +193,7 @@ export default function LogBook() {
     }
   }
 
-  useEffect(() => { load() }, [logDate, allDates, fShift, fCat, fType])  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load() }, [logDate, allDates, fCat, fType, from, to])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const add = async (e) => {
     e.preventDefault()
@@ -303,32 +336,56 @@ export default function LogBook() {
           <option value="">All</option>
           {ENTRY_TYPES.map((t) => <option key={t} value={t}>{t[0].toUpperCase() + t.slice(1)}</option>)}
         </select></label>
-        <label className="dim">Shift <select value={fShift} onChange={(e) => setFShift(e.target.value)}>
-          <option value="">All</option>
-          {ENTRY_SHIFTS.map((s) => <option key={s} value={s}>{s} — {SHIFT_LABEL[s]}</option>)}
+        {/* every shift is always rendered per day now, so a shift filter would
+            only hide the "nothing logged" fact the sections exist to show */}
+        <label className="dim">Period <select value={period}
+                onChange={(e) => { setPeriod(e.target.value); setAllDates(true) }}>
+          {PERIODS.map(([lbl, v]) => <option key={v} value={v}>{lbl}</option>)}
         </select></label>
+        {allDates && from && <span className="dim">{fmtDate(from)} — {fmtDate(to)}</span>}
       </div>
 
       {Object.entries(byDay).map(([day, list]) => (
         <div key={day} className="log-day">
           <h3 className="log-date dt">{fmtDate(day)}</h3>
           <div className="card">
-            {list.map((en) => (
-              <div className="log-entry" key={en.id}>
-                <div className="log-meta">
-                  {!en.at.includes('T00:00:00') && <span className="dt">{fmtTime(en.at)}</span>}
-                  {en.category && <span className="chip grp"><span className="dot" />{en.category}</span>}
-                  <span className="chip"><span className="dot" />{en.shift} · {SHIFT_LABEL[en.shift]}</span>
-                  <span className={`chip ${['defect', 'failure'].includes(en.type) ? 'd-overdue' : ''}`}>
-                    <span className="dot" />{en.type}{en.subtype ? ` · ${en.subtype}` : ''}
-                  </span>
-                  <span className="dim">{en.entered_by}</span>
-                  {en.asset_code && <a className="code" href={`#/asset/${en.asset_code}`}>{en.asset_code}</a>}
-                  {en.corrects_id && <span className="dim">corrects #{en.corrects_id}</span>}
+            {/* All four shifts always appear, so an empty shift reads as
+                "nothing was logged" rather than as missing data. Empty ones
+                collapse to one line; the shift being written to is marked. */}
+            {ENTRY_SHIFTS.map((sh) => {
+              const rows = list.filter((en) => en.shift === sh)
+              const isSel = sh === shift
+              if (!rows.length) {
+                return (
+                  <div key={sh} className={`log-shift empty${isSel ? ' sel' : ''}`}>
+                    <span className="log-shift-h">{sh} — {SHIFT_LABEL[sh]}</span>
+                    <span className="dim">no entries</span>
+                  </div>
+                )
+              }
+              return (
+                <div key={sh} className={`log-shift${isSel ? ' sel' : ''}`}>
+                  <div className="log-shift-h">
+                    {sh} — {SHIFT_LABEL[sh]} <span className="dim">· {rows.length}</span>
+                  </div>
+                  {rows.map((en) => (
+                    <div className="log-entry" key={en.id}>
+                      <div className="log-meta">
+                        {!en.at.includes('T00:00:00') && <span className="dt">{fmtTime(en.at)}</span>}
+                        {en.category && <span className="chip grp"><span className="dot" />{en.category}</span>}
+                        <span className={`chip ${['defect', 'failure'].includes(en.type) ? 'd-overdue' : ''}`}>
+                          <span className="dot" />{en.type}{en.subtype ? ` · ${en.subtype}` : ''}
+                        </span>
+                        <span className="dim">{en.entered_by}</span>
+                        {en.asset_code && <a className="code" href={`#/asset/${en.asset_code}`}>{en.asset_code}</a>}
+                        {en.corrects_id && <span className="dim">corrects #{en.corrects_id}</span>}
+                      </div>
+                      <div className="log-text">{en.text}</div>
+                    </div>
+                  ))}
                 </div>
-                <div className="log-text">{en.text}</div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       ))}

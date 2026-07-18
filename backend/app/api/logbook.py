@@ -152,15 +152,21 @@ def add_entry(entry: LogEntryIn, db: Session = Depends(get_db), user=Depends(cur
 def list_entries(log_date: date | None = None, shift: str | None = None,
                  asset_code: str | None = None, entry_type: str | None = None,
                  category: str | None = None,
+                 date_from: date | None = None, date_to: date | None = None,
                  limit: int = 200, db: Session = Depends(get_db), user=Depends(optional_user)):
     """The day's log, a shift's log, or one asset's complete logged history.
-    Line-scoped users read their line's book plus department-wide entries."""
+    Line-scoped users read their line's book plus department-wide entries.
+    date_from/date_to bound the week/month/year views."""
     q = select(LogEntry).order_by(LogEntry.log_date.desc(), LogEntry.at.desc(),
                                   LogEntry.id.desc()).limit(min(limit, 1000))
     if user.line_id is not None:
         q = q.where((LogEntry.line_id == user.line_id) | (LogEntry.line_id.is_(None)))
     if log_date:
         q = q.where(LogEntry.log_date == log_date)
+    if date_from:
+        q = q.where(LogEntry.log_date >= date_from)
+    if date_to:
+        q = q.where(LogEntry.log_date <= date_to)
     if shift:
         q = q.where(LogEntry.shift == ShiftCode(shift))
     if entry_type:
@@ -171,6 +177,22 @@ def list_entries(log_date: date | None = None, shift: str | None = None,
         asset = visible_asset(db, asset_code, user)
         q = q.where(LogEntry.asset_id == asset.id)
     return [_to_out(e) for e in db.scalars(q).all()]
+
+
+@router.get("/bounds")
+def logbook_bounds(db: Session = Depends(get_db), user=Depends(optional_user)):
+    """First and last dates the book actually covers.
+
+    The week/month/year views anchor on the newest recorded date rather than
+    on today: imported history can end months back, and anchoring on the
+    calendar would open the book on an empty window."""
+    from sqlalchemy import func
+
+    q = select(func.min(LogEntry.log_date), func.max(LogEntry.log_date))
+    if user.line_id is not None:
+        q = q.where((LogEntry.line_id == user.line_id) | (LogEntry.line_id.is_(None)))
+    first, last = db.execute(q).one()
+    return {"first": first, "last": last}
 
 
 @router.get("/failure-stats")
