@@ -127,6 +127,34 @@ function DateRuler({ value, onChange, days = 10 }) {
   )
 }
 
+/* Inline close-out for a failure already on the book. Its own date, time and
+   shift — the shift that did the work owns the entry. */
+function RectifyForm({ failure, busy, onCancel, onSubmit }) {
+  const [date, setDate] = useState(failure.log_date)
+  const [time, setTime] = useState('')
+  const [shift, setShift] = useState('G')
+  const [text, setText] = useState('')
+  return (
+    <div className="log-row2">
+      <span className="log-row2-tag">Rectification</span>
+      <input type="date" value={date} min={failure.log_date}
+             onChange={(e) => setDate(e.target.value)} aria-label="Rectified on" />
+      <input type="time" value={time} onChange={(e) => setTime(e.target.value)}
+             aria-label="Rectified at" className="log-time" />
+      <select value={shift} onChange={(e) => setShift(e.target.value)} aria-label="Shift">
+        {ENTRY_SHIFTS.map((s) => <option key={s} value={s}>{s} — {SHIFT_LABEL[s]}</option>)}
+      </select>
+      <input value={text} onChange={(e) => setText(e.target.value)}
+             placeholder="What was done to rectify it…" />
+      <button type="button" className="btn" disabled={busy}
+              onClick={() => onSubmit({ date, time, shift, text })}>
+        {busy ? 'Saving…' : 'Log fix'}
+      </button>
+      <button type="button" className="btn ghost" onClick={onCancel}>Cancel</button>
+    </div>
+  )
+}
+
 export default function LogBook() {
   const { me, canWrite } = useMe()
   const authOn = me?.auth_enabled
@@ -151,9 +179,21 @@ export default function LogBook() {
   const [subtype, setSubtype] = useState('Monthly')
   const [category, setCategory] = useState('')     // asset class
   const [tim, setTim] = useState('')               // optional HH:MM
-  const [endDate, setEndDate] = useState('')       // failures: recovery date
-  const [endTim, setEndTim] = useState('')         // failures: recovery HH:MM
   const [faultType, setFaultType] = useState('')   // failures: fault class
+  // A failure is logged either still-open or already-rectified. Rectified
+  // expands a second row that becomes its own log entry — the fix keeps its
+  // own date, time and shift, because a night breakdown fixed next morning
+  // belongs to the morning shift that fixed it, not to the night that broke.
+  // Defaults to OPEN on purpose: a form that assumes the fix has happened
+  // invites logging work that hasn't.
+  const [rectified, setRectified] = useState(false)
+  const [rDate, setRDate] = useState('')
+  const [rTim, setRTim] = useState('')
+  const [rShift, setRShift] = useState('G')
+  const [rText, setRText] = useState('')
+  // closing a failure that was logged open earlier — the two-row form can't
+  // reach it, that entry already exists
+  const [rectifying, setRectifying] = useState(null)
   const [assetCode, setAssetCode] = useState('')   // cross-reference to the register
   const [author, setAuthor] = useState('demo.visitor')
   const [assets, setAssets] = useState([])         // register rows for the datalist
@@ -209,20 +249,58 @@ export default function LogBook() {
           subtype: type === 'maintenance' ? subtype : null,
           category: category || null,
           time: tim || null,
-          end_date: type === 'failure' ? (endDate || null) : null,
-          end_time: type === 'failure' ? (endTim || null) : null,
           fault_type: type === 'failure' ? (faultType.trim() || null) : null,
           asset_code: assetCode.trim() || null,
           text: text.trim(), entered_by: author.trim() || 'demo.visitor',
+          // one submit, two immutable entries — the backend commits them together
+          rectification: type === 'failure' && rectified ? {
+            log_date: rDate || logDate,
+            time: rTim || null,
+            shift: rShift,
+            type: 'rectification',
+            category: category || null,
+            asset_code: assetCode.trim() || null,
+            text: (rText.trim() || 'Rectified'),
+            entered_by: author.trim() || 'demo.visitor',
+          } : null,
         }),
       })
       if (!res.ok) {
         const body = await res.json().catch(() => null)
         throw new Error(body?.detail || `HTTP ${res.status}`)
       }
-      setText(''); setAssetCode(''); setTim('')
-      setEndDate(''); setEndTim(''); setFaultType('')
+      setText(''); setAssetCode(''); setTim(''); setFaultType('')
+      setRectified(false); setRDate(''); setRTim(''); setRText('')
       setAllDates(false)  // show the day just written to
+      await load()
+    } catch (ex) {
+      setErr(String(ex.message || ex).replace(/^Error: /, ''))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /* Close a failure that was logged open. A separate entry, never an edit —
+     the failure keeps saying what it said, the fix says what it did. */
+  const submitRectify = async (failure, form) => {
+    setBusy(true); setErr('')
+    try {
+      const res = await fetch(`${API}/api/logbook`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          log_date: form.date, time: form.time || null, shift: form.shift,
+          type: 'rectification', rectifies_id: failure.id,
+          category: failure.category || null,
+          asset_code: failure.asset_code || null,
+          text: form.text.trim() || 'Rectified',
+          entered_by: author.trim() || 'demo.visitor',
+        }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        throw new Error(body?.detail || `HTTP ${res.status}`)
+      }
+      setRectifying(null)
       await load()
     } catch (ex) {
       setErr(String(ex.message || ex).replace(/^Error: /, ''))
@@ -289,10 +367,15 @@ export default function LogBook() {
               <input value={faultType} onChange={(e) => setFaultType(e.target.value)}
                      placeholder="Fault type…" className="log-cat" aria-label="Fault type"
                      maxLength={120} />
-              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
-                     aria-label="Restored on (optional)" title="Restored on — leave blank if still open" />
-              <input type="time" value={endTim} onChange={(e) => setEndTim(e.target.value)}
-                     aria-label="Restored at (optional)" title="Restored at" className="log-time" />
+              <select value={rectified ? 'rectified' : 'open'} aria-label="Failure state"
+                      onChange={(e) => {
+                        const on = e.target.value === 'rectified'
+                        setRectified(on)
+                        if (on && !rDate) setRDate(logDate)
+                      }}>
+                <option value="open">Still open</option>
+                <option value="rectified">Rectified</option>
+              </select>
             </>
           )}
           <input type="time" value={tim} onChange={(e) => setTim(e.target.value)}
@@ -315,9 +398,26 @@ export default function LogBook() {
           <input value={text} onChange={(e) => setText(e.target.value)}
                  placeholder={`Log entry for ${fmtDate(logDate)} — work done, readings, events…`} />
           <button className="btn" type="submit" disabled={busy || apiOk === false || !text.trim()}>
-            {busy ? 'Adding…' : 'Add entry'}
+            {busy ? 'Adding…' : rectified && type === 'failure' ? 'Add both entries' : 'Add entry'}
           </button>
           {err && <span className="import-msg err">{err}</span>}
+
+          {/* row two: the rectification, filed as its own entry */}
+          {type === 'failure' && rectified && (
+            <div className="log-row2">
+              <span className="log-row2-tag">Rectification</span>
+              <input type="date" value={rDate} onChange={(e) => setRDate(e.target.value)}
+                     aria-label="Rectified on" title="Rectified on" />
+              <input type="time" value={rTim} onChange={(e) => setRTim(e.target.value)}
+                     aria-label="Rectified at" title="Rectified at" className="log-time" />
+              <select value={rShift} onChange={(e) => setRShift(e.target.value)}
+                      aria-label="Rectification shift" title="Shift that did the work">
+                {ENTRY_SHIFTS.map((s) => <option key={s} value={s}>{s} — {SHIFT_LABEL[s]}</option>)}
+              </select>
+              <input value={rText} onChange={(e) => setRText(e.target.value)}
+                     placeholder="What was done to rectify it…" />
+            </div>
+          )}
         </form>
       ) : (
         <p className="dim">Viewing only — sign in with your line account to add entries.</p>
@@ -379,8 +479,20 @@ export default function LogBook() {
                         <span className="dim">{en.entered_by}</span>
                         {en.asset_code && <a className="code" href={`#/asset/${en.asset_code}`}>{en.asset_code}</a>}
                         {en.corrects_id && <span className="dim">corrects #{en.corrects_id}</span>}
+                        {en.rectifies_id && <span className="dim">rectifies #{en.rectifies_id}</span>}
+                        {en.type === 'failure' && (en.ended_at
+                          ? <span className="chip w-done"><span className="dot" />restored{en.down_hours != null ? ` · ${en.down_hours}h` : ''}</span>
+                          : <span className="chip d-overdue"><span className="dot" />open</span>)}
                       </div>
                       <div className="log-text">{en.text}</div>
+                      {canWrite && en.type === 'failure' && !en.ended_at && (
+                        rectifying === en.id
+                          ? <RectifyForm failure={en} busy={busy}
+                                         onCancel={() => setRectifying(null)}
+                                         onSubmit={(f) => submitRectify(en, f)} />
+                          : <button type="button" className="btn ghost sm"
+                                    onClick={() => setRectifying(en.id)}>Rectify</button>
+                      )}
                     </div>
                   ))}
                 </div>

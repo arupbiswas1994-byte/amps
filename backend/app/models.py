@@ -237,6 +237,15 @@ class LogEntry(Base):
     text: Mapped[str] = mapped_column(Text)
     entered_by: Mapped[str] = mapped_column(String(120), default="unknown")
     corrects_id: Mapped[int | None] = mapped_column(ForeignKey("log_entries.id"))
+    # Rectification rows only: the FAILURE entry this work fixes. Distinct from
+    # corrects_id, which means "this entry corrects a mis-written entry" —
+    # conflating the two would confuse a typo with a repair.
+    #
+    # State rule: THE LATEST ENTRY DOMINATES. A failure is open until a
+    # rectification is logged against it, and the newest rectification carries
+    # the recovery time — so a temporary fix followed by a permanent one just
+    # works, and a fresh failure on the same asset opens it again.
+    rectifies_id: Mapped[int | None] = mapped_column(ForeignKey("log_entries.id"))
     # Which site's (line's) logbook the entry belongs to. NULL = department-wide.
     line_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id"))
 
