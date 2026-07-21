@@ -30,6 +30,7 @@ const toView = (a) => ({
   makeModel: a.make_model || null,
   status: a.status,
   criticality: a.criticality,
+  commissionedOn: a.commissioned_on || null,
 })
 
 /** Session identity. Reads are open to everyone (the QR-scan surface);
@@ -91,6 +92,8 @@ export function useLiveAssets() {
     live there, filtered to this asset. */
 export function useLiveAsset(code) {
   const [state, set] = useState({ asset: null, history: [], log: [], loading: true, error: null })
+  const [nonce, setNonce] = useState(0)
+  const reload = () => setNonce((n) => n + 1)
   useEffect(() => {
     let alive = true
     set({ asset: null, history: [], log: [], loading: true, error: null })
@@ -102,6 +105,6 @@ export function useLiveAsset(code) {
       .then(([a, history, log]) => alive && set({ asset: toView(a), history, log, loading: false, error: null }))
       .catch((e) => alive && set({ asset: null, history: [], log: [], loading: false, error: String(e) }))
     return () => { alive = false }
-  }, [code])
-  return state
+  }, [code, nonce])
+  return { ...state, reload }
 }

@@ -76,6 +76,7 @@ function LiveDashboard({ go, initialLine = null }) {
       </div>
 
       <h2>Assets</h2>
+      <NewAssetBar defaultLine={effLine} />
       <ImportBar />
       {assets.length === 0 ? (
         <div className="card"><p className="dim" style={{ margin: 0 }}>
@@ -116,6 +117,26 @@ function LiveDashboard({ go, initialLine = null }) {
 
 /* bulk import: download the standard CSV template, upload the filled one.
    The Green Line register format is the base for every line. */
+/* Register one asset by hand — the counterpart to bulk CSV import, for the
+   asset that arrives after the sheet was filled. Writers only. */
+function NewAssetBar({ defaultLine }) {
+  const { canWrite } = useMe()
+  const [open, setOpen] = useState(false)
+  const [flash, setFlash] = useState('')
+  if (!canWrite) return null
+  return (
+    <div className="newasset">
+      {!open
+        ? <button className="btn ghost" type="button" onClick={() => setOpen(true)}>+ New asset</button>
+        : <AssetForm mode="create"
+                     initial={defaultLine ? { line: defaultLine, criticality: 'B', status: 'in_service' } : null}
+                     onCancel={() => setOpen(false)}
+                     onDone={(code) => { setOpen(false); setFlash(`${code} registered.`); location.hash = `/asset/${code}` }} />}
+      {flash && <span className="import-msg">{flash}</span>}
+    </div>
+  )
+}
+
 function ImportBar() {
   const { canWrite } = useMe()
   const [busy, setBusy] = useState(false)
@@ -321,8 +342,134 @@ function AssetLogSections({ log }) {
   )
 }
 
+/* The technical-detail editor, shared by "new asset" and "edit asset". A
+   create POSTs the whole record; an edit PATCHes only the fields that moved,
+   so the audit trail records real changes, not a rewrite of every field. */
+const CRITICALITY = ['A', 'B', 'C']
+const STATUSES = ['in_service', 'under_maintenance', 'out_of_service', 'decommissioned']
+
+function AssetForm({ initial, mode, onDone, onCancel }) {
+  const empty = {
+    code: '', name: '', asset_class: '', location: '', line: '',
+    system: '', make_model: '', criticality: 'B', status: 'in_service',
+    commissioned_on: '',
+  }
+  // edit maps the full asset view; create starts empty but honours a couple of
+  // sensible defaults (the line the register is currently showing)
+  const start = mode === 'edit' ? {
+    code: initial.code, name: initial.name, asset_class: initial.cls,
+    location: initial.location, line: initial.line || '', system: initial.sys || '',
+    make_model: initial.makeModel || '', criticality: initial.criticality,
+    status: initial.status, commissioned_on: initial.commissionedOn || '',
+  } : { ...empty, line: initial?.line || '' }
+  const [f, setF] = useState(start)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [classes, setClasses] = useState([])
+  useEffect(() => {
+    getJSON('/api/assets').then((rows) =>
+      setClasses([...new Set(rows.map((r) => r.asset_class).filter(Boolean))].sort())
+    ).catch(() => {})
+  }, [])
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
+  const codeChanged = mode === 'edit' && f.code !== start.code
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (busy) return
+    setBusy(true); setErr('')
+    try {
+      const payload = { ...f }
+      Object.keys(payload).forEach((k) => { if (payload[k] === '') payload[k] = null })
+      const url = mode === 'edit'
+        ? `/api/assets/${encodeURIComponent(start.code)}`
+        : '/api/assets'
+      const res = await fetch(url, {
+        method: mode === 'edit' ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      })
+      if (!res.ok) {
+        const b = await res.json().catch(() => null)
+        throw new Error(b?.detail || `HTTP ${res.status}`)
+      }
+      const saved = await res.json()
+      onDone(saved.code)
+    } catch (ex) {
+      setErr(String(ex.message || ex).replace(/^Error: /, ''))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form className="asset-form card" onSubmit={submit}>
+      <datalist id="af-classes">{classes.map((c) => <option key={c} value={c} />)}</datalist>
+      <div className="af-grid">
+        <label>Code<input value={f.code} onChange={set('code')} required
+                          placeholder="printed on the QR tag" /></label>
+        <label>Name<input value={f.name} onChange={set('name')} required /></label>
+        <label>Asset class<input value={f.asset_class} onChange={set('asset_class')} required
+                                 list="af-classes" /></label>
+        <label>Location / station<input value={f.location} onChange={set('location')} required /></label>
+        <label>Line<input value={f.line} onChange={set('line')} placeholder="e.g. Green Line" /></label>
+        <label>System<input value={f.system} onChange={set('system')} placeholder="reporting rollup" /></label>
+        <label>Make / model<input value={f.make_model} onChange={set('make_model')} /></label>
+        <label>Commissioned on<input type="date" value={f.commissioned_on} onChange={set('commissioned_on')} /></label>
+        <label>Criticality<select value={f.criticality} onChange={set('criticality')}>
+          {CRITICALITY.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select></label>
+        <label>Status<select value={f.status} onChange={set('status')}>
+          {STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+        </select></label>
+      </div>
+      {codeChanged && (
+        <p className="af-warn">Changing the code re-keys the asset — the printed QR tag will need reprinting. History is preserved.</p>
+      )}
+      <div className="af-actions">
+        <button className="btn" type="submit" disabled={busy}>
+          {busy ? 'Saving…' : mode === 'edit' ? 'Save changes' : 'Create asset'}
+        </button>
+        <button className="btn ghost" type="button" onClick={onCancel}>Cancel</button>
+        {err && <span className="import-msg err">{err}</span>}
+      </div>
+    </form>
+  )
+}
+
+/* The register's answer to "who changed this, and from what" — the asset's
+   audit trail, writers only. */
+function AssetAudit({ code }) {
+  const [rows, setRows] = useState(null)
+  useEffect(() => {
+    let alive = true
+    getJSON(`/api/assets/${encodeURIComponent(code)}/audit`)
+      .then((r) => alive && setRows(r)).catch(() => alive && setRows([]))
+    return () => { alive = false }
+  }, [code])
+  if (!rows || rows.length === 0) return null
+  return (
+    <div className="sect">
+      <h3>Change history — who edited this record</h3>
+      {rows.map((r, i) => (
+        <div className="wo" key={i}>
+          <div className="row1">
+            <span className={`chip ${r.action === 'created' ? 'w-done' : ''}`}>
+              <span className="dot" />{r.action}
+            </span>
+            <span className="dim">by <b>{r.actor}</b></span>
+            <span className="sub dt">{new Date(r.at).toLocaleString()}</span>
+          </div>
+          {r.detail && <div className="findings">{r.detail}</div>}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function LiveAssetDetail({ code }) {
-  const { asset: a, history, log, loading, error } = useLiveAsset(code)
+  const { asset: a, history, log, loading, error, reload } = useLiveAsset(code)
+  const { canWrite } = useMe()
+  const [editing, setEditing] = useState(false)
   if (loading) return <p className="dim">Loading {code}…</p>
   if (error || !a) {
     return (
@@ -342,16 +489,35 @@ function LiveAssetDetail({ code }) {
       <div className="detail-grid">
         <div className="card">
           <div className="detail-head">
-            <h1><span className="code">{a.code}</span> · {a.name}</h1>
+            <div className="dh-top">
+              <h1><span className="code">{a.code}</span> · {a.name}</h1>
+              {canWrite && !editing && (
+                <button className="btn ghost sm" type="button" onClick={() => setEditing(true)}>Edit</button>
+              )}
+            </div>
             <div className="meta">
               <span><b>{a.cls}</b></span>
               <span>{a.location}{a.line ? ` · ${a.line}` : ''} · {ORG}</span>
               {a.sys && <span>{a.sys}</span>}
               {a.makeModel && <span>{a.makeModel}</span>}
               <span>Criticality <b>{a.criticality}</b></span>
+              {a.commissionedOn && <span>Commissioned <b>{a.commissionedOn}</b></span>}
               <StatusChip status={a.status} />
             </div>
           </div>
+
+          {editing && (
+            <div className="sect">
+              <h3>Edit technical details</h3>
+              <AssetForm initial={a} mode="edit"
+                         onCancel={() => setEditing(false)}
+                         onDone={(newCode) => {
+                           setEditing(false)
+                           if (newCode !== a.code) location.hash = `/asset/${newCode}`
+                           else reload()
+                         }} />
+            </div>
+          )}
 
           <AssetLogSections log={log} />
 
@@ -373,6 +539,8 @@ function LiveAssetDetail({ code }) {
               </div>
             ))}
           </div>
+
+          {canWrite && <AssetAudit code={a.code} />}
         </div>
 
         <div className="card qr-card">

@@ -1,6 +1,7 @@
 """Asset register endpoints — v0.2, DB-backed."""
 import csv
 import io
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ValidationError
@@ -10,7 +11,8 @@ from sqlalchemy.orm import Session
 
 from app.api.auth import current_user, optional_user, scope_location_ids
 from app.db import audit, get_db
-from app.models import Asset, AssetClass, AssetStatus, Criticality, Location, LocationKind, WorkOrder
+from app.models import (Asset, AssetClass, AssetStatus, AuditLog, Criticality,
+                        Location, LocationKind, WorkOrder)
 
 router = APIRouter()
 
@@ -53,6 +55,22 @@ class AssetIn(BaseModel):
     system: str | None = None  # reporting rollup, e.g. "Traction / PS"
     status: str = "in_service"
     line: str | None = None  # parent site in the location tree, e.g. "Green Line"
+    commissioned_on: date | None = None  # in service since — a technical detail
+
+
+class AssetUpdate(BaseModel):
+    """Every field optional — a PATCH carries only what changed. `code` may be
+    corrected but is the QR-tag identity, so the client is warned to reprint."""
+    code: str | None = None
+    name: str | None = None
+    asset_class: str | None = None
+    location: str | None = None
+    make_model: str | None = None
+    criticality: str | None = None
+    system: str | None = None
+    status: str | None = None
+    line: str | None = None
+    commissioned_on: date | None = None
 
 
 class AssetOut(AssetIn):
@@ -66,6 +84,7 @@ def _to_out(a: Asset) -> AssetOut:
         make_model=a.make_model, status=a.status.value,
         criticality=a.criticality.value, system=a.system,
         line=a.location.parent.name if a.location.parent else None,
+        commissioned_on=a.commissioned_on,
     )
 
 
@@ -131,6 +150,7 @@ def _create_one(db: Session, asset: AssetIn, user) -> Asset:
     obj = Asset(
         code=asset.code, name=asset.name, make_model=asset.make_model,
         criticality=crit, system=asset.system, status=status,
+        commissioned_on=asset.commissioned_on,
         asset_class=_get_or_create_class(db, asset.asset_class),
         location=_get_or_create_location(db, asset.location, asset.line),
     )
@@ -228,6 +248,102 @@ async def import_csv(request: Request, db: Session = Depends(get_db),
 @router.get("/{code}", response_model=AssetOut)
 def get_asset(code: str, db: Session = Depends(get_db), user=Depends(optional_user)):
     return _to_out(visible_asset(db, code, user))
+
+
+def _line_of(a: Asset) -> str | None:
+    return a.location.parent.name if a.location and a.location.parent else None
+
+
+@router.patch("/{code}", response_model=AssetOut)
+def update_asset(code: str, patch: AssetUpdate, db: Session = Depends(get_db),
+                 user=Depends(current_user)):
+    """Edit an asset's technical details, one attributable change at a time.
+
+    Every field that actually changes is written to the audit trail as
+    was→now, so the register can always answer "who changed this, and from
+    what". Line-scoped users may only touch their own line, and may not move
+    an asset out of it. Append-only history survives a code change because the
+    logbook links by id, not code — but printed QR tags carry the code, so a
+    code change is flagged for reprinting."""
+    a = visible_asset(db, code, user)  # 404s outside the caller's scope
+    my_line = db.get(Location, user.line_id).name if user.line_id is not None else None
+
+    changes: list[str] = []
+
+    def note(field, old, new):
+        changes.append(f"{field}: {old or '—'}→{new or '—'}")
+
+    if patch.code is not None and patch.code != a.code:
+        if db.scalar(select(Asset).where(Asset.code == patch.code)):
+            raise HTTPException(409, f"asset code {patch.code} already exists")
+        note("code", a.code, patch.code)
+        a.code = patch.code
+    if patch.name is not None and patch.name != a.name:
+        note("name", a.name, patch.name); a.name = patch.name
+    if patch.make_model is not None and patch.make_model != (a.make_model or ""):
+        note("make/model", a.make_model, patch.make_model)
+        a.make_model = patch.make_model or None
+    if patch.system is not None and patch.system != (a.system or ""):
+        note("system", a.system, patch.system); a.system = patch.system or None
+    if patch.commissioned_on is not None and patch.commissioned_on != a.commissioned_on:
+        note("commissioned", a.commissioned_on, patch.commissioned_on)
+        a.commissioned_on = patch.commissioned_on
+    if patch.criticality is not None and patch.criticality != a.criticality.value:
+        try:
+            note("criticality", a.criticality.value, patch.criticality)
+            a.criticality = Criticality(patch.criticality)
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+    if patch.status is not None and patch.status != a.status.value:
+        try:
+            note("status", a.status.value, patch.status)
+            a.status = AssetStatus(patch.status)
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+    if patch.asset_class is not None and patch.asset_class != a.asset_class.name:
+        note("class", a.asset_class.name, patch.asset_class)
+        a.asset_class = _get_or_create_class(db, patch.asset_class)
+    # Location / line moves. A scoped user cannot move an asset off their line.
+    new_line = patch.line if patch.line is not None else _line_of(a)
+    if my_line is not None and new_line and new_line != my_line:
+        raise HTTPException(403, f"your account manages {my_line} only")
+    loc_changed = patch.location is not None and patch.location != a.location.name
+    line_changed = patch.line is not None and new_line != _line_of(a)
+    if loc_changed or line_changed:
+        if loc_changed:
+            note("location", a.location.name, patch.location)
+        if line_changed:
+            note("line", _line_of(a), new_line)
+        a.location = _get_or_create_location(
+            db, patch.location if patch.location is not None else a.location.name, new_line)
+
+    if not changes:
+        return _to_out(a)  # nothing to record — a no-op edit isn't an event
+
+    db.flush()
+    audit(db, "asset", a.id, "updated", detail=" · ".join(changes), actor=user.username)
+    db.commit()
+    db.refresh(a)
+    return _to_out(a)
+
+
+class AuditOut(BaseModel):
+    at: datetime
+    actor: str
+    action: str
+    detail: str | None
+
+
+@router.get("/{code}/audit", response_model=list[AuditOut])
+def asset_audit(code: str, db: Session = Depends(get_db), user=Depends(current_user)):
+    """The change history for one asset, newest first. Writers only — the
+    walk-up QR surface shows the record, not who has edited it."""
+    a = visible_asset(db, code, user)
+    rows = db.scalars(
+        select(AuditLog).where(AuditLog.entity == "asset", AuditLog.entity_id == a.id)
+        .order_by(AuditLog.at.desc(), AuditLog.id.desc())
+    ).all()
+    return [AuditOut(at=r.at, actor=r.actor, action=r.action, detail=r.detail) for r in rows]
 
 
 class HistoryItem(BaseModel):
