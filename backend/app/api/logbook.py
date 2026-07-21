@@ -28,7 +28,8 @@ class LogEntryIn(BaseModel):
     shift: str = "G"                    # M/E/N/G (R retired from the book)
     type: str = "general"               # maintenance/failure/rectification/general
     subtype: str | None = None          # maintenance frequency (Monthly … Special)
-    category: str | None = None         # asset class (auto-filled from the asset)
+    system: str | None = None           # coarse rollup (auto-filled from the asset)
+    category: str | None = None         # asset class under the system (optional)
     time: str | None = None             # optional HH:MM — a single moment, no start/end
     text: str = Field(min_length=3)
     entered_by: str = ""                # ignored on authenticated deployments
@@ -55,6 +56,7 @@ class LogEntryOut(BaseModel):
     shift: str
     type: str
     subtype: str | None
+    system: str | None
     category: str | None
     text: str
     entered_by: str
@@ -103,7 +105,7 @@ def _down_hours(e: LogEntry, recovered: datetime | None = None) -> float | None:
 def _to_out(e: LogEntry, recovered: datetime | None = None) -> LogEntryOut:
     return LogEntryOut(
         id=e.id, at=e.at, log_date=e.log_date, shift=e.shift.value,
-        type=e.type.value, subtype=e.subtype, category=e.category, text=e.text,
+        type=e.type.value, subtype=e.subtype, system=e.system, category=e.category, text=e.text,
         entered_by=e.entered_by, attended_by=e.attended_by,
         asset_code=e.asset.code if e.asset else None,
         asset_name=e.asset.name if e.asset else None, corrects_id=e.corrects_id,
@@ -119,6 +121,11 @@ def _category_of(asset) -> str | None:
         return None
     cls = asset.asset_class.name if asset.asset_class else None
     return cls[:80] if cls else None
+
+
+def _system_of(asset) -> str | None:
+    """The asset's system rollup — the entry's coarse equipment tag."""
+    return (asset.system[:80] if asset and asset.system else None)
 
 
 @router.post("", response_model=LogEntryOut, status_code=201)
@@ -177,7 +184,8 @@ def _create_entry(db: Session, entry: LogEntryIn, user, rectifies: LogEntry | No
     at = datetime.combine(entry.log_date, when) if when else datetime.combine(entry.log_date, datetime.min.time())
     # Logged-in deployments: authorship comes from the session, never the form.
     author = user.full_name if AUTH_ON else (entry.entered_by or "unknown")
-    # category: explicit choice wins; else the asset's class
+    # system + category: explicit choice wins; else inherit from the asset
+    system = (entry.system or "").strip()[:80] or _system_of(asset)
     category = (entry.category or "").strip()[:80] or _category_of(asset)
     # maintenance is a night-shift job — enforce it regardless of client
     shift = ShiftCode.NIGHT if etype == LogEntryType.MAINTENANCE else ShiftCode(entry.shift)
@@ -196,7 +204,7 @@ def _create_entry(db: Session, entry: LogEntryIn, user, rectifies: LogEntry | No
     obj = LogEntry(
         at=at, log_date=entry.log_date, shift=shift,
         type=etype, subtype=(entry.subtype or None),
-        category=(category or None), text=entry.text,
+        system=(system or None), category=(category or None), text=entry.text,
         ended_at=ended_at,
         fault_type=((entry.fault_type or "").strip()[:120] or None
                     if etype == LogEntryType.FAILURE else None),
@@ -459,7 +467,9 @@ async def import_history(request: Request, db: Session = Depends(get_db),
             have_logs.add(key)
             line_id = (asset.location.parent_id if asset and asset.location
                        else None) or user.line_id
-            # category = the asset's class; fall back to the CSV group cell
+            # system + category = the asset's rollup + class; category falls
+            # back to the CSV group cell when the asset is unmatched
+            system = _system_of(asset)
             category = _category_of(asset) or (get("group")[:80] or None)
             # maintenance runs on the night shift; failures keep the general marker
             # failures carry their recovery moment so downtime stays derivable
@@ -472,7 +482,7 @@ async def import_history(request: Request, db: Session = Depends(get_db),
                 shift=ShiftCode.GENERAL if is_failure else ShiftCode.NIGHT,
                 type=LogEntryType.FAILURE if is_failure else LogEntryType.MAINTENANCE,
                 subtype=None if is_failure else _maint_subtype(get("type")),
-                category=category,
+                system=system, category=category,
                 ended_at=end,
                 fault_type=(get("fault_type")[:120] or None) if is_failure else None,
                 text=body_text, entered_by=(get("attended_by") or "imported record")[:120],

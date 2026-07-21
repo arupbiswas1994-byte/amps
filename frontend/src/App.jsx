@@ -301,16 +301,27 @@ function LogList({ rows }) {
   )
 }
 
-function AssetLogSections({ log }) {
+function AssetLogSections({ log, staff }) {
   const maint = log.filter((e) => e.type === 'maintenance')
-  const fails = log.filter((e) => e.type === 'failure')
+  const allFails = log.filter((e) => e.type === 'failure')
   const other = log.filter((e) => e.type !== 'maintenance' && e.type !== 'failure')
+  // A public walk-up (QR scan) sees only settled history — open breakdowns are
+  // operational and stay behind sign-in. Staff see them, pulled to the top and
+  // marked. The maintenance record is public either way.
+  const openFail = allFails.filter((e) => !e.ended_at)
+  const resolvedFail = allFails.filter((e) => e.ended_at)
   // only timed entries carry a duration — see _down_hours on the API side
-  const timed = fails.filter((e) => e.down_hours != null)
+  const timed = resolvedFail.filter((e) => e.down_hours != null)
   const downtime = timed.reduce((s, e) => s + e.down_hours, 0)
-  const openFails = fails.filter((e) => !e.ended_at).length
   return (
     <>
+      {staff && openFail.length > 0 && (
+        <div className="sect open-fail-banner">
+          <h3>⚠ Open breakdown{openFail.length > 1 ? 's' : ''} — {openFail.length} awaiting recovery</h3>
+          <LogList rows={openFail} />
+        </div>
+      )}
+
       <div className="sect">
         <h3>
           Maintenance history — {maint.length ? `${maint.length} entr${maint.length === 1 ? 'y' : 'ies'}, newest first` : 'none recorded'}
@@ -322,14 +333,14 @@ function AssetLogSections({ log }) {
 
       <div className="sect">
         <h3>
-          Failure history — {fails.length
-            ? <>{fails.length}{timed.length > 0 && <> · {downtime.toFixed(1)}h downtime</>}
-                {openFails > 0 ? ` · ${openFails} open` : ''}</>
+          Failure history — {resolvedFail.length
+            ? <>{resolvedFail.length} resolved{timed.length > 0 && <> · {downtime.toFixed(1)}h downtime</>}</>
             : 'none recorded'}
+          {!staff && openFail.length > 0 && <span className="dim"> · sign in for open breakdowns</span>}
         </h3>
-        {fails.length === 0
-          ? <p className="dim">No failures recorded against this asset — a clean sheet.</p>
-          : <LogList rows={fails} />}
+        {resolvedFail.length === 0
+          ? <p className="dim">No resolved failures recorded against this asset.</p>
+          : <LogList rows={resolvedFail} />}
       </div>
 
       {other.length > 0 && (
@@ -519,7 +530,7 @@ function LiveAssetDetail({ code }) {
             </div>
           )}
 
-          <AssetLogSections log={log} />
+          <AssetLogSections log={log} staff={canWrite} />
 
           <div className="sect">
             <h3>Work-order history — completed jobs, newest first</h3>
@@ -898,7 +909,7 @@ function LiveFailures() {
   const [rows, setRows] = useState([])
   const [error, setError] = useState(null)
   const [cls, setCls] = useState('')
-  const [state, setState] = useState('')   // '', 'open', 'unlinked'
+  const [state, setState] = useState('open')   // tab: 'open' | 'resolved'
   const [period, setPeriod] = useState(0)
 
   const [periodLabel, days, months] = FAIL_PERIODS[period]
@@ -927,12 +938,12 @@ function LiveFailures() {
   const dir = last3 < prev3 ? 'down' : last3 > prev3 ? 'up' : 'flat'
   const asRows = (a) => a.map((c) => [c.name, c.count])
 
-  const shown = rows.filter((r) => {
-    if (cls && (r.category || 'Unclassified') !== cls) return false
-    if (state === 'open') return !r.ended_at && r.asset_code
-    if (state === 'unlinked') return !r.asset_code
-    return true
-  })
+  // two tabs: still-open breakdowns vs restored ones. A row is open until a
+  // recovery time exists (linked or not); unlinked-open rows are flagged.
+  const byClass = (r) => !cls || (r.category || 'Unclassified') === cls
+  const openRows = rows.filter((r) => !r.ended_at && byClass(r))
+  const resolvedRows = rows.filter((r) => r.ended_at && byClass(r))
+  const shown = state === 'open' ? openRows : resolvedRows
 
   return (
     <>
@@ -943,11 +954,6 @@ function LiveFailures() {
         <label className="dim">Class <select value={cls} onChange={(e) => setCls(e.target.value)}>
           <option value="">All</option>
           {stats.by_class.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
-        </select></label>
-        <label className="dim">State <select value={state} onChange={(e) => setState(e.target.value)}>
-          <option value="">All</option>
-          <option value="open">Open</option>
-          <option value="unlinked">Unlinked records</option>
         </select></label>
         <span className="dim">Read-only — report a failure in the <a href="#/log">Log book</a>.</span>
       </div>
@@ -1011,7 +1017,19 @@ function LiveFailures() {
         </section>
       </div>
 
-      <h2>Failure &amp; recovery log <span className="dim">· {shown.length}</span></h2>
+      <h2>Failure &amp; recovery log</h2>
+      <div className="fail-tabs" role="tablist">
+        <button type="button" role="tab" aria-selected={state === 'open'}
+                className={`fail-tab${state === 'open' ? ' active' : ''}${openRows.length ? ' has-open' : ''}`}
+                onClick={() => setState('open')}>
+          Open failures <span className="fail-tab-n">{openRows.length}</span>
+        </button>
+        <button type="button" role="tab" aria-selected={state === 'resolved'}
+                className={`fail-tab${state === 'resolved' ? ' active' : ''}`}
+                onClick={() => setState('resolved')}>
+          Resolved <span className="fail-tab-n">{resolvedRows.length}</span>
+        </button>
+      </div>
       <div className="card tbl-wrap">
         <table>
           <thead><tr><th>Asset</th><th>Class</th><th>Occurred</th><th>Restored</th><th>Down</th><th>State</th><th>Team</th><th>Fault → what happened</th></tr></thead>

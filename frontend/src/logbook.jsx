@@ -186,7 +186,8 @@ export default function LogBook() {
   const [shift, setShift] = useState('M')
   const [type, setType] = useState('general')
   const [subtype, setSubtype] = useState('Monthly')
-  const [category, setCategory] = useState('')     // asset class
+  const [system, setSystem] = useState('')         // coarse rollup (short list)
+  const [category, setCategory] = useState('')     // asset class under the system
   const [tim, setTim] = useState('')               // optional HH:MM
   const [faultType, setFaultType] = useState('')   // failures: fault class
   const [team, setTeam] = useState('')             // crew that did the work
@@ -215,6 +216,12 @@ export default function LogBook() {
   }, [])
   // distinct asset classes, sorted — the category dropdown's options
   const classes = [...new Set(assets.map((a) => a.asset_class).filter(Boolean))].sort()
+  // the systems (short) and, per system, the classes under it — so the class
+  // picker only ever shows what belongs to the chosen system
+  const systems = [...new Set(assets.map((a) => a.system).filter(Boolean))].sort()
+  const classesForSystem = system
+    ? [...new Set(assets.filter((a) => a.system === system).map((a) => a.asset_class).filter(Boolean))].sort()
+    : classes
 
   // anchor the period windows on the newest date the book actually holds
   useEffect(() => {
@@ -263,6 +270,7 @@ export default function LogBook() {
         body: JSON.stringify({
           log_date: logDate, shift, type,
           subtype: type === 'maintenance' ? subtype : null,
+          system: system || null,
           category: category || null,
           time: tim || null,
           fault_type: type === 'failure' ? (faultType.trim() || null) : null,
@@ -275,6 +283,7 @@ export default function LogBook() {
             time: rTim || null,
             shift: rShift,
             type: 'rectification',
+            system: system || null,
             category: category || null,
             asset_code: assetCode.trim() || null,
             text: (rText.trim() || 'Rectified'),
@@ -287,7 +296,7 @@ export default function LogBook() {
         const body = await res.json().catch(() => null)
         throw new Error(body?.detail || `HTTP ${res.status}`)
       }
-      setText(''); setAssetCode(''); setTim(''); setFaultType('')
+      setText(''); setAssetCode(''); setTim(''); setFaultType(''); setSystem('')
       setRectified(false); setRDate(''); setRTim(''); setRText(''); setRTeam('')
       setTeam('')
       setAllDates(false)  // show the day just written to
@@ -363,12 +372,19 @@ export default function LogBook() {
                   title={type === 'maintenance' ? 'Maintenance runs on the night shift' : 'Shift'}>
             {ENTRY_SHIFTS.map((s) => <option key={s} value={s}>{s} — {SHIFT_LABEL[s]}</option>)}
           </select>
-          <input value={category} list="asset-classes" placeholder="Asset class…"
-                 className="log-cat" aria-label="Asset class / category"
-                 onChange={(e) => setCategory(e.target.value)} />
-          <datalist id="asset-classes">
-            {classes.map((c) => <option key={c} value={c} />)}
-          </datalist>
+          {/* System first (a short list), then the class under it — the class
+              options narrow to that system so the picker stays short. */}
+          <select value={system} className="log-sys" aria-label="System"
+                  onChange={(e) => { setSystem(e.target.value); setCategory('') }}>
+            <option value="">System…</option>
+            {systems.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <select value={category} className="log-cat" aria-label="Asset class (optional)"
+                  disabled={!system && classesForSystem.length === 0}
+                  onChange={(e) => setCategory(e.target.value)}>
+            <option value="">{system ? 'Class (optional)…' : 'Class…'}</option>
+            {classesForSystem.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
           <select value={type}
                   onChange={(e) => { setType(e.target.value); if (e.target.value === 'maintenance') setShift('N') }}
                   aria-label="Entry type">
@@ -405,11 +421,14 @@ export default function LogBook() {
                  onChange={(e) => {
                    const v = e.target.value
                    setAssetCode(v)
-                   const hit = assets.find((a) => a.code === v)  // auto-set class from the asset
+                   const hit = assets.find((a) => a.code === v)  // auto-set system + class from the asset
+                   if (hit?.system) setSystem(hit.system)
                    if (hit?.asset_class) setCategory(hit.asset_class)
                  }} />
+          {/* code leads the visible label so the Asset ID shows in the list,
+              not just the name — some browsers hide the option value */}
           <datalist id="register-codes">
-            {assets.map((a) => <option key={a.code} value={a.code}>{a.name} · {a.location}</option>)}
+            {assets.map((a) => <option key={a.code} value={a.code}>{`${a.code} — ${a.name} · ${a.location}`}</option>)}
           </datalist>
           {!authOn && ( /* signed-in deployments stamp the author from the session */
             <input value={author} onChange={(e) => setAuthor(e.target.value)}
@@ -497,6 +516,7 @@ export default function LogBook() {
                     <div className="log-entry" key={en.id}>
                       <div className="log-meta">
                         {!en.at.includes('T00:00:00') && <span className="dt">{fmtTime(en.at)}</span>}
+                        {en.system && <span className="chip sys"><span className="dot" />{en.system}</span>}
                         {en.category && <span className="chip grp"><span className="dot" />{en.category}</span>}
                         <span className={`chip ${['defect', 'failure'].includes(en.type) ? 'd-overdue' : ''}`}>
                           <span className="dot" />{en.type}{en.subtype ? ` · ${en.subtype}` : ''}

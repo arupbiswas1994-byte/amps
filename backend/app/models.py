@@ -225,6 +225,11 @@ class LogEntry(Base):
     type: Mapped[LogEntryType] = mapped_column(default=LogEntryType.GENERAL)
     # maintenance frequency (Monthly / Quarterly / Half-Yearly / Yearly / Special)
     subtype: Mapped[str | None] = mapped_column(String(40))
+    # Two-level equipment tag. `system` is the coarse rollup (~a dozen: "HT ·
+    # 750V DC", "LT · ECS (AC)") the section thinks in; `category` is the finer
+    # asset class under it (optional). System-first keeps the class picker
+    # short. Both auto-fill from the asset when one is named.
+    system: Mapped[str | None] = mapped_column(String(80))
     # equipment category — the asset class (auto-filled from the asset, editable)
     category: Mapped[str | None] = mapped_column(String(80))
     # Failure rows only: recovery moment and fault classification. `at` is the
