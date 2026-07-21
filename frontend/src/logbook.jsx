@@ -222,6 +222,20 @@ export default function LogBook() {
   const classesForSystem = system
     ? [...new Set(assets.filter((a) => a.system === system).map((a) => a.asset_class).filter(Boolean))].sort()
     : classes
+  // reverse link: each class's most common system, so picking a class fills
+  // the system too (a class almost always sits under one system)
+  const classSystem = {}
+  {
+    const tally = {}
+    assets.forEach((a) => {
+      if (a.asset_class && a.system) {
+        (tally[a.asset_class] ??= {})[a.system] = (tally[a.asset_class][a.system] || 0) + 1
+      }
+    })
+    Object.entries(tally).forEach(([c, sys]) => {
+      classSystem[c] = Object.entries(sys).sort((x, y) => y[1] - x[1])[0][0]
+    })
+  }
 
   // anchor the period windows on the newest date the book actually holds
   useEffect(() => {
@@ -381,7 +395,11 @@ export default function LogBook() {
           </select>
           <select value={category} className="log-cat" aria-label="Asset class (optional)"
                   disabled={!system && classesForSystem.length === 0}
-                  onChange={(e) => setCategory(e.target.value)}>
+                  onChange={(e) => {
+                    const c = e.target.value
+                    setCategory(c)
+                    if (c && classSystem[c]) setSystem(classSystem[c])  // fill system from class
+                  }}>
             <option value="">{system ? 'Class (optional)…' : 'Class…'}</option>
             {classesForSystem.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
