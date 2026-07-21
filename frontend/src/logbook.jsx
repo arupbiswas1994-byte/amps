@@ -99,32 +99,6 @@ function LiveBadge({ ok }) {
   )
 }
 
-/* Easy, always-visible time entry: two dropdowns instead of the native
-   <input type=time>, whose desktop-Linux control is a pair of tiny spinners
-   with no clock — users couldn't tell how to set it. Value is "HH:MM" or "". */
-function TimeSelect({ value, onChange, className = '' }) {
-  const [h, m] = value ? value.split(':') : ['', '']
-  const set = (nh, nm) => {
-    if (nh === '' && nm === '') return onChange('')
-    onChange(`${(nh || '00').padStart(2, '0')}:${(nm || '00').padStart(2, '0')}`)
-  }
-  const opts = (n) => Array.from({ length: n }, (_, i) => {
-    const v = String(i).padStart(2, '0')
-    return <option key={v} value={v}>{v}</option>
-  })
-  return (
-    <span className={`time-select ${className}`}>
-      <select value={h} onChange={(e) => set(e.target.value, m)} aria-label="Hour" title="Hour">
-        <option value="">hh</option>{opts(24)}
-      </select>
-      <span className="ts-colon">:</span>
-      <select value={m} onChange={(e) => set(h, e.target.value)} aria-label="Minute" title="Minute">
-        <option value="">mm</option>{opts(60)}
-      </select>
-    </span>
-  )
-}
-
 /* the date ruler — one strip picks the day for BOTH writing and reading.
    Back-dating an entry = tap its day (or the picker for anything older). */
 function DateRuler({ value, onChange, days = 10 }) {
@@ -168,7 +142,8 @@ function RectifyForm({ failure, busy, onCancel, onSubmit }) {
       <span className="log-row2-tag">Rectification</span>
       <input type="date" value={date} min={failure.log_date}
              onChange={(e) => setDate(e.target.value)} aria-label="Rectified on" />
-      <TimeSelect value={time} onChange={setTime} className="log-time" />
+      <input type="time" value={time} onChange={(e) => setTime(e.target.value)}
+             aria-label="Rectified at" className="log-time" />
       <select value={shift} onChange={(e) => setShift(e.target.value)} aria-label="Shift">
         {ENTRY_SHIFTS.map((s) => <option key={s} value={s}>{s} — {SHIFT_LABEL[s]}</option>)}
       </select>
@@ -457,7 +432,8 @@ export default function LogBook() {
               </select>
             </>
           )}
-          <TimeSelect value={tim} onChange={setTim} className="log-time" />
+          <input type="time" value={tim} onChange={(e) => setTim(e.target.value)}
+                 aria-label="Time (optional)" title="Time (optional)" className="log-time" />
           <input value={assetCode} list="register-codes" placeholder="Asset ID…"
                  className="log-asset" aria-label="Asset code (optional)"
                  onChange={(e) => {
@@ -492,7 +468,8 @@ export default function LogBook() {
               <span className="log-row2-tag">Rectification</span>
               <input type="date" value={rDate} onChange={(e) => setRDate(e.target.value)}
                      aria-label="Rectified on" title="Rectified on" />
-              <TimeSelect value={rTim} onChange={setRTim} className="log-time" />
+              <input type="time" value={rTim} onChange={(e) => setRTim(e.target.value)}
+                     aria-label="Rectified at" title="Rectified at" className="log-time" />
               <select value={rShift} onChange={(e) => setRShift(e.target.value)}
                       aria-label="Rectification shift" title="Shift that did the work">
                 {ENTRY_SHIFTS.map((s) => <option key={s} value={s}>{s} — {SHIFT_LABEL[s]}</option>)}
