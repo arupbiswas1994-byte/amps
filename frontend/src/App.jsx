@@ -494,42 +494,75 @@ function LiveAssetDetail({ code }) {
       </>
     )
   }
+  const accent = lineColor(a.line)
+  const maint = log.filter((e) => e.type === 'maintenance')
+  const resolvedFails = log.filter((e) => e.type === 'failure' && e.ended_at)
+  const lastServiced = maint.length ? maint[0].log_date : null
   return (
     <>
       <a className="crumb" href="#/">← Assets</a>
-      <div className="detail-grid">
-        <div className="card">
-          <div className="detail-head">
-            <div className="dh-top">
-              <h1><span className="code">{a.code}</span> · {a.name}</h1>
-              {canWrite && !editing && (
-                <button className="btn ghost sm" type="button" onClick={() => setEditing(true)}>Edit</button>
-              )}
+      <div className="asset-passport" style={{ '--line-c': accent }}>
+        {/* hero: the asset's identity, health and QR in one glance — the face
+            of the QR-scan page a visitor or manager lands on */}
+        <div className="card asset-hero">
+          <span className="hero-bar" />
+          <div className="hero-body">
+            <div className="hero-id">
+              <span className="hero-code">{a.code}</span>
+              <h1 className="hero-name">{a.name}</h1>
+              <div className="hero-sub">{a.cls}{a.sys ? ` · ${a.sys}` : ''}</div>
+              <div className="hero-loc">
+                <span className="ln-dot" style={{ background: accent }} />
+                {a.line ? <b>{a.line}</b> : null}{a.line ? ' · ' : ''}{a.location} · {ORG}
+              </div>
+              <div className="hero-badges">
+                <span className={`status-pill s-${a.status}`}><span className="dot" />{STATUS_LABEL[a.status]}</span>
+                <span className={`crit-badge c-${a.criticality}`} title="Criticality">Criticality {a.criticality}</span>
+                {canWrite && !editing && (
+                  <button className="btn ghost sm" type="button" onClick={() => setEditing(true)}>Edit details</button>
+                )}
+              </div>
             </div>
-            <div className="meta">
-              <span><b>{a.cls}</b></span>
-              <span>{a.location}{a.line ? ` · ${a.line}` : ''} · {ORG}</span>
-              {a.sys && <span>{a.sys}</span>}
-              {a.makeModel && <span>{a.makeModel}</span>}
-              <span>Criticality <b>{a.criticality}</b></span>
-              {a.commissionedOn && <span>Commissioned <b>{a.commissionedOn}</b></span>}
-              <StatusChip status={a.status} />
+            <div className="hero-qr">
+              <QR value={assetUrl(a.code)} size={148} />
+              <div className="hint">Scan to open<br />this record</div>
             </div>
           </div>
+        </div>
 
-          {editing && (
-            <div className="sect">
-              <h3>Edit technical details</h3>
-              <AssetForm initial={a} mode="edit"
-                         onCancel={() => setEditing(false)}
-                         onDone={(newCode) => {
-                           setEditing(false)
-                           if (newCode !== a.code) location.hash = `/asset/${newCode}`
-                           else reload()
-                         }} />
+        {/* the passport facts — one clean labelled grid, not a crammed line */}
+        <div className="asset-facts card">
+          {[
+            ['Location', a.location],
+            ['Line', a.line || '—'],
+            ['System', a.sys || '—'],
+            ['Asset class', a.cls],
+            ['Make / model', a.makeModel || '—'],
+            ['Commissioned', a.commissionedOn || '—'],
+            ['Last serviced', lastServiced || '—'],
+            ['Maintenance records', String(maint.length)],
+          ].map(([k, v]) => (
+            <div className="fact" key={k}>
+              <span className="fk">{k}</span>
+              <span className="fv">{v}</span>
             </div>
-          )}
+          ))}
+        </div>
 
+        {editing && (
+          <div className="card"><div className="sect">
+            <h3>Edit technical details</h3>
+            <AssetForm initial={a} mode="edit"
+                       onCancel={() => setEditing(false)}
+                       onDone={(newCode) => {
+                         setEditing(false)
+                         if (newCode !== a.code) location.hash = `/asset/${newCode}`
+                         else reload()
+                       }} />
+          </div></div>
+        )}
+
+        <div className="card">
           <AssetLogSections log={log} staff={canWrite} />
 
           <div className="sect">
@@ -552,12 +585,6 @@ function LiveAssetDetail({ code }) {
           </div>
 
           {canWrite && <AssetAudit code={a.code} />}
-        </div>
-
-        <div className="card qr-card">
-          <QR value={assetUrl(a.code)} size={180} />
-          <span className="code">{a.code}</span>
-          <div className="hint">Scan with any phone camera to open this asset record in the field.</div>
         </div>
       </div>
     </>
