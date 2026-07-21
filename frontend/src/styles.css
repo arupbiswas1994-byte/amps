@@ -270,7 +270,14 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 .chip.grp .dot { background: #5a7799; }
 .chip.sys { background: #eaf1ec; border-color: #cfe0d5; color: #2f5540; font-weight: 600; }
 .chip.sys .dot { background: #3f7d5a; }
-.log-form .log-time { flex: none; width: 130px; }
+/* keep the time field compact (it's optional) but show the native picker
+   indicator so clicking it opens the browser's clock popup — the same
+   affordance the date field has with its calendar icon */
+.log-form .log-time { flex: none; width: 130px; background: #fff; }
+.log-form input[type="time"] { color-scheme: light; }
+.log-form input[type="time"]::-webkit-calendar-picker-indicator {
+  opacity: 1; cursor: pointer; margin-left: 2px;
+}
 .log-form .log-sys { flex: none; width: 160px; }
 .log-form .log-cat { flex: none; width: 180px; }
 .log-form .log-asset { flex: none; width: 170px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
