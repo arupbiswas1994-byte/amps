@@ -5,27 +5,14 @@
    the old one — the bound-paper-logbook discipline, enforced by software).
 
    API base: same-origin by default; demo hosting builds with VITE_AMPS_API. */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { LIVE, useMe } from './api.js'
 
-/* Native time input with an explicit, always-visible clock button — the
-   browser's own picker indicator is faint (and absent on Firefox), so a
-   clock button that calls showPicker() gives a clear affordance like the
-   date field's calendar. Optional: blank = no time. */
+/* Optional time — the plain native picker. Blank = no time. */
 function TimeInput({ value, onChange, className = '', label = 'Time (optional)' }) {
-  const ref = useRef(null)
-  const open = () => {
-    const el = ref.current
-    if (!el) return
-    try { el.showPicker() } catch { el.focus() }
-  }
   return (
-    <span className={`time-field ${className}`}>
-      <input ref={ref} type="time" value={value} title={label} aria-label={label}
-             onChange={(e) => onChange(e.target.value)} />
-      <button type="button" className="time-clock" onClick={open}
-              aria-label="Open time picker" title="Pick time">🕐</button>
-    </span>
+    <input type="time" value={value} title={label} aria-label={label}
+           className={className} onChange={(e) => onChange(e.target.value)} />
   )
 }
 

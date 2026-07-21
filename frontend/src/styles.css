@@ -270,21 +270,7 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 .chip.grp .dot { background: #5a7799; }
 .chip.sys { background: #eaf1ec; border-color: #cfe0d5; color: #2f5540; font-weight: 600; }
 .chip.sys .dot { background: #3f7d5a; }
-/* optional time field: compact native input plus an explicit clock button
-   that opens the picker (the native indicator is too faint / Firefox-absent) */
-.time-field { display: inline-flex; align-items: stretch; flex: none; }
-.time-field input[type="time"] {
-  width: 104px; border-top-right-radius: 0; border-bottom-right-radius: 0;
-  border-right: none; background: #fff;
-}
-.time-field input[type="time"]::-webkit-calendar-picker-indicator { display: none; }
-.time-clock {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 34px; font-size: 15px; cursor: pointer;
-  border: 1px solid var(--border); border-top-right-radius: 8px; border-bottom-right-radius: 8px;
-  background: var(--accent-soft); color: var(--accent);
-}
-.time-clock:hover { background: color-mix(in srgb, var(--accent) 16%, #fff); }
+.log-form .log-time { flex: none; width: 130px; }
 .log-form .log-sys { flex: none; width: 160px; }
 .log-form .log-cat { flex: none; width: 180px; }
 .log-form .log-asset { flex: none; width: 170px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
