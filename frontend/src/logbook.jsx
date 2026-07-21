@@ -5,8 +5,29 @@
    the old one — the bound-paper-logbook discipline, enforced by software).
 
    API base: same-origin by default; demo hosting builds with VITE_AMPS_API. */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { LIVE, useMe } from './api.js'
+
+/* Native time input with an explicit, always-visible clock button — the
+   browser's own picker indicator is faint (and absent on Firefox), so a
+   clock button that calls showPicker() gives a clear affordance like the
+   date field's calendar. Optional: blank = no time. */
+function TimeInput({ value, onChange, className = '', label = 'Time (optional)' }) {
+  const ref = useRef(null)
+  const open = () => {
+    const el = ref.current
+    if (!el) return
+    try { el.showPicker() } catch { el.focus() }
+  }
+  return (
+    <span className={`time-field ${className}`}>
+      <input ref={ref} type="time" value={value} title={label} aria-label={label}
+             onChange={(e) => onChange(e.target.value)} />
+      <button type="button" className="time-clock" onClick={open}
+              aria-label="Open time picker" title="Pick time">🕐</button>
+    </span>
+  )
+}
 
 const API = import.meta.env.VITE_AMPS_API ?? ''
 
@@ -142,8 +163,7 @@ function RectifyForm({ failure, busy, onCancel, onSubmit }) {
       <span className="log-row2-tag">Rectification</span>
       <input type="date" value={date} min={failure.log_date}
              onChange={(e) => setDate(e.target.value)} aria-label="Rectified on" />
-      <input type="time" value={time} onChange={(e) => setTime(e.target.value)}
-             aria-label="Rectified at" className="log-time" />
+      <TimeInput value={time} onChange={setTime} className="log-time" label="Rectified at" />
       <select value={shift} onChange={(e) => setShift(e.target.value)} aria-label="Shift">
         {ENTRY_SHIFTS.map((s) => <option key={s} value={s}>{s} — {SHIFT_LABEL[s]}</option>)}
       </select>
@@ -432,8 +452,7 @@ export default function LogBook() {
               </select>
             </>
           )}
-          <input type="time" value={tim} onChange={(e) => setTim(e.target.value)}
-                 aria-label="Time (optional)" title="Time (optional)" className="log-time" />
+          <TimeInput value={tim} onChange={setTim} className="log-time" />
           <input value={assetCode} list="register-codes" placeholder="Asset ID…"
                  className="log-asset" aria-label="Asset code (optional)"
                  onChange={(e) => {
@@ -468,8 +487,7 @@ export default function LogBook() {
               <span className="log-row2-tag">Rectification</span>
               <input type="date" value={rDate} onChange={(e) => setRDate(e.target.value)}
                      aria-label="Rectified on" title="Rectified on" />
-              <input type="time" value={rTim} onChange={(e) => setRTim(e.target.value)}
-                     aria-label="Rectified at" title="Rectified at" className="log-time" />
+              <TimeInput value={rTim} onChange={setRTim} className="log-time" label="Rectified at" />
               <select value={rShift} onChange={(e) => setRShift(e.target.value)}
                       aria-label="Rectification shift" title="Shift that did the work">
                 {ENTRY_SHIFTS.map((s) => <option key={s} value={s}>{s} — {SHIFT_LABEL[s]}</option>)}
