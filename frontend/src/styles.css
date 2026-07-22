@@ -462,6 +462,13 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 .icon-btn:hover { color: var(--accent); background: var(--accent-soft);
   border-color: color-mix(in srgb, var(--accent) 22%, #fff); }
 .icon-btn.resolve:hover { color: #1a6b1a; background: #eafaea; border-color: #c6ecc6; }
+/* edit pencils that link to the log book from other surfaces */
+.edit-link { color: var(--ink-3); }
+.td-edit { width: 40px; text-align: center; }
+tbody tr:hover .edit-link { color: var(--accent); }
+.wo-edit { margin-left: auto; opacity: .4; transition: opacity .12s; }
+.wo:hover .wo-edit { opacity: 1; }
+.wo .row1 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 /* the edited marker: a small clock + label, clickable to reveal the trail */
 .edited-btn {
   display: inline-flex; align-items: center; gap: 3px;

@@ -303,7 +303,7 @@ function VersionHistory({ id }) {
   )
 }
 
-export default function LogBook() {
+export default function LogBook({ editId = null, focusDate = null } = {}) {
   const { me, canWrite } = useMe()
   const authOn = me?.auth_enabled
   const [entries, setEntries] = useState([])
@@ -416,6 +416,15 @@ export default function LogBook() {
   useEffect(() => { load() }, [logDate, allDates, fCat, fType, from, to, page])  // eslint-disable-line react-hooks/exhaustive-deps
   // any change of what we are looking at starts again at the first page
   useEffect(() => { setPage(0) }, [logDate, allDates, fCat, fType, from, to])
+
+  // deep-link (#/log?d=…&edit=…): a failure or asset-page row jumps here to
+  // edit an entry — open its day and put it straight into edit mode
+  useEffect(() => {
+    if (!editId) return
+    if (focusDate) { setLogDate(focusDate); setAllDates(false) }
+    setEditingId(Number(editId))
+    setHistoryFor(null)
+  }, [editId, focusDate])
 
   const add = async (e) => {
     e.preventDefault()

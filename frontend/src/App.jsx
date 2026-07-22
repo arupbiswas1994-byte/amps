@@ -26,6 +26,18 @@ const StatusChip = ({ status }) => (
 const SignatureMark = () => (
   <img src="/signature.png" className="sig-mark" alt="maker's signature" title="AMPS" />
 )
+/* a pencil that deep-links a log entry into the log book for editing — the
+   single editing surface everything else points at */
+const EditLink = ({ id, date, label = 'Edit in log book' }) => (
+  <a href={`#/log?d=${date}&edit=${id}`} className="icon-btn edit-link"
+     title={label} aria-label={label} onClick={(e) => e.stopPropagation()}>
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none"
+         stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M11.4 2.3a1.35 1.35 0 0 1 1.9 1.9L5 12.6l-2.6.6.6-2.6 8.4-8.3z" />
+    </svg>
+  </a>
+)
+
 /* the word AMPS is the doorway to the about/credits page — but only once
    signed in; a public walk-up sees plain text, not a link */
 const AmpsLink = () => {
@@ -290,7 +302,7 @@ function Dashboard({ go }) {
 /* ---------- asset detail (live) ---------- */
 
 /* One entry row, shared by both history sections. */
-function LogRow({ en }) {
+function LogRow({ en, staff }) {
   return (
     <div className="wo">
       <div className="row1">
@@ -302,6 +314,7 @@ function LogRow({ en }) {
         <span className="sub dt">{en.log_date}</span>
         {en.down_hours != null && <span className="sub">down <b>{en.down_hours}h</b></span>}
         {en.type === 'failure' && !en.ended_at && <span className="chip d-overdue">still open</span>}
+        {staff && <span className="wo-edit"><EditLink id={en.id} date={en.log_date} /></span>}
       </div>
       <div className="findings">{en.text}</div>
       {(en.attended_by || en.entered_by) && (
@@ -322,12 +335,12 @@ function LogRow({ en }) {
    the rest one click away. */
 const LOG_WINDOW = 8
 
-function LogList({ rows }) {
+function LogList({ rows, staff }) {
   const [all, setAll] = useState(false)
   const shown = all ? rows : rows.slice(0, LOG_WINDOW)
   return (
     <>
-      {shown.map((en) => <LogRow key={en.id} en={en} />)}
+      {shown.map((en) => <LogRow key={en.id} en={en} staff={staff} />)}
       {rows.length > LOG_WINDOW && (
         <button type="button" className="btn preset" onClick={() => setAll(!all)}>
           {all ? `Show latest ${LOG_WINDOW}` : `Show all ${rows.length}`}
@@ -354,7 +367,7 @@ function AssetLogSections({ log, staff }) {
       {staff && openFail.length > 0 && (
         <div className="sect open-fail-banner">
           <h3>⚠ Open breakdown{openFail.length > 1 ? 's' : ''} — {openFail.length} awaiting recovery</h3>
-          <LogList rows={openFail} />
+          <LogList rows={openFail} staff={staff} />
         </div>
       )}
 
@@ -364,7 +377,7 @@ function AssetLogSections({ log, staff }) {
         </h3>
         {maint.length === 0
           ? <p className="dim">No maintenance logged against this asset yet.</p>
-          : <LogList rows={maint} />}
+          : <LogList rows={maint} staff={staff} />}
       </div>
 
       <div className="sect">
@@ -376,13 +389,13 @@ function AssetLogSections({ log, staff }) {
         </h3>
         {resolvedFail.length === 0
           ? <p className="dim">No resolved failures recorded against this asset.</p>
-          : <LogList rows={resolvedFail} />}
+          : <LogList rows={resolvedFail} staff={staff} />}
       </div>
 
       {other.length > 0 && (
         <div className="sect">
           <h3>Other log entries — notes & rectifications, newest first</h3>
-          <LogList rows={other} />
+          <LogList rows={other} staff={staff} />
         </div>
       )}
     </>
@@ -968,6 +981,7 @@ const FAIL_PERIODS = [
 ]
 
 function LiveFailures() {
+  const { canWrite } = useMe()
   const [stats, setStats] = useState(null)
   const [rows, setRows] = useState([])
   const [error, setError] = useState(null)
@@ -1095,7 +1109,7 @@ function LiveFailures() {
       </div>
       <div className="card tbl-wrap">
         <table>
-          <thead><tr><th>Asset</th><th>Class</th><th>Occurred</th><th>Restored</th><th>Down</th><th>State</th><th>Team</th><th>Fault → what happened</th></tr></thead>
+          <thead><tr><th>Asset</th><th>Class</th><th>Occurred</th><th>Restored</th><th>Down</th><th>State</th><th>Team</th><th>Fault → what happened</th>{canWrite && <th aria-label="Edit"></th>}</tr></thead>
           <tbody>
             {shown.map((f) => (
               <tr key={f.id} tabIndex={0}
@@ -1121,6 +1135,12 @@ function LiveFailures() {
                 <td className="wrap-cell" data-l="Fault">
                   {f.fault_type && <b>{f.fault_type} </b>}{f.text}
                 </td>
+                {canWrite && (
+                  <td className="td-edit" data-l="Edit">
+                    <EditLink id={f.id} date={f.log_date}
+                              label={f.ended_at ? 'Edit in log book' : 'Resolve / link in log book'} />
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -1774,18 +1794,22 @@ export default function App() {
   const signedIn = authOn && me.username !== 'viewer'
   const anonymous = authOn && !signedIn
 
-  const assetMatch = route.match(/^\/asset\/(.+)$/)
-  const lineMatch = route.match(/^\/line\/(.+)$/)
-  const letterMatch = route.match(/^\/procurement\/([^/]+)\/letter$/)
-  const csMatch = route.match(/^\/checksheet\/(wo|pm)\/([^/]+)(?:\/(.+))?$/)
-  const jcMatch = route.match(/^\/jobcard\/(.+)$/)
+  // split the path from its query (e.g. /log?d=2026-01-13&edit=13863) so a
+  // row anywhere can deep-link straight into the logbook to edit an entry
+  const routePath = route.split('?')[0]
+  const routeQuery = new URLSearchParams(route.split('?')[1] || '')
+  const assetMatch = routePath.match(/^\/asset\/(.+)$/)
+  const lineMatch = routePath.match(/^\/line\/(.+)$/)
+  const letterMatch = routePath.match(/^\/procurement\/([^/]+)\/letter$/)
+  const csMatch = routePath.match(/^\/checksheet\/(wo|pm)\/([^/]+)(?:\/(.+))?$/)
+  const jcMatch = routePath.match(/^\/jobcard\/(.+)$/)
 
   if (LIVE && meLoading) return null // one clean paint: landing or app, never both
 
   // The train artwork is mounted once, outside the page switch — it never
   // reloads on navigation; only its opacity changes (full on the landing,
   // muted behind every other page).
-  const onLanding = anonymous && route !== '/login' && !assetMatch && !lineMatch
+  const onLanding = anonymous && routePath !== '/login' && !assetMatch && !lineMatch
   const siteArt = (
     <img className={`site-art${onLanding ? '' : ' muted'}`} alt="" aria-hidden="true"
          src={`${import.meta.env.BASE_URL}landing-art.webp`} />
@@ -1794,7 +1818,7 @@ export default function App() {
   // Anonymous surface = landing (line squares + sign-in), a chosen line
   // view-only, and QR-scanned asset pages. Everything else routes home.
   if (anonymous) {
-    if (route === '/login') return <>{siteArt}<LoginPage /></>
+    if (routePath === '/login') return <>{siteArt}<LoginPage /></>
     if (onLanding) return <>{siteArt}<Landing /></> // full-screen, own chrome
     const navLine = lineMatch ? decodeURIComponent(lineMatch[1]) : null
     return (
@@ -1839,16 +1863,16 @@ export default function App() {
         : letterMatch ? (LIVE ? <NotYet /> : <ProposalLetter prId={letterMatch[1]} />)
         : csMatch ? (LIVE ? <NotYet /> : <Checksheet kind={csMatch[1]} a1={csMatch[2]} a2={csMatch[3]} />)
         : jcMatch ? (LIVE ? <NotYet /> : <JobCard jcId={jcMatch[1]} />)
-        : route === '/planner' ? (LIVE ? <NotYet /> : <Planner />)
-        : route === '/roster' ? (LIVE ? <NotYet /> : <DutyRoster />)
-        : route === '/log' ? <LogBook />
+        : routePath === '/planner' ? (LIVE ? <NotYet /> : <Planner />)
+        : routePath === '/roster' ? (LIVE ? <NotYet /> : <DutyRoster />)
+        : routePath === '/log' ? <LogBook editId={routeQuery.get('edit')} focusDate={routeQuery.get('d')} />
         /* one ledger still: this reads failure entries out of the logbook,
            it is not a second record — reporting stays in the log book */
-        : route === '/failures' ? (LIVE ? <LiveFailures /> : <Failures />)
-        : route === '/spares' ? (LIVE ? <NotYet /> : <Spares />)
-        : route === '/procurement' ? (LIVE ? <NotYet /> : <Procurement />)
-        : route === '/tags' ? <TagSheet />
-        : route === '/about' ? <AboutPage />
+        : routePath === '/failures' ? (LIVE ? <LiveFailures /> : <Failures />)
+        : routePath === '/spares' ? (LIVE ? <NotYet /> : <Spares />)
+        : routePath === '/procurement' ? (LIVE ? <NotYet /> : <Procurement />)
+        : routePath === '/tags' ? <TagSheet />
+        : routePath === '/about' ? <AboutPage />
         : (LIVE ? <LiveDashboard go={go} /> : <Dashboard go={go} />)}
 
       <footer className="foot">
