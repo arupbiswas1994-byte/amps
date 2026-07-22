@@ -50,9 +50,9 @@ const Brand = () => (
     <span className="brand-lines">
       <span className="brand-l1">
         <span className="brand-name">AMPS</span>
-        <span className="brand-tag">Asset Maintenance &amp; Preventive Scheduling</span>
+        <span className="brand-org">{ORG}</span>
       </span>
-      <span className="brand-org">{ORG}</span>
+      <span className="brand-tag">Asset Maintenance &amp; Preventive Scheduling</span>
     </span>
   </a>
 )
