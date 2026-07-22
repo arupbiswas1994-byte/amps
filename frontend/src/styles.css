@@ -598,6 +598,11 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 }
 .foot a { color: inherit; }
 .foot a:hover { color: var(--ink-3); }
+/* the maker's signature, sized to the line and softened so it reads as a
+   quiet artist's mark, not a stamp */
+.sig-mark { height: 20px; width: auto; vertical-align: -7px; margin-left: 4px;
+  opacity: 0.62; }
+.gate-foot .sig-mark { height: 22px; vertical-align: -7px; opacity: 0.7; }
 
 /* ---- tablet: tables stay tables but cells wrap — no horizontal scroll ---- */
 @media screen and (min-width: 761px) and (max-width: 1024px) {
