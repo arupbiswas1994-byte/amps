@@ -72,6 +72,30 @@ a { color: inherit; text-decoration: none; }
 }
 .nav a:hover { color: var(--ink); background: #f5f5f4; }
 .nav a.active { color: var(--accent); background: var(--accent-soft); font-weight: 650; }
+
+/* showcase dropdown (demo only) — points to the real AMPS deployments */
+.showcase { position: relative; display: inline-block; }
+.showcase-btn {
+  font: inherit; font-size: 14px; font-weight: 550; color: var(--ink-2);
+  padding: 6px 13px; border-radius: 99px; border: 1px solid var(--border);
+  background: var(--surface); cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+}
+.showcase-btn:hover, .showcase-btn.open { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); background: var(--accent-soft); }
+.showcase-btn .caret { font-size: 10px; transition: transform .15s; }
+.showcase-btn.open .caret { transform: rotate(180deg); }
+.showcase-menu {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 60; min-width: 244px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.12); padding: 6px; overflow: hidden;
+}
+.sc-item { display: flex; flex-direction: column; gap: 2px; padding: 9px 12px; border-radius: 8px; }
+.sc-item:hover { background: #faf8f5; }
+.sc-name { font-size: 14px; font-weight: 650; color: var(--ink); display: flex; align-items: center; gap: 8px; }
+.sc-sub { font-size: 12px; color: var(--ink-3); }
+.sc-live { font-size: 9.5px; font-weight: 800; letter-spacing: .06em; color: #0f7a3d;
+  background: #e7f6ec; border-radius: 99px; padding: 1px 7px; }
+.sc-here { color: var(--accent); font-size: 15px; line-height: 0; }
+.sc-divider { height: 1px; background: var(--border); margin: 5px 8px; }
 @media screen and (max-width: 680px) {
   .brand-tag { display: none; }
   .brand-emblem { width: 40px; }

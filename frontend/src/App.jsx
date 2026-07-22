@@ -54,6 +54,54 @@ const FootSig = () => {
     : <SignatureMark />
 }
 
+/* Showcase dropdown — demo-only (amps.binihost.com). Points to the real
+   deployments of AMPS so a demo visitor can see it running in the field.
+   Metro AMPS is served from the office server over a Cloudflare Tunnel. */
+const SHOWCASE = [
+  { name: 'Metro AMPS', sub: 'Live · Kolkata Metro power-supply', href: 'https://metro.binihost.com', live: true },
+  { name: 'This demo', sub: 'Synthetic data — you are here', href: '#/', here: true },
+  { divider: true },
+  { name: 'biniHost', sub: 'The platform behind it', href: 'https://binihost.com' },
+]
+
+function ShowcaseDropdown() {
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    if (!open) return undefined
+    const close = () => setOpen(false)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [open])
+  return (
+    <span className="showcase" onClick={(e) => e.stopPropagation()}>
+      <button type="button" className={`showcase-btn${open ? ' open' : ''}`}
+              onClick={() => setOpen(!open)} aria-expanded={open} aria-haspopup="true">
+        Showcase <span className="caret">▾</span>
+      </button>
+      {open && (
+        <div className="showcase-menu" role="menu">
+          {SHOWCASE.map((it, i) => it.divider
+            ? <div className="sc-divider" key={i} />
+            : (
+              <a key={i} className="sc-item" role="menuitem"
+                 href={it.href}
+                 target={it.href.startsWith('http') ? '_blank' : undefined}
+                 rel={it.href.startsWith('http') ? 'noopener noreferrer' : undefined}
+                 onClick={() => setOpen(false)}>
+                <span className="sc-name">
+                  {it.name}
+                  {it.live && <span className="sc-live">● LIVE</span>}
+                  {it.here && <span className="sc-here">•</span>}
+                </span>
+                <span className="sc-sub">{it.sub}</span>
+              </a>
+            ))}
+        </div>
+      )}
+    </span>
+  )
+}
+
 /* the masthead: emblem + AMPS wordmark with its full form, and the
    organisation on a second line so it never drops out after sign-in */
 const Brand = () => (
@@ -1849,6 +1897,7 @@ export default function App() {
           {NAV.map(([path, label]) => (
             <a key={path} href={`#${path}`} className={route === path ? 'active' : ''}>{label}</a>
           ))}
+          {!LIVE && <ShowcaseDropdown />}
           {signedIn && (
             <span className="who">
               <span className="dot" style={{ background: lineColor(me.line || '') }} />
