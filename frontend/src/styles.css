@@ -603,6 +603,32 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 .sig-mark { height: 20px; width: auto; vertical-align: -7px; margin-left: 4px;
   opacity: 0.62; }
 .gate-foot .sig-mark { height: 22px; vertical-align: -7px; opacity: 0.7; }
+.foot-sig { display: inline-block; }
+.foot-sig:hover .sig-mark { opacity: 0.9; }
+.foot-about { margin-left: 12px; color: inherit; text-decoration: underline dotted; }
+.foot-about:hover { color: var(--ink-3); }
+
+/* ---- about / credits page ---- */
+.about { max-width: 720px; margin: 0 auto; }
+.about-hero { text-align: center; padding: 16px 0 26px; }
+.about-hero h1 { font-size: 34px; font-weight: 720; letter-spacing: -0.02em; }
+.about-tag { font-size: 15px; color: var(--ink-2); font-weight: 550; margin-top: 4px; letter-spacing: .01em; }
+.about-note { padding: 26px 28px; }
+.about-note p { font-size: 15.5px; line-height: 1.7; color: var(--ink); margin-bottom: 14px; }
+.about-note p:last-of-type { margin-bottom: 0; }
+.about-sign { margin-top: 22px; padding-top: 18px; border-top: 1px solid #f0efee;
+  display: flex; align-items: center; gap: 14px; }
+.about-sign .sig-mark { height: 44px; opacity: 0.9; margin: 0; vertical-align: middle; }
+.about-by { font-size: 12.5px; color: var(--ink-3); letter-spacing: .04em; text-transform: uppercase; }
+.about-credits { margin-top: 16px; padding: 8px 12px; }
+.ac-row { display: flex; gap: 16px; padding: 12px 14px; border-bottom: 1px solid #f0efee; }
+.ac-row:last-child { border-bottom: none; }
+.ac-k { flex: 0 0 96px; font-size: 11.5px; font-weight: 600; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--ink-3); padding-top: 2px; }
+.ac-v { font-size: 14.5px; color: var(--ink); }
+.about-ack { margin-top: 16px; padding: 18px 24px; text-align: center;
+  font-size: 15px; color: var(--ink-2); font-style: italic; }
+.about-ack b { font-style: normal; color: var(--ink); font-weight: 600; }
 
 /* ---- tablet: tables stay tables but cells wrap — no horizontal scroll ---- */
 @media screen and (min-width: 761px) and (max-width: 1024px) {

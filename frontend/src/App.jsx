@@ -1462,6 +1462,52 @@ function Checksheet({ kind, a1, a2 }) {
 
 /* ---------- QR tag sheet ---------- */
 
+/* The credits page — the story behind the tool, reachable from the footer.
+   Full attribution lives here (a page you choose to open), while the always-
+   visible footer stays a quiet signed mark. */
+function AboutPage() {
+  return (
+    <div className="about">
+      <a className="crumb" href="#/">← Back</a>
+      <div className="about-hero">
+        <h1>AMPS</h1>
+        <p className="about-tag">Asset Maintenance &amp; Preventive Scheduling</p>
+      </div>
+
+      <div className="card about-note">
+        <p>
+          AMPS grew out of the daily work of a power-supply section — the shift
+          logbook, the failure register and the maintenance schedule a team
+          keeps by hand. It sets out to give that discipline a digital home:
+          every asset a QR tag, every job a record, every failure a lesson kept.
+        </p>
+        <p>
+          It is built to stay simple enough for everyone, from the field to the
+          front office — a tool that earns trust by never losing what was
+          written, and by showing the equipment's story at a glance.
+        </p>
+        <div className="about-sign">
+          <SignatureMark />
+          <span className="about-by">Arup Biswas · maker</span>
+        </div>
+      </div>
+
+      {/* acknowledgment — added deliberately once the wording is settled */}
+
+      <div className="card about-credits">
+        <div className="ac-row">
+          <span className="ac-k">Licence</span>
+          <span className="ac-v">MIT · © 2026 Arup Biswas · free and open source</span>
+        </div>
+        <div className="ac-row">
+          <span className="ac-k">Built with</span>
+          <span className="ac-v">FastAPI · React · PostgreSQL · client-side QR</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function TagSheet() {
   const live = useLiveAssets()
   const assets = LIVE ? live.assets : ASSETS
@@ -1772,12 +1818,15 @@ export default function App() {
         : route === '/spares' ? (LIVE ? <NotYet /> : <Spares />)
         : route === '/procurement' ? (LIVE ? <NotYet /> : <Procurement />)
         : route === '/tags' ? <TagSheet />
+        : route === '/about' ? <AboutPage />
         : (LIVE ? <LiveDashboard go={go} /> : <Dashboard go={go} />)}
 
       <footer className="foot">
         {LIVE
-          ? <>{ORG} · maintenance records · AMPS, MIT © 2026 <SignatureMark /></>
-          : <>Demonstration environment · synthetic data only · MIT © 2026 <SignatureMark /></>}
+          ? <>{ORG} · maintenance records · AMPS, MIT © 2026 </>
+          : <>Demonstration environment · synthetic data only · MIT © 2026 </>}
+        <a href="#/about" className="foot-sig" aria-label="About AMPS"><SignatureMark /></a>
+        <a href="#/about" className="foot-about">About</a>
       </footer>
     </div>
     </>
