@@ -26,6 +26,8 @@ const StatusChip = ({ status }) => (
 const SignatureMark = () => (
   <img src="/signature.png" className="sig-mark" alt="Arup Biswas" title="Arup Biswas" />
 )
+/* the word AMPS is the doorway to the about/credits page */
+const AmpsLink = () => <a href="#/about" className="foot-amps">AMPS</a>
 
 const DueChip = ({ nextDue }) => {
   const s = dueState(nextDue)
@@ -1686,7 +1688,7 @@ function Landing() {
             </a>
           ))}
         </div>
-        <div className="gate-foot">AMPS · MIT © 2026 <SignatureMark /></div>
+        <div className="gate-foot"><AmpsLink /> · MIT © 2026 <SignatureMark /></div>
       </div>
     </div>
   )
@@ -1705,7 +1707,7 @@ function LoginPage() {
           <p className="gate-auth-sub">{ORG} — operational access for your line: report failures, write the log, register assets. Viewing needs no account.</p>
           <LoginForm autoFocus />
           <a className="gate-back" href="#/">← Back to lines</a>
-          <div className="gate-foot">AMPS · MIT © 2026 <SignatureMark /></div>
+          <div className="gate-foot"><AmpsLink /> · MIT © 2026 <SignatureMark /></div>
         </div>
       </div>
     </div>
@@ -1775,7 +1777,7 @@ export default function App() {
         {route === '/about' ? <AboutPage />
           : assetMatch ? <LiveAssetDetail code={assetMatch[1]} />
           : <LineView name={decodeURIComponent(lineMatch[1])} />}
-        <footer className="foot">{ORG} · maintenance records · AMPS, MIT © 2026 <a href="#/about" className="foot-sig"><SignatureMark /></a></footer>
+        <footer className="foot">{ORG} · maintenance records · <AmpsLink />, MIT © 2026 <a href="#/about" className="foot-sig"><SignatureMark /></a></footer>
       </div>
       </>
     )
@@ -1824,10 +1826,9 @@ export default function App() {
 
       <footer className="foot">
         {LIVE
-          ? <>{ORG} · maintenance records · AMPS, MIT © 2026 </>
-          : <>Demonstration environment · synthetic data only · MIT © 2026 </>}
+          ? <>{ORG} · maintenance records · <AmpsLink />, MIT © 2026 </>
+          : <>Demonstration environment · synthetic data only · <AmpsLink />, MIT © 2026 </>}
         <a href="#/about" className="foot-sig" aria-label="About AMPS"><SignatureMark /></a>
-        <a href="#/about" className="foot-about">About</a>
       </footer>
     </div>
     </>
