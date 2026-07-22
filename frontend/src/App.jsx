@@ -26,8 +26,21 @@ const StatusChip = ({ status }) => (
 const SignatureMark = () => (
   <img src="/signature.png" className="sig-mark" alt="maker's signature" title="AMPS" />
 )
-/* the word AMPS is the doorway to the about/credits page */
-const AmpsLink = () => <a href="#/about" className="foot-amps">AMPS</a>
+/* the word AMPS is the doorway to the about/credits page — but only once
+   signed in; a public walk-up sees plain text, not a link */
+const AmpsLink = () => {
+  const { canWrite } = useMe()
+  return canWrite
+    ? <a href="#/about" className="foot-amps">AMPS</a>
+    : <span>AMPS</span>
+}
+/* the footer signature links to About only for signed-in staff */
+const FootSig = () => {
+  const { canWrite } = useMe()
+  return canWrite
+    ? <FootSig />
+    : <SignatureMark />
+}
 
 const DueChip = ({ nextDue }) => {
   const s = dueState(nextDue)
@@ -1757,7 +1770,7 @@ export default function App() {
   // The train artwork is mounted once, outside the page switch — it never
   // reloads on navigation; only its opacity changes (full on the landing,
   // muted behind every other page).
-  const onLanding = anonymous && route !== '/login' && route !== '/about' && !assetMatch && !lineMatch
+  const onLanding = anonymous && route !== '/login' && !assetMatch && !lineMatch
   const siteArt = (
     <img className={`site-art${onLanding ? '' : ' muted'}`} alt="" aria-hidden="true"
          src={`${import.meta.env.BASE_URL}landing-art.webp`} />
@@ -1782,10 +1795,9 @@ export default function App() {
             <a href="#/login" className="btn login-btn">Sign in</a>
           </nav>
         </header>
-        {route === '/about' ? <AboutPage />
-          : assetMatch ? <LiveAssetDetail code={assetMatch[1]} />
+        {assetMatch ? <LiveAssetDetail code={assetMatch[1]} />
           : <LineView name={decodeURIComponent(lineMatch[1])} />}
-        <footer className="foot">{ORG} · maintenance records · <AmpsLink />, MIT © 2026 <a href="#/about" className="foot-sig"><SignatureMark /></a></footer>
+        <footer className="foot">{ORG} · maintenance records · <AmpsLink />, MIT © 2026 <FootSig /></footer>
       </div>
       </>
     )
@@ -1836,7 +1848,7 @@ export default function App() {
         {LIVE
           ? <>{ORG} · maintenance records · <AmpsLink />, MIT © 2026 </>
           : <>Demonstration environment · synthetic data only · <AmpsLink />, MIT © 2026 </>}
-        <a href="#/about" className="foot-sig" aria-label="About AMPS"><SignatureMark /></a>
+        <FootSig />
       </footer>
     </div>
     </>
