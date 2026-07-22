@@ -38,7 +38,7 @@ const AmpsLink = () => {
 const FootSig = () => {
   const { canWrite } = useMe()
   return canWrite
-    ? <FootSig />
+    ? <a href="#/about" className="foot-sig" aria-label="About AMPS"><SignatureMark /></a>
     : <SignatureMark />
 }
 
