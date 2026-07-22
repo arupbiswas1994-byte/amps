@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.auth import current_user
 from app.db import get_db
 from app.engine import WEEKDAYS, compute_coverage
 from app.models import RosterEntry, RosterPattern
@@ -88,7 +89,7 @@ class ShiftWorkPackage(BaseModel):
 
 
 @router.get("/work-package", response_model=ShiftWorkPackage)
-def shift_work_package(for_date: date, shift: str = "N", db: Session = Depends(get_db)):
+def shift_work_package(for_date: date, shift: str = "N", db: Session = Depends(get_db), user=Depends(current_user)):
     """The roster↔maintenance join: PM items due by `for_date`, bundled for the
     given shift window, addressed to whoever the ACTIVE pattern rosters there —
     the printable 'this window, this crew, this list' package."""

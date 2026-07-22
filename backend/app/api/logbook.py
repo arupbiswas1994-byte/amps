@@ -16,7 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.assets import visible_asset
-from app.api.auth import AUTH_ON, current_user, optional_user
+from app.api.auth import AUTH_ON, current_user, is_anonymous, optional_user
 from app.db import audit, get_db
 from app.models import Asset, LogEntry, LogEntryType, ShiftCode
 
@@ -240,6 +240,11 @@ def list_entries(log_date: date | None = None, shift: str | None = None,
     Paged: the total row count comes back in X-Total-Count so the caller can
     say "1-100 of 3,966" instead of silently showing a truncated page — a
     year of this book is thousands of entries."""
+    # The bulk ledger is login-only; the QR walk-up (a single asset's log,
+    # scoped by asset_code) stays open. Without a scope, an anonymous request
+    # could pull the whole 18,000-row operational book — so require a session.
+    if asset_code is None and is_anonymous(user):
+        raise HTTPException(401, "login required")
     filters = []
     # An edit is a NEW entry that corrects an older one (append-only). The list
     # shows only the latest version of each chain — the entry it superseded is
@@ -278,7 +283,7 @@ def list_entries(log_date: date | None = None, shift: str | None = None,
 
 
 @router.get("/{entry_id}/versions", response_model=list[LogEntryOut])
-def entry_versions(entry_id: int, db: Session = Depends(get_db), user=Depends(optional_user)):
+def entry_versions(entry_id: int, db: Session = Depends(get_db), user=Depends(current_user)):
     """The full edit trail of one entry, oldest first — the original and every
     correction made to it. Nothing is ever overwritten, so this is the honest
     history behind the 'edited' marker."""
@@ -305,7 +310,7 @@ def entry_versions(entry_id: int, db: Session = Depends(get_db), user=Depends(op
 
 
 @router.get("/bounds")
-def logbook_bounds(db: Session = Depends(get_db), user=Depends(optional_user)):
+def logbook_bounds(db: Session = Depends(get_db), user=Depends(current_user)):
     """First and last dates the book actually covers.
 
     The week/month/year views anchor on the newest recorded date rather than
@@ -322,7 +327,7 @@ def logbook_bounds(db: Session = Depends(get_db), user=Depends(optional_user)):
 
 @router.get("/failure-stats")
 def failure_stats(days: int = 90, months: int = 6, db: Session = Depends(get_db),
-                  user=Depends(optional_user)):
+                  user=Depends(current_user)):
     """Breakdown KPIs off the one ledger — counts, downtime, MTTR, trend.
 
     Every figure is derived from failure log entries: nothing is stored

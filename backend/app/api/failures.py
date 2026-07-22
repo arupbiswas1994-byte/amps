@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.assets import visible_asset
-from app.api.auth import current_user, optional_user, scope_location_ids
+from app.api.auth import current_user, is_anonymous, optional_user, scope_location_ids
 from app.db import audit, get_db
 from app.models import Asset, Failure
 
@@ -63,6 +63,8 @@ def _to_out(f: Failure) -> FailureOut:
 @router.get("", response_model=list[FailureOut])
 def list_failures(asset_code: str | None = None, open_only: bool = False,
                   db: Session = Depends(get_db), user=Depends(optional_user)):
+    if asset_code is None and is_anonymous(user):
+        raise HTTPException(401, "login required")
     q = _scoped(select(Failure).order_by(Failure.started_at.desc()), db, user)
     if asset_code:
         asset = visible_asset(db, asset_code, user)
@@ -120,7 +122,7 @@ class FailureStats(BaseModel):
 
 @router.get("/stats", response_model=FailureStats)
 def failure_stats(window_days: int = 90, db: Session = Depends(get_db),
-                  user=Depends(optional_user)):
+                  user=Depends(current_user)):
     since = datetime.utcnow() - timedelta(days=window_days)
     rows = db.scalars(_scoped(select(Failure).where(Failure.started_at >= since), db, user)).all()
     ongoing = [f for f in rows if f.ended_at is None]

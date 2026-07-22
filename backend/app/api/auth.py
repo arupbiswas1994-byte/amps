@@ -138,6 +138,14 @@ def optional_user(request: Request, db: Session = Depends(get_db)):
     return _ANON_VIEWER
 
 
+def is_anonymous(user) -> bool:
+    """True when this is the walk-up viewer with no session on an authenticated
+    deployment — used to keep single-asset QR reads open while requiring a
+    login for bulk reads. Auth-off deployments (id None but not AUTH_ON) are
+    never 'anonymous' here; they run fully open by design."""
+    return AUTH_ON and getattr(user, "id", None) is None
+
+
 def require_admin(user=Depends(current_user)):
     if user.role != UserRole.ADMIN:
         raise HTTPException(403, "administrator only")
