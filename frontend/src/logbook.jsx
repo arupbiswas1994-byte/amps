@@ -307,12 +307,16 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
   const { me, canWrite } = useMe()
   const authOn = me?.auth_enabled
   const [entries, setEntries] = useState([])
-  const [logDate, setLogDate] = useState(today())  // the ruler: write + read date
+  // Initialise straight from a deep link (#/log?d=…&edit=…) so only ONE load
+  // fires — the focused day. Setting these in an effect instead raced the
+  // default all-dates load, and the bigger response could land last and hide
+  // the entry. This component remounts when reached from failures/asset pages.
+  const [logDate, setLogDate] = useState(focusDate || today())  // ruler: write + read date
   // Open on a period window, not on today. A quiet day left the page blank,
   // which reads as "the logbook is broken" rather than "nothing happened
   // today". The ruler still drives both reading and writing once a day is
   // picked; clearing it returns to the period window.
-  const [allDates, setAllDates] = useState(true)
+  const [allDates, setAllDates] = useState(!focusDate)  // deep link opens its day, not the window
   const [period, setPeriod] = useState('month')
   const [anchor, setAnchor] = useState(null)   // newest recorded date
   // A year of this book is thousands of entries — page it rather than pull a
@@ -349,7 +353,7 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
   // closing a failure that was logged open earlier — the two-row form can't
   // reach it, that entry already exists
   const [rectifying, setRectifying] = useState(null)
-  const [editingId, setEditingId] = useState(null)   // entry being edited
+  const [editingId, setEditingId] = useState(editId ? Number(editId) : null)   // entry being edited
   const [historyFor, setHistoryFor] = useState(null) // entry whose trail is open
   const [assetCode, setAssetCode] = useState('')   // cross-reference to the register
   const [author, setAuthor] = useState('demo.visitor')

@@ -978,6 +978,7 @@ const FAIL_PERIODS = [
   ['All time', 36500, 12],
   ['Last 12 months', 365, 12],
   ['Last 90 days', 90, 6],
+  ['Last 30 days', 30, 3],
 ]
 
 function LiveFailures() {
