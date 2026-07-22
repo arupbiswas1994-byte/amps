@@ -59,6 +59,8 @@ const fmtDate = (iso) =>
   new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
 const fmtTime = (ts) =>
   new Date(ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+/* "HH:MM" from an ISO timestamp, or "" when it's midnight (= no time given) */
+const hhmm = (iso) => (iso && iso.slice(11, 16) !== '00:00' ? iso.slice(11, 16) : '')
 
 /* bulk history import: the unified sheet-logbook CSV (Green Line standard) —
    maintenance rows become log entries, failure rows become failure records */
@@ -167,6 +169,119 @@ function RectifyForm({ failure, busy, onCancel, onSubmit }) {
   )
 }
 
+/* Edit a log entry the append-only way: submitting writes a NEW entry that
+   corrects the old one, so nothing is lost. Handles the two jobs Arup asked
+   for on the imported open failures too — linking the right equipment (asset
+   code) and filling the resolve row (recovery date/time). */
+function EditEntryForm({ entry, assets, systems, classSystem, onCancel, onSaved }) {
+  const isFail = entry.type === 'failure'
+  const [text, setText] = useState(entry.text)
+  const [assetCode, setAssetCode] = useState(entry.asset_code || '')
+  const [system, setSystem] = useState(entry.system || '')
+  const [category, setCategory] = useState(entry.category || '')
+  const [team, setTeam] = useState(entry.attended_by || '')
+  const [tim, setTim] = useState(hhmm(entry.at))
+  const [faultType, setFaultType] = useState(entry.fault_type || '')
+  const [endDate, setEndDate] = useState(entry.ended_at ? entry.ended_at.slice(0, 10) : '')
+  const [endTim, setEndTim] = useState(hhmm(entry.ended_at))
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const classesFor = system
+    ? [...new Set(assets.filter((a) => a.system === system).map((a) => a.asset_class).filter(Boolean))].sort()
+    : [...new Set(assets.map((a) => a.asset_class).filter(Boolean))].sort()
+
+  const save = async () => {
+    if (!text.trim() || busy) return
+    setBusy(true); setErr('')
+    try {
+      const res = await fetch(`${API}/api/logbook`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          corrects_id: entry.id,
+          log_date: entry.log_date, shift: entry.shift, type: entry.type,
+          subtype: entry.subtype || null,
+          system: system || null, category: category || null,
+          asset_code: assetCode.trim() || null,
+          time: tim || null, text: text.trim(), attended_by: team.trim() || null,
+          fault_type: isFail ? (faultType.trim() || null) : null,
+          end_date: isFail ? (endDate || null) : null,
+          end_time: isFail ? (endTim || null) : null,
+        }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.detail || `HTTP ${res.status}`)
+      onSaved()
+    } catch (ex) {
+      setErr(String(ex.message || ex).replace(/^Error: /, ''))
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="log-row2 edit-row">
+      <span className="log-row2-tag">Edit entry</span>
+      <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Entry text…" />
+      {/* link the proper equipment — auto-fills system + class from the asset */}
+      <input value={assetCode} list="register-codes" placeholder="Asset ID (link equipment)…"
+             className="log-asset" onChange={(e) => {
+               const v = e.target.value; setAssetCode(v)
+               const hit = assets.find((a) => a.code === v)
+               if (hit?.system) setSystem(hit.system)
+               if (hit?.asset_class) setCategory(hit.asset_class)
+             }} />
+      <select value={system} className="log-sys" aria-label="System"
+              onChange={(e) => { setSystem(e.target.value); setCategory('') }}>
+        <option value="">System…</option>
+        {systems.map((s) => <option key={s} value={s}>{s}</option>)}
+      </select>
+      <select value={category} className="log-cat" aria-label="Class"
+              onChange={(e) => { const c = e.target.value; setCategory(c); if (c && classSystem[c]) setSystem(classSystem[c]) }}>
+        <option value="">Class…</option>
+        {classesFor.map((c) => <option key={c} value={c}>{c}</option>)}
+      </select>
+      <input type="time" value={tim} onChange={(e) => setTim(e.target.value)} className="log-time" aria-label="Time" />
+      <input value={team} onChange={(e) => setTeam(e.target.value)} placeholder="Team…" className="log-team" />
+      {isFail && <>
+        <input value={faultType} onChange={(e) => setFaultType(e.target.value)}
+               placeholder="Fault type…" className="log-cat" />
+        <span className="resolve-lbl">Resolved</span>
+        <input type="date" value={endDate} min={entry.log_date}
+               onChange={(e) => setEndDate(e.target.value)} aria-label="Resolved on" />
+        <input type="time" value={endTim} onChange={(e) => setEndTim(e.target.value)}
+               className="log-time" aria-label="Resolved at" />
+      </>}
+      <button type="button" className="btn" disabled={busy} onClick={save}>
+        {busy ? 'Saving…' : 'Save edit'}
+      </button>
+      <button type="button" className="btn ghost" onClick={onCancel}>Cancel</button>
+      {err && <span className="import-msg err">{err}</span>}
+    </div>
+  )
+}
+
+/* The WhatsApp-style edit trail: original + every correction, oldest first. */
+function VersionHistory({ id }) {
+  const [vers, setVers] = useState(null)
+  useEffect(() => {
+    let alive = true
+    fetch(`${API}/api/logbook/${id}/versions`).then((r) => (r.ok ? r.json() : []))
+      .then((v) => alive && setVers(v)).catch(() => alive && setVers([]))
+    return () => { alive = false }
+  }, [id])
+  if (!vers) return <div className="ver-hist"><span className="dim">Loading history…</span></div>
+  return (
+    <div className="ver-hist">
+      {vers.map((v, i) => (
+        <div className="ver-row" key={v.id}>
+          <span className="ver-tag">{i === 0 ? 'Original' : `Edit ${i}`}</span>
+          <span className="sub dt">{v.log_date}{hhmm(v.at) ? ` · ${fmtTime(v.at)}` : ''}</span>
+          <span className="dim">{v.attended_by || v.entered_by}</span>
+          <div className="ver-text">{v.text}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function LogBook() {
   const { me, canWrite } = useMe()
   const authOn = me?.auth_enabled
@@ -213,6 +328,8 @@ export default function LogBook() {
   // closing a failure that was logged open earlier — the two-row form can't
   // reach it, that entry already exists
   const [rectifying, setRectifying] = useState(null)
+  const [editingId, setEditingId] = useState(null)   // entry being edited
+  const [historyFor, setHistoryFor] = useState(null) // entry whose trail is open
   const [assetCode, setAssetCode] = useState('')   // cross-reference to the register
   const [author, setAuthor] = useState('demo.visitor')
   const [assets, setAssets] = useState([])         // register rows for the datalist
@@ -547,21 +664,38 @@ export default function LogBook() {
                         <span className="dim">{en.attended_by || en.entered_by}</span>
                         {en.attended_by && en.attended_by !== en.entered_by
                           && <span className="dim">rec. {en.entered_by}</span>}
-                        {en.asset_code && <a className="code" href={`#/asset/${en.asset_code}`}>{en.asset_code}</a>}
-                        {en.corrects_id && <span className="dim">corrects #{en.corrects_id}</span>}
+                        {en.asset_code
+                          ? <a className="code" href={`#/asset/${en.asset_code}`}>{en.asset_code}</a>
+                          : en.type === 'failure' && <span className="chip d-overdue"><span className="dot" />unlinked</span>}
                         {en.rectifies_id && <span className="dim">rectifies #{en.rectifies_id}</span>}
                         {en.type === 'failure' && (en.ended_at
-                          ? <span className="chip w-done"><span className="dot" />restored{en.down_hours != null ? ` · ${en.down_hours}h` : ''}</span>
+                          ? <span className="chip w-done"><span className="dot" />resolved{en.down_hours != null ? ` · ${en.down_hours}h` : ''}</span>
                           : <span className="chip d-overdue"><span className="dot" />open</span>)}
+                        {en.corrects_id && (
+                          <button type="button" className="edited-btn"
+                                  onClick={() => setHistoryFor(historyFor === en.id ? null : en.id)}
+                                  title="Show edit history">edited 🕘</button>
+                        )}
                       </div>
                       <div className="log-text">{en.text}</div>
-                      {canWrite && en.type === 'failure' && !en.ended_at && (
-                        rectifying === en.id
-                          ? <RectifyForm failure={en} busy={busy}
-                                         onCancel={() => setRectifying(null)}
-                                         onSubmit={(f) => submitRectify(en, f)} />
-                          : <button type="button" className="btn ghost sm"
-                                    onClick={() => setRectifying(en.id)}>Rectify</button>
+                      {historyFor === en.id && <VersionHistory id={en.id} />}
+                      {canWrite && editingId === en.id ? (
+                        <EditEntryForm entry={en} assets={assets} systems={systems} classSystem={classSystem}
+                                       onCancel={() => setEditingId(null)}
+                                       onSaved={() => { setEditingId(null); load() }} />
+                      ) : canWrite && (
+                        <div className="entry-actions">
+                          <button type="button" className="btn ghost sm"
+                                  onClick={() => { setEditingId(en.id); setRectifying(null) }}>Edit</button>
+                          {en.type === 'failure' && !en.ended_at && (
+                            rectifying === en.id
+                              ? <RectifyForm failure={en} busy={busy}
+                                             onCancel={() => setRectifying(null)}
+                                             onSubmit={(f) => submitRectify(en, f)} />
+                              : <button type="button" className="btn ghost sm"
+                                        onClick={() => { setRectifying(en.id); setEditingId(null) }}>Rectify</button>
+                          )}
+                        </div>
                       )}
                     </div>
                   ))}

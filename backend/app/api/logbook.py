@@ -158,8 +158,10 @@ def _create_entry(db: Session, entry: LogEntryIn, user, rectifies: LogEntry | No
     asset = None
     if entry.asset_code:
         asset = visible_asset(db, entry.asset_code, user)
-    if entry.corrects_id and not db.get(LogEntry, entry.corrects_id):
-        raise HTTPException(404, "entry to correct not found")
+    if entry.corrects_id is not None:
+        target = db.get(LogEntry, entry.corrects_id)
+        if not target or (user.line_id is not None and target.line_id not in (user.line_id, None)):
+            raise HTTPException(404, "entry to correct not found")
     etype = LogEntryType(entry.type)
     # an explicit rectifies_id lets an OPEN failure be closed later, which the
     # two-row form cannot reach — that entry already exists by then
@@ -239,6 +241,11 @@ def list_entries(log_date: date | None = None, shift: str | None = None,
     say "1-100 of 3,966" instead of silently showing a truncated page — a
     year of this book is thousands of entries."""
     filters = []
+    # An edit is a NEW entry that corrects an older one (append-only). The list
+    # shows only the latest version of each chain — the entry it superseded is
+    # hidden here but still reachable through /versions, WhatsApp-style.
+    superseded = select(LogEntry.corrects_id).where(LogEntry.corrects_id.is_not(None))
+    filters.append(LogEntry.id.not_in(superseded))
     if user.line_id is not None:
         filters.append((LogEntry.line_id == user.line_id) | (LogEntry.line_id.is_(None)))
     if log_date:
@@ -268,6 +275,33 @@ def list_entries(log_date: date | None = None, shift: str | None = None,
     rows = db.scalars(q).all()
     rec = _recovery_map(db, rows)
     return [_to_out(e, rec.get(e.id)) for e in rows]
+
+
+@router.get("/{entry_id}/versions", response_model=list[LogEntryOut])
+def entry_versions(entry_id: int, db: Session = Depends(get_db), user=Depends(optional_user)):
+    """The full edit trail of one entry, oldest first — the original and every
+    correction made to it. Nothing is ever overwritten, so this is the honest
+    history behind the 'edited' marker."""
+    e = db.get(LogEntry, entry_id)
+    if not e or (user.line_id is not None and e.line_id not in (user.line_id, None)):
+        raise HTTPException(404, "entry not found")
+    # walk up to the original, then forward through every correction
+    root = e
+    seen = {e.id}
+    while root.corrects_id:
+        prev = db.get(LogEntry, root.corrects_id)
+        if not prev or prev.id in seen:
+            break
+        seen.add(prev.id); root = prev
+    chain = [root]
+    cur = root
+    while True:
+        nxt = db.scalar(select(LogEntry).where(LogEntry.corrects_id == cur.id))
+        if not nxt or nxt.id in {c.id for c in chain}:
+            break
+        chain.append(nxt); cur = nxt
+    rec = _recovery_map(db, chain)
+    return [_to_out(x, rec.get(x.id)) for x in chain]
 
 
 @router.get("/bounds")
