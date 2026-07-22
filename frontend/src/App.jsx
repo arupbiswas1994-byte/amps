@@ -1772,9 +1772,10 @@ export default function App() {
             <a href="#/login" className="btn login-btn">Sign in</a>
           </nav>
         </header>
-        {assetMatch ? <LiveAssetDetail code={assetMatch[1]} />
+        {route === '/about' ? <AboutPage />
+          : assetMatch ? <LiveAssetDetail code={assetMatch[1]} />
           : <LineView name={decodeURIComponent(lineMatch[1])} />}
-        <footer className="foot">{ORG} · maintenance records · AMPS, MIT © 2026 <SignatureMark /></footer>
+        <footer className="foot">{ORG} · maintenance records · AMPS, MIT © 2026 <a href="#/about" className="foot-sig"><SignatureMark /></a></footer>
       </div>
       </>
     )
