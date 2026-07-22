@@ -24,7 +24,7 @@ const StatusChip = ({ status }) => (
 /* the maker's mark — Arup's own signature, the way an artist signs a canvas.
    alt carries the full name so the credit stays in the source and for readers. */
 const SignatureMark = () => (
-  <img src="/signature.png" className="sig-mark" alt="Arup Biswas" title="Arup Biswas" />
+  <img src="/signature.png" className="sig-mark" alt="maker's signature" title="AMPS" />
 )
 /* the word AMPS is the doorway to the about/credits page */
 const AmpsLink = () => <a href="#/about" className="foot-amps">AMPS</a>
@@ -1490,7 +1490,8 @@ function AboutPage() {
         </p>
         <div className="about-sign">
           <SignatureMark />
-          <span className="about-by">Arup Biswas · maker</span>
+          <a className="about-by" href="https://github.com/arupbiswas1994-byte"
+             target="_blank" rel="noopener noreferrer">@arupbiswas1994-byte</a>
         </div>
       </div>
 
@@ -1499,7 +1500,14 @@ function AboutPage() {
       <div className="card about-credits">
         <div className="ac-row">
           <span className="ac-k">Licence</span>
-          <span className="ac-v">MIT · © 2026 Arup Biswas · free and open source</span>
+          <span className="ac-v">MIT · free and open source</span>
+        </div>
+        <div className="ac-row">
+          <span className="ac-k">Source</span>
+          <span className="ac-v">
+            <a href="https://github.com/arupbiswas1994-byte/amps" target="_blank" rel="noopener noreferrer">
+              github.com/arupbiswas1994-byte/amps</a>
+          </span>
         </div>
         <div className="ac-row">
           <span className="ac-k">Built with</span>
