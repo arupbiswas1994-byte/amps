@@ -1747,7 +1747,7 @@ export default function App() {
   // The train artwork is mounted once, outside the page switch — it never
   // reloads on navigation; only its opacity changes (full on the landing,
   // muted behind every other page).
-  const onLanding = anonymous && route !== '/login' && !assetMatch && !lineMatch
+  const onLanding = anonymous && route !== '/login' && route !== '/about' && !assetMatch && !lineMatch
   const siteArt = (
     <img className={`site-art${onLanding ? '' : ' muted'}`} alt="" aria-hidden="true"
          src={`${import.meta.env.BASE_URL}landing-art.webp`} />
