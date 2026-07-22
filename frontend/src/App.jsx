@@ -106,7 +106,9 @@ function ShowcaseDropdown() {
    organisation on a second line so it never drops out after sign-in */
 const Brand = () => (
   <a href="#/" className="brand">
-    <img className="brand-emblem" src={`${import.meta.env.BASE_URL}ir-railways.png`} alt="" />
+    {/* the real Indian Railways emblem is for the live office deployment only —
+       a public synthetic demo must not carry a national/government emblem */}
+    {LIVE && <img className="brand-emblem" src={`${import.meta.env.BASE_URL}ir-railways.png`} alt="" />}
     <span className="brand-lines">
       <span className="brand-l1">
         <span className="brand-name">AMPS</span>
