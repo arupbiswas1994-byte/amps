@@ -1634,7 +1634,7 @@ function Landing() {
             </a>
           ))}
         </div>
-        <div className="gate-foot">AMPS · MIT © 2026 Arup Biswas</div>
+        <div className="gate-foot">AMPS · MIT © 2026 A. Biswas</div>
       </div>
     </div>
   )
@@ -1653,7 +1653,7 @@ function LoginPage() {
           <p className="gate-auth-sub">{ORG} — operational access for your line: report failures, write the log, register assets. Viewing needs no account.</p>
           <LoginForm autoFocus />
           <a className="gate-back" href="#/">← Back to lines</a>
-          <div className="gate-foot">AMPS · MIT © 2026 Arup Biswas</div>
+          <div className="gate-foot">AMPS · MIT © 2026 A. Biswas</div>
         </div>
       </div>
     </div>
@@ -1722,7 +1722,7 @@ export default function App() {
         </header>
         {assetMatch ? <LiveAssetDetail code={assetMatch[1]} />
           : <LineView name={decodeURIComponent(lineMatch[1])} />}
-        <footer className="foot">{ORG} · maintenance records · AMPS, MIT © 2026 Arup Biswas</footer>
+        <footer className="foot">{ORG} · maintenance records · AMPS, MIT © 2026 A. Biswas</footer>
       </div>
       </>
     )
@@ -1770,8 +1770,8 @@ export default function App() {
 
       <footer className="foot">
         {LIVE
-          ? <>{ORG} · maintenance records · AMPS, MIT © 2026 Arup Biswas</>
-          : <>Demonstration environment · synthetic data only · MIT © 2026 Arup Biswas</>}
+          ? <>{ORG} · maintenance records · AMPS, MIT © 2026 A. Biswas</>
+          : <>Demonstration environment · synthetic data only · MIT © 2026 A. Biswas</>}
       </footer>
     </div>
     </>
