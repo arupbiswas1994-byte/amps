@@ -5,8 +5,8 @@
   --surface: #ffffff;
   /* frosted card fill — translucent so the paper ground and train-art
      watermark peek through, blurred so text stays crisp and readable */
-  --card-bg: rgba(255, 255, 255, 0.72);
-  --card-blur: saturate(1.15) blur(8px);
+  --card-bg: rgba(255, 255, 255, 0.5);
+  --card-blur: saturate(1.2) blur(6px);
   --border: #e7e5e4;
   --ink: #1c1917;
   --ink-2: #57534e;
