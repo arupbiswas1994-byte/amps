@@ -49,19 +49,19 @@ a { color: inherit; text-decoration: none; }
   background: var(--bg);
 }
 .brand { display: flex; align-items: center; gap: 13px; text-decoration: none; }
-.brand-emblem { width: 46px; height: auto; flex: none; }
-.brand-lines { display: flex; flex-direction: column; gap: 3px; line-height: 1.1; min-width: 0; }
-.brand-l1 { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-/* AMPS wordmark — the logo treatment: heavy, wide-tracked, in the brand accent */
+.brand-emblem { width: 48px; height: auto; flex: none; }
+.brand-lines { display: flex; flex-direction: column; gap: 4px; line-height: 1.08; min-width: 0; }
+/* line 1 = small product eyebrow: the AMPS mark + its full form at one size */
+.brand-l1 { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; }
 .brand-name {
-  font-size: 21px; font-weight: 850; letter-spacing: 2.5px; color: var(--accent);
-  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 11px; font-weight: 800; letter-spacing: 1.4px; color: var(--accent);
 }
 .brand-tag {
-  font-size: 10px; letter-spacing: 1.4px; text-transform: uppercase;
+  font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase;
   color: var(--ink-3); font-weight: 600;
 }
-.brand-org { font-size: 13px; font-weight: 650; color: var(--ink); letter-spacing: 0.2px; }
+/* the organisation is the masthead headline — the visual anchor */
+.brand-org { font-size: 20px; font-weight: 750; color: var(--ink); letter-spacing: -0.01em; }
 .nav { display: flex; flex-wrap: wrap; gap: 4px; margin-left: auto; align-items: center; }
 .nav a {
   font-size: 14px; font-weight: 550; color: var(--ink-2); padding: 6px 13px; border-radius: 99px;
@@ -70,8 +70,8 @@ a { color: inherit; text-decoration: none; }
 .nav a.active { color: var(--accent); background: var(--accent-soft); font-weight: 650; }
 @media screen and (max-width: 680px) {
   .brand-tag { display: none; }
-  .brand-emblem { width: 38px; }
-  .brand-name { font-size: 19px; }
+  .brand-emblem { width: 40px; }
+  .brand-org { font-size: 17px; }
   .topbar { row-gap: 8px; padding-top: 12px; }
 }
 
