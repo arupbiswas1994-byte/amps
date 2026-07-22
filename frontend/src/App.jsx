@@ -42,6 +42,21 @@ const FootSig = () => {
     : <SignatureMark />
 }
 
+/* the masthead: emblem + AMPS wordmark with its full form, and the
+   organisation on a second line so it never drops out after sign-in */
+const Brand = () => (
+  <a href="#/" className="brand">
+    <img className="brand-emblem" src={`${import.meta.env.BASE_URL}metro-logo.svg`} alt="" />
+    <span className="brand-lines">
+      <span className="brand-l1">
+        <span className="brand-name">AMPS</span>
+        <span className="brand-tag">Asset Maintenance &amp; Preventive Scheduling</span>
+      </span>
+      <span className="brand-org">{ORG}</span>
+    </span>
+  </a>
+)
+
 const DueChip = ({ nextDue }) => {
   const s = dueState(nextDue)
   return <span className={`chip d-${s.key}`}><span className="dot" />{s.label}</span>
@@ -1253,7 +1268,7 @@ function JobCard({ jcId }) {
       <div className="osheet">
         <div className="os-top">
           <div className="os-brand">
-            <div className="os-org"><span className="bolt">⚡</span>AMPS</div>
+            <div className="os-org"><span className="brand-name">AMPS</span></div>
             <div className="os-dept">Power Supply &amp; E&amp;M Maintenance<br />{ORG}</div>
           </div>
           <div className="os-title">
@@ -1372,7 +1387,7 @@ function Checksheet({ kind, a1, a2 }) {
       <div className="osheet">
         <div className="os-top">
           <div className="os-brand">
-            <div className="os-org"><span className="bolt">⚡</span>AMPS</div>
+            <div className="os-org"><span className="brand-name">AMPS</span></div>
             <div className="os-dept">Power Supply &amp; E&amp;M Maintenance<br />{ORG}</div>
           </div>
           <div className="os-title">
@@ -1724,7 +1739,7 @@ function LoginPage() {
       <div className="gate-panel solo">
         <div className="gate-auth">
           <Ribbon lines={lines} />
-          <div className="gate-auth-brand"><span className="bolt">⚡</span> Sign in to AMPS</div>
+          <div className="gate-auth-brand">Sign in to <span className="brand-name">AMPS</span></div>
           <p className="gate-auth-sub">{ORG} — operational access for your line: report failures, write the log, register assets. Viewing needs no account.</p>
           <LoginForm autoFocus />
           <a className="gate-back" href="#/">← Back to lines</a>
@@ -1786,11 +1801,7 @@ export default function App() {
       <>{siteArt}
       <div className="shell" style={navLine ? { '--nav-c': lineColor(navLine) } : undefined}>
         <header className="topbar">
-          <a href="#/" className="brand">
-            <img className="brand-emblem" src={`${import.meta.env.BASE_URL}metro-logo.svg`} alt="" />
-            <span className="bolt">⚡</span>AMPS
-            <span className="brand-sub">{ORG} · maintenance records</span>
-          </a>
+  <Brand />
           <nav className="nav">
             <a href="#/login" className="btn login-btn">Sign in</a>
           </nav>
@@ -1808,11 +1819,7 @@ export default function App() {
     <>{siteArt}
     <div className="shell" style={navLine ? { '--nav-c': lineColor(navLine) } : undefined}>
       <header className="topbar">
-        <a href="#/" className="brand">
-          <img className="brand-emblem" src={`${import.meta.env.BASE_URL}metro-logo.svg`} alt="" />
-          <span className="bolt">⚡</span>AMPS
-          <span className="brand-sub">Asset Maintenance &amp; Preventive Scheduling</span>
-        </a>
+<Brand />
         <nav className="nav">
           {NAV.map(([path, label]) => (
             <a key={path} href={`#${path}`} className={route === path ? 'active' : ''}>{label}</a>
