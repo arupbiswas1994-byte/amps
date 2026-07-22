@@ -58,7 +58,7 @@ const FootSig = () => {
    organisation on a second line so it never drops out after sign-in */
 const Brand = () => (
   <a href="#/" className="brand">
-    <img className="brand-emblem" src={`${import.meta.env.BASE_URL}ir-emblem.svg`} alt="" />
+    <img className="brand-emblem" src={`${import.meta.env.BASE_URL}ir-railways.png`} alt="" />
     <span className="brand-lines">
       <span className="brand-l1">
         <span className="brand-name">AMPS</span>
@@ -1717,7 +1717,7 @@ function Landing() {
     <div className="gate land">
       <div className="land-wrap">
         <header className="land-head">
-          <img className="land-emblem" src={`${import.meta.env.BASE_URL}ir-emblem.svg`}
+          <img className="land-emblem" src={`${import.meta.env.BASE_URL}ir-railways.png`}
                alt="Indian Railways" />
           <div className="land-head-rule" aria-hidden="true" />
           <div>
