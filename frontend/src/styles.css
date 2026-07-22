@@ -3,6 +3,10 @@
 :root {
   --bg: #fafaf9;
   --surface: #ffffff;
+  /* frosted card fill — translucent so the paper ground and train-art
+     watermark peek through, blurred so text stays crisp and readable */
+  --card-bg: rgba(255, 255, 255, 0.72);
+  --card-blur: saturate(1.15) blur(8px);
   --border: #e7e5e4;
   --ink: #1c1917;
   --ink-2: #57534e;
@@ -91,7 +95,8 @@ a { color: inherit; text-decoration: none; }
 /* ---- KPI row (stat tiles) ---- */
 .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 28px; }
 .tile {
-  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  background: var(--card-bg); backdrop-filter: var(--card-blur); -webkit-backdrop-filter: var(--card-blur);
+  border: 1px solid var(--border); border-radius: 10px;
   padding: 14px 16px 12px;
 }
 .tile .v {
@@ -105,7 +110,8 @@ a { color: inherit; text-decoration: none; }
 
 /* ---- sections / cards ---- */
 h2 { font-size: 15px; font-weight: 600; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 12px; }
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.card { background: var(--card-bg); backdrop-filter: var(--card-blur); -webkit-backdrop-filter: var(--card-blur);
+  border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
 
 /* ---- table ---- */
 .tbl-wrap { overflow-x: auto; }
