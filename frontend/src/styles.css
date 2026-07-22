@@ -363,17 +363,11 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 .btn.sm { padding: 3px 10px; font-size: 12px; margin-top: 6px; }
 .log-team { flex: 0 1 190px; min-width: 130px; }
 
-/* edit action row + WhatsApp-style edited marker & version trail */
-.entry-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+/* edit form row + version trail */
 .edit-row.log-row2 { background: #f4f8fb; border-color: #d5e2ec; }
 .edit-row .log-row2-tag { color: #2f6690; }
 .edit-row .resolve-lbl { font-size: 11px; font-weight: 600; text-transform: uppercase;
   letter-spacing: .04em; color: var(--good); }
-.edited-btn {
-  font: inherit; font-size: 11.5px; color: var(--ink-3); background: none; border: none;
-  cursor: pointer; padding: 0 2px; text-decoration: underline dotted;
-}
-.edited-btn:hover { color: var(--accent); }
 .ver-hist { flex-basis: 100%; margin: 6px 0 2px; padding: 8px 12px;
   background: #faf9f7; border: 1px solid var(--border); border-radius: 8px; }
 .ver-row { padding: 6px 0; border-bottom: 1px dashed #e7e5e4; }
@@ -438,8 +432,35 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 /* the shift the entry form is aimed at — where a new entry would land */
 .log-shift.sel { background: #fbf7ef; box-shadow: inset 3px 0 0 var(--accent); }
 .log-shift.sel .log-shift-h { color: var(--accent); }
-.log-meta { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--ink-3); margin-bottom: 3px; }
-.log-text { font-size: 14px; }
+.log-entry:hover { background: #fcfbf9; }
+.le-row { display: flex; align-items: flex-start; gap: 12px; }
+.le-main { flex: 1; min-width: 0; }
+.log-meta { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-3); margin-bottom: 4px; flex-wrap: wrap; }
+.le-time { font-weight: 600; color: var(--ink-2); }
+.le-ref { font-size: 11px; }
+.log-text { font-size: 14px; color: var(--ink); line-height: 1.45; }
+/* who did the work — a quiet byline under the entry, not a heavy chip */
+.le-by { font-size: 11.5px; color: var(--ink-3); margin-top: 4px; }
+.le-by b { font-weight: 600; color: var(--ink-2); }
+
+/* right-aligned row actions: minimal icon buttons, subtle until hover */
+.le-actions { display: flex; gap: 4px; flex: none; opacity: 0.32; transition: opacity .12s; }
+.log-entry:hover .le-actions, .le-actions:focus-within { opacity: 1; }
+.icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; padding: 0; border: 1px solid transparent; border-radius: 7px;
+  background: none; color: var(--ink-3); cursor: pointer;
+}
+.icon-btn:hover { color: var(--accent); background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 22%, #fff); }
+.icon-btn.resolve:hover { color: #1a6b1a; background: #eafaea; border-color: #c6ecc6; }
+/* the edited marker: a small clock + label, clickable to reveal the trail */
+.edited-btn {
+  display: inline-flex; align-items: center; gap: 3px;
+  font: inherit; font-size: 11px; color: var(--ink-3); background: none; border: none;
+  cursor: pointer; padding: 1px 4px; border-radius: 5px;
+}
+.edited-btn:hover { color: var(--accent); background: var(--accent-soft); }
 .chip.sh-A .dot { background: #2a78d6; }
 .chip.sh-B .dot { background: #4a3aa7; }
 .chip.sh-C .dot { background: var(--ink-3); }

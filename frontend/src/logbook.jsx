@@ -61,6 +61,27 @@ const fmtTime = (ts) =>
   new Date(ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 /* "HH:MM" from an ISO timestamp, or "" when it's midnight (= no time given) */
 const hhmm = (iso) => (iso && iso.slice(11, 16) !== '00:00' ? iso.slice(11, 16) : '')
+/* drop the leading "[TYPE]" tag from the body — the type is already a chip */
+const bodyText = (t) => (t || '').replace(/^\[[^\]]*\]\s*/, '')
+
+const PencilIcon = () => (
+  <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none"
+       stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M11.4 2.3a1.35 1.35 0 0 1 1.9 1.9L5 12.6l-2.6.6.6-2.6 8.4-8.3z" />
+  </svg>
+)
+const ResolveIcon = () => (
+  <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none"
+       stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="8" cy="8" r="6.3" /><path d="M5.3 8.2l1.9 1.9 3.5-4" />
+  </svg>
+)
+const HistoryIcon = () => (
+  <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="none"
+       stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M2.5 8a5.5 5.5 0 1 1 1.6 3.9" /><path d="M2.3 12v-2.6h2.6" /><path d="M8 5v3l2 1.2" />
+  </svg>
+)
 
 /* bulk history import: the unified sheet-logbook CSV (Green Line standard) —
    maintenance rows become log entries, failure rows become failure records */
@@ -652,53 +673,62 @@ export default function LogBook() {
                   <div className="log-shift-h">
                     {sh} — {SHIFT_LABEL[sh]} <span className="dim">· {rows.length}</span>
                   </div>
-                  {rows.map((en) => (
+                  {rows.map((en) => {
+                    const openFail = en.type === 'failure' && !en.ended_at
+                    return (
                     <div className="log-entry" key={en.id}>
-                      <div className="log-meta">
-                        {!en.at.includes('T00:00:00') && <span className="dt">{fmtTime(en.at)}</span>}
-                        {en.system && <span className="chip sys"><span className="dot" />{en.system}</span>}
-                        {en.category && <span className="chip grp"><span className="dot" />{en.category}</span>}
-                        <span className={`chip ${['defect', 'failure'].includes(en.type) ? 'd-overdue' : ''}`}>
-                          <span className="dot" />{en.type}{en.subtype ? ` · ${en.subtype}` : ''}
-                        </span>
-                        <span className="dim">{en.attended_by || en.entered_by}</span>
-                        {en.attended_by && en.attended_by !== en.entered_by
-                          && <span className="dim">rec. {en.entered_by}</span>}
-                        {en.asset_code
-                          ? <a className="code" href={`#/asset/${en.asset_code}`}>{en.asset_code}</a>
-                          : en.type === 'failure' && <span className="chip d-overdue"><span className="dot" />unlinked</span>}
-                        {en.rectifies_id && <span className="dim">rectifies #{en.rectifies_id}</span>}
-                        {en.type === 'failure' && (en.ended_at
-                          ? <span className="chip w-done"><span className="dot" />resolved{en.down_hours != null ? ` · ${en.down_hours}h` : ''}</span>
-                          : <span className="chip d-overdue"><span className="dot" />open</span>)}
-                        {en.corrects_id && (
-                          <button type="button" className="edited-btn"
-                                  onClick={() => setHistoryFor(historyFor === en.id ? null : en.id)}
-                                  title="Show edit history">edited 🕘</button>
+                      <div className="le-row">
+                        <div className="le-main">
+                          <div className="log-meta">
+                            {!en.at.includes('T00:00:00') && <span className="dt le-time">{fmtTime(en.at)}</span>}
+                            {en.system && <span className="chip sys"><span className="dot" />{en.system}</span>}
+                            {en.category && <span className="chip grp"><span className="dot" />{en.category}</span>}
+                            <span className={`chip ${['defect', 'failure'].includes(en.type) ? 'd-overdue' : ''}`}>
+                              <span className="dot" />{en.type}{en.subtype ? ` · ${en.subtype}` : ''}
+                            </span>
+                            {en.asset_code
+                              ? <a className="code" href={`#/asset/${en.asset_code}`}>{en.asset_code}</a>
+                              : en.type === 'failure' && <span className="chip d-overdue"><span className="dot" />unlinked</span>}
+                            {en.type === 'failure' && (en.ended_at
+                              ? <span className="chip w-done"><span className="dot" />resolved{en.down_hours != null ? ` · ${en.down_hours}h` : ''}</span>
+                              : <span className="chip d-overdue"><span className="dot" />open</span>)}
+                            {en.rectifies_id && <span className="dim le-ref">rectifies #{en.rectifies_id}</span>}
+                            {en.corrects_id && (
+                              <button type="button" className="edited-btn"
+                                      onClick={() => setHistoryFor(historyFor === en.id ? null : en.id)}
+                                      title="Show edit history"><HistoryIcon /> edited</button>
+                            )}
+                          </div>
+                          <div className="log-text">{bodyText(en.text)}</div>
+                          <div className="le-by">
+                            <b>{en.attended_by || en.entered_by}</b>
+                            {en.attended_by && en.attended_by !== en.entered_by && <> · rec. {en.entered_by}</>}
+                          </div>
+                        </div>
+                        {canWrite && editingId !== en.id && (
+                          <div className="le-actions">
+                            <button type="button" className="icon-btn" title="Edit entry" aria-label="Edit entry"
+                                    onClick={() => { setEditingId(en.id); setRectifying(null) }}><PencilIcon /></button>
+                            {openFail && rectifying !== en.id && (
+                              <button type="button" className="icon-btn resolve" title="Rectify — log the fix" aria-label="Rectify"
+                                      onClick={() => { setRectifying(en.id); setEditingId(null) }}><ResolveIcon /></button>
+                            )}
+                          </div>
                         )}
                       </div>
-                      <div className="log-text">{en.text}</div>
                       {historyFor === en.id && <VersionHistory id={en.id} />}
-                      {canWrite && editingId === en.id ? (
+                      {canWrite && editingId === en.id && (
                         <EditEntryForm entry={en} assets={assets} systems={systems} classSystem={classSystem}
                                        onCancel={() => setEditingId(null)}
                                        onSaved={() => { setEditingId(null); load() }} />
-                      ) : canWrite && (
-                        <div className="entry-actions">
-                          <button type="button" className="btn ghost sm"
-                                  onClick={() => { setEditingId(en.id); setRectifying(null) }}>Edit</button>
-                          {en.type === 'failure' && !en.ended_at && (
-                            rectifying === en.id
-                              ? <RectifyForm failure={en} busy={busy}
-                                             onCancel={() => setRectifying(null)}
-                                             onSubmit={(f) => submitRectify(en, f)} />
-                              : <button type="button" className="btn ghost sm"
-                                        onClick={() => { setRectifying(en.id); setEditingId(null) }}>Rectify</button>
-                          )}
-                        </div>
+                      )}
+                      {canWrite && rectifying === en.id && openFail && (
+                        <RectifyForm failure={en} busy={busy}
+                                     onCancel={() => setRectifying(null)}
+                                     onSubmit={(f) => submitRectify(en, f)} />
                       )}
                     </div>
-                  ))}
+                  )})}
                 </div>
               )
             })}
