@@ -296,12 +296,17 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 .asset-actions .icon-btn.disabled, .asset-actions .icon-btn:disabled { opacity: .5; pointer-events: none; }
 .newasset-card { margin-bottom: 12px; }
 .import-status { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: -4px 0 12px; }
-/* sortable + frozen table headers */
+/* sortable headers */
 .sortable th.th-sort { cursor: pointer; user-select: none; white-space: nowrap; }
 .sortable th.th-sort:hover { color: var(--ink); }
 .sortable th.th-sort.active { color: var(--accent); }
-.sortable thead th { position: sticky; top: calc(var(--topbar-h, 78px) + var(--toolbar-h, 52px) - 4px);
-  z-index: 15; background: #f4f2ef; }
+/* frozen header: the card clips (overflow:hidden) and .tbl-wrap scrolls-x —
+   both break a sticky thead, so this wrapper opts out and lets the header
+   stick to the page just under the frozen toolbar */
+.card.freeze-head { overflow: visible; }
+.freeze-head .sortable thead th { position: sticky;
+  top: calc(var(--topbar-h, 78px) + var(--toolbar-h, 52px) - 5px);
+  z-index: 15; background: #f1eeea; box-shadow: inset 0 -1px 0 var(--border); }
 @media screen and (max-width: 760px) {
   /* mobile: table becomes cards (thead hidden) and the topbar wraps tall —
      drop the sticky offsets so nothing floats over the content */
@@ -309,6 +314,22 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 }
 /* the PM-state chip sits inline in the table's PM-state cell */
 td .chip.d-none { color: var(--ink-3); }
+
+/* print caption — only on paper */
+.print-caption { display: none; }
+@media print {
+  .asset-toolbar, .preset-bar, .newasset-card, .import-status,
+  .no-print, .crumb, .wo-edit, .icon-btn, .ver-hist { display: none !important; }
+  .print-caption { display: block; font-size: 12px; font-weight: 600; margin: 0 0 8px; color: #000; }
+  .card.freeze-head { border: none; box-shadow: none; }
+  .freeze-head .sortable thead th { position: static; background: #eee !important;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  table { font-size: 11px; }
+  tbody tr { break-inside: avoid; }
+  /* asset detail: keep the passport tidy on paper */
+  .asset-passport { gap: 10px; }
+  .wo, .sect, .asset-facts, .asset-hero { break-inside: avoid; }
+}
 .fact .fk { font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); }
 .fact .fv { font-size: 15px; color: var(--ink); font-weight: 550; overflow-wrap: anywhere; }
 @media screen and (max-width: 560px) {

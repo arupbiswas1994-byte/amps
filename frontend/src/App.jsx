@@ -177,8 +177,6 @@ function LiveDashboard({ go, initialLine = null }) {
   const effLine = line ?? me?.line ?? lines[0] ?? null
   const assets = effLine ? all.filter((a) => a.line === effLine) : all
   const stateOf = (a) => sched[a.code]?.state || null
-  const overdue = assets.filter((a) => stateOf(a) === 'overdue')
-  const dueSoon = assets.filter((a) => stateOf(a) === 'due_soon')
   const uniq = (k) => [...new Set(assets.map((a) => a[k]).filter(Boolean))].sort()
   const systemsList = uniq('sys'); const classesList = uniq('cls'); const statusesList = uniq('status')
   const ql = q.trim().toLowerCase()
@@ -186,12 +184,16 @@ function LiveDashboard({ go, initialLine = null }) {
   const sortVal = (a, k) => k === 'next_due' ? (sched[a.code]?.next_due || '9999')
     : k === 'pm' ? (SEV_RANK[stateOf(a)] ?? 3)
     : (a[k] || '')
-  let shown = assets
-  if (filter !== 'all') shown = shown.filter((a) => stateOf(a) === filter)
-  if (ql) shown = shown.filter((a) => [a.code, a.name, a.location, a.cls, a.sys].some((v) => (v || '').toLowerCase().includes(ql)))
-  if (fSystem) shown = shown.filter((a) => a.sys === fSystem)
-  if (fClass) shown = shown.filter((a) => a.cls === fClass)
-  if (fStatus) shown = shown.filter((a) => a.status === fStatus)
+  // base = everything the search + dropdown filters allow (state chip excluded),
+  // so the chip counts reflect the current view and update as you filter
+  let base = assets
+  if (ql) base = base.filter((a) => [a.code, a.name, a.location, a.cls, a.sys].some((v) => (v || '').toLowerCase().includes(ql)))
+  if (fSystem) base = base.filter((a) => a.sys === fSystem)
+  if (fClass) base = base.filter((a) => a.cls === fClass)
+  if (fStatus) base = base.filter((a) => a.status === fStatus)
+  const overdue = base.filter((a) => stateOf(a) === 'overdue')
+  const dueSoon = base.filter((a) => stateOf(a) === 'due_soon')
+  let shown = filter === 'all' ? base : base.filter((a) => stateOf(a) === filter)
   if (sortKey) {
     const dir = sortDir === 'asc' ? 1 : -1
     shown = [...shown].sort((x, y) => {
@@ -255,7 +257,6 @@ function LiveDashboard({ go, initialLine = null }) {
           ))}
         </div>
       )}
-      <h2>Assets</h2>
       {assets.length === 0 ? (
         <div className="card"><p className="dim" style={{ margin: 0 }}>
           The register is empty.{' '}
@@ -278,7 +279,7 @@ function LiveDashboard({ go, initialLine = null }) {
             <input className="asset-search" type="search" value={q} onChange={(e) => setQ(e.target.value)}
                    placeholder="Search code, asset, class or location…" aria-label="Search assets" />
             <div className="asset-filter" role="tablist" aria-label="PM state filter">
-              {[['all', `All ${assets.length}`], ['overdue', `Overdue ${overdue.length}`], ['due_soon', `Due soon ${dueSoon.length}`]].map(([k, lbl]) => (
+              {[['all', `All ${base.length}`], ['overdue', `Overdue ${overdue.length}`], ['due_soon', `Due soon ${dueSoon.length}`]].map(([k, lbl]) => (
                 <button key={k} type="button" className={`btn preset ${filter === k ? 'active' : ''}${k === 'overdue' && overdue.length ? ' has-od' : ''}`}
                         onClick={() => setFilter(k)}>{lbl}</button>
               ))}
@@ -314,6 +315,11 @@ function LiveDashboard({ go, initialLine = null }) {
                 <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M8 2.4v7.2M4.8 6.6 8 9.8l3.2-3.2M3 12.8h10" /></svg>
               </button>
+              <button type="button" className="icon-btn" title="Print the filtered table"
+                      aria-label="Print filtered table" onClick={() => window.print()}>
+                <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4.5 6V2.5h7V6M4.5 12H3.2V6.4h9.6V12H11.5M4.5 9.6h7V13.5h-7z" /></svg>
+              </button>
               {canWrite && (
                 <button type="button" className={`icon-btn${impBusy ? ' disabled' : ''}`} title="Import register CSV"
                         aria-label="Import CSV" onClick={() => fileRef.current?.click()} disabled={impBusy}>
@@ -323,6 +329,12 @@ function LiveDashboard({ go, initialLine = null }) {
               )}
               <input ref={fileRef} type="file" accept=".csv,text/csv" hidden onChange={onImportFile} />
             </div>
+          </div>
+          {/* a caption that appears only on the printout: what's being shown */}
+          <div className="print-caption">
+            AMPS · {effLine || 'All lines'} — {filter === 'all' ? 'all assets' : filter === 'overdue' ? 'overdue PM' : 'PM due soon'}
+            {fSystem ? ` · ${fSystem}` : ''}{fClass ? ` · ${fClass}` : ''}{fStatus ? ` · ${STATUS_LABEL[fStatus] || fStatus}` : ''}
+            {q ? ` · “${q}”` : ''} · {shown.length} assets · {new Date().toISOString().slice(0, 10)}
           </div>
           {newOpen && canWrite && (
             <div className="card newasset-card">
@@ -346,7 +358,7 @@ function LiveDashboard({ go, initialLine = null }) {
           {shown.length === 0 ? (
             <div className="card"><p className="dim" style={{ margin: 0 }}>No assets match — clear the search or filters.</p></div>
           ) : (
-            <div className="card tbl-wrap">
+            <div className="card tbl-wrap freeze-head">
               <table className="sortable">
                 <thead>
                   <tr>
@@ -866,6 +878,7 @@ function LiveAssetDetail({ code }) {
                 {canWrite && !editing && (
                   <button className="btn ghost sm" type="button" onClick={() => setEditing(true)}>Edit details</button>
                 )}
+                <button className="btn ghost sm no-print" type="button" onClick={() => window.print()}>Print</button>
               </div>
             </div>
             <div className="hero-qr">
