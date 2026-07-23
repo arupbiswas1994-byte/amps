@@ -406,9 +406,10 @@ def failure_stats(days: int = 90, months: int = 6, db: Session = Depends(get_db)
 # The unified Green Line CSV format is the standard for every line:
 #   kind,type,group,asset_id,station,location,equipment,start,end,
 #   fault_type,details,action_taken,attended_by,reported_by,repercussion
-# kind=maintenance rows become append-only log entries; kind=failure rows
-# become failure records (rows whose asset is not in the register land as
-# defect log entries instead, so nothing is lost). Duplicate-safe by content.
+# kind is one of: maintenance | failure | rectification | general. Failures and
+# rectifications may carry an end time + fault_type; maintenance takes its cycle
+# from the type word. Rows whose asset isn't in the register still import (the
+# code is kept in the text), so nothing is lost. Duplicate-safe by content.
 
 import csv as _csv
 import io as _io
@@ -419,6 +420,8 @@ from sqlalchemy.exc import SQLAlchemyError
 LOG_SAMPLE_CSV = """kind,type,group,asset_id,station,location,equipment,start,end,fault_type,details,action_taken,attended_by,reported_by,repercussion
 maintenance,YEARLY MAINTENANCE,HT,B2HB11,Baranagar,TSS/ASS,VCB,2026-01-05,2026-01-05,,Maintenance done,,PS Staff,,
 failure,FAILURE,HT,B2HB11,Baranagar,TSS/ASS,VCB,2026-02-10 14:30,2026-02-10 16:05,Communication fault,Failure of operation from SCADA,Card replaced and tested,PS Staff,TPC,Supply fed from standby
+rectification,RECTIFICATION,HT,B2HB11,Baranagar,TSS/ASS,VCB,2026-02-11 10:00,2026-02-11 12:30,Communication fault,Faulty comm card replaced with spare and re-tested,Card swapped; SCADA link verified,PS Staff,,
+general,NOTE,HT,B2HB11,Baranagar,TSS/ASS,VCB,2026-03-01,,,Panel cleaned and inspected during patrol,,PS Staff,,
 """
 
 
@@ -427,6 +430,15 @@ def logbook_import_sample():
     """The standard logbook template — maintenance and failure rows, any line."""
     return Response(LOG_SAMPLE_CSV, media_type="text/csv", headers={
         "Content-Disposition": 'attachment; filename="amps-logbook-sample.csv"'})
+
+
+# the logbook 'kind' cell → entry type; blank/unknown defaults to maintenance
+_KIND_TYPE = {
+    "maintenance": LogEntryType.MAINTENANCE,
+    "failure": LogEntryType.FAILURE,
+    "rectification": LogEntryType.RECTIFICATION,
+    "general": LogEntryType.GENERAL,
+}
 
 
 def _maint_subtype(type_text: str) -> str | None:
@@ -487,7 +499,8 @@ async def import_history(request: Request, db: Session = Depends(get_db),
             continue
         details = get("details") or get("fault_type") or get("type") or "entry"
         asset = assets.get(get("asset_id"))
-        is_failure = get("kind").lower() == "failure"
+        etype = _KIND_TYPE.get(get("kind").lower(), LogEntryType.MAINTENANCE)
+        is_failure = etype == LogEntryType.FAILURE
         try:
             bits = [details]
             if get("fault_type"): bits.append(f"fault: {get('fault_type')}")
@@ -513,17 +526,19 @@ async def import_history(request: Request, db: Session = Depends(get_db),
             # maintenance runs on the night shift; failures keep the general marker
             # failures carry their recovery moment so downtime stays derivable
             # (a sheet end that predates the start is a day/month swap — drop it)
-            end = _parse_dt(get("end")) if is_failure else None
+            # failures & rectifications carry a recovery/completion time + fault
+            has_recovery = etype in (LogEntryType.FAILURE, LogEntryType.RECTIFICATION)
+            end = _parse_dt(get("end")) if has_recovery else None
             if end and end < start:
                 end = None
             db.add(LogEntry(
                 at=start, log_date=start.date(),
-                shift=ShiftCode.GENERAL if is_failure else ShiftCode.NIGHT,
-                type=LogEntryType.FAILURE if is_failure else LogEntryType.MAINTENANCE,
-                subtype=None if is_failure else _maint_subtype(get("type")),
+                shift=ShiftCode.NIGHT if etype == LogEntryType.MAINTENANCE else ShiftCode.GENERAL,
+                type=etype,
+                subtype=_maint_subtype(get("type")) if etype == LogEntryType.MAINTENANCE else None,
                 system=system, category=category,
                 ended_at=end,
-                fault_type=(get("fault_type")[:120] or None) if is_failure else None,
+                fault_type=(get("fault_type")[:120] or None) if has_recovery else None,
                 text=body_text, entered_by=(get("attended_by") or "imported record")[:120],
                 attended_by=(get("attended_by")[:200] or None),
                 asset=asset, line_id=line_id))
