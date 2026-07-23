@@ -517,13 +517,12 @@ function MaintenanceSchedule({ log }) {
       ) : (
         <div className="tbl-wrap">
           <table className="sched-tbl">
-            <thead><tr><th>Frequency</th><th>Last done</th><th>Attended by</th><th>Next due</th><th>Days left</th><th>State</th></tr></thead>
+            <thead><tr><th>Frequency</th><th>Last done</th><th>Next due</th><th>Days left</th><th>State</th></tr></thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.freq}>
                   <td data-l="Frequency"><b>{r.freq}</b></td>
                   <td className="dim dt" data-l="Last done">{r.last}</td>
-                  <td className="dim wrap-cell" data-l="Attended by">{r.by || '—'}</td>
                   <td className="dt" data-l="Next due">{r.due}</td>
                   <td data-l="Days left">{r.daysLeft < 0 ? `${-r.daysLeft}d ago` : `in ${r.daysLeft}d`}</td>
                   <td data-l="State"><span className={`chip d-${r.state}`}><span className="dot" />{SCHED_LABEL[r.state]}</span></td>
