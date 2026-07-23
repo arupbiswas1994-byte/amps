@@ -143,6 +143,7 @@ function LiveDashboard({ go, initialLine = null }) {
   const { me } = useMe()
   const [line, setLine] = useState(initialLine)
   const [filter, setFilter] = useState('all')   // all | overdue | due_soon
+  const [q, setQ] = useState('')
   useEffect(() => { setLine(initialLine) }, [initialLine])
   const lines = [...new Set(all.map((a) => a.line).filter(Boolean))].sort()
   // each line stands alone — no aggregated all-lines view; default to the
@@ -153,13 +154,12 @@ function LiveDashboard({ go, initialLine = null }) {
   const overdue = assets.filter((a) => stateOf(a) === 'overdue')
   const dueSoon = assets.filter((a) => stateOf(a) === 'due_soon')
   const stations = new Set(assets.map((a) => a.location)).size
-  // group by the system a department thinks in, worst-health first inside each
-  const shown = filter === 'all' ? assets : assets.filter((a) => stateOf(a) === filter)
-  const bySystem = {}
-  shown.forEach((a) => { (bySystem[a.sys || 'Unassigned'] ??= []).push(a) })
-  const systems = Object.keys(bySystem).sort()
-  systems.forEach((s) => bySystem[s].sort((x, y) =>
-    (SEV_RANK[stateOf(x)] ?? 3) - (SEV_RANK[stateOf(y)] ?? 3) || x.code.localeCompare(y.code)))
+  const byFilter = filter === 'all' ? assets : assets.filter((a) => stateOf(a) === filter)
+  const ql = q.trim().toLowerCase()
+  const shown = ql
+    ? byFilter.filter((a) => [a.code, a.name, a.location, a.cls, a.sys]
+        .some((v) => (v || '').toLowerCase().includes(ql)))
+    : byFilter
   if (loading) return <p className="dim">Loading the asset register…</p>
   if (error) return <div className="card offline-note">Backend unreachable — {error}. Check the server and reload.</div>
   return (
@@ -191,48 +191,47 @@ function LiveDashboard({ go, initialLine = null }) {
         </p></div>
       ) : (
         <>
-          <div className="asset-filter" role="tablist" aria-label="PM state filter">
-            {[['all', `All ${assets.length}`], ['overdue', `Overdue ${overdue.length}`], ['due_soon', `Due soon ${dueSoon.length}`]].map(([k, lbl]) => (
-              <button key={k} type="button" className={`btn preset ${filter === k ? 'active' : ''}${k === 'overdue' && overdue.length ? ' has-od' : ''}`}
-                      onClick={() => setFilter(k)}>{lbl}</button>
-            ))}
+          <div className="asset-toolbar">
+            <input className="asset-search" type="search" value={q} onChange={(e) => setQ(e.target.value)}
+                   placeholder="Search code, asset, class or location…" aria-label="Search assets" />
+            <div className="asset-filter" role="tablist" aria-label="PM state filter">
+              {[['all', `All ${assets.length}`], ['overdue', `Overdue ${overdue.length}`], ['due_soon', `Due soon ${dueSoon.length}`]].map(([k, lbl]) => (
+                <button key={k} type="button" className={`btn preset ${filter === k ? 'active' : ''}${k === 'overdue' && overdue.length ? ' has-od' : ''}`}
+                        onClick={() => setFilter(k)}>{lbl}</button>
+              ))}
+            </div>
           </div>
           {shown.length === 0 ? (
-            <div className="card"><p className="dim" style={{ margin: 0 }}>Nothing {filter === 'overdue' ? 'overdue' : 'due soon'} on this line — the schedule is clear.</p></div>
-          ) : systems.map((sysName) => {
-            const group = bySystem[sysName]
-            const od = group.filter((a) => stateOf(a) === 'overdue').length
-            return (
-              <section className="sysgroup" key={sysName}>
-                <div className="sysgroup-h">
-                  <h3>{sysName}</h3>
-                  <span className="sg-count">{group.length}</span>
-                  {od > 0 && <span className="sg-od">{od} overdue</span>}
-                </div>
-                <div className="asset-grid">
-                  {group.map((a) => {
+            <div className="card"><p className="dim" style={{ margin: 0 }}>No assets match — clear the search or filter.</p></div>
+          ) : (
+            <div className="card tbl-wrap">
+              <table>
+                <thead>
+                  <tr><th>Code</th><th>Asset</th><th>Class</th><th>Location</th><th>System</th><th>Status</th><th>Next PM</th><th>PM state</th></tr>
+                </thead>
+                <tbody>
+                  {shown.map((a) => {
                     const s = sched[a.code]
-                    const st = s?.state || 'none'
                     return (
-                      <a className={`asset-card sc-${st}`} key={a.code} href={`#/asset/${a.code}`}>
-                        <span className="ac-bar" />
-                        <div className="ac-top">
-                          <span className="ac-code">{a.code}</span>
-                          <StatusChip status={a.status} />
-                        </div>
-                        <div className="ac-name">{a.name}</div>
-                        <div className="ac-sub dim">{a.cls} · {a.location}</div>
-                        <div className="ac-health">
-                          <span className={schedChip(s?.state || 'none')}><span className="dot" />{s ? SCHED_LABEL[s.state] : 'No schedule'}</span>
-                          {s?.next_due && <span className="ac-due dim dt">{s.overdue_count > 0 ? 'due ' : 'next '}{s.next_due}</span>}
-                        </div>
-                      </a>
+                      <tr key={a.code} tabIndex={0} onClick={() => go(`/asset/${a.code}`)}
+                          onKeyDown={(e) => e.key === 'Enter' && go(`/asset/${a.code}`)}>
+                        <td className="code" data-l="Code">{a.code}</td>
+                        <td data-l="Asset">{a.name}</td>
+                        <td className="dim" data-l="Class">{a.cls}</td>
+                        <td className="dim" data-l="Location">{a.location}</td>
+                        <td className="dim" data-l="System">{a.sys ?? '—'}</td>
+                        <td data-l="Status"><StatusChip status={a.status} /></td>
+                        <td className="dim dt" data-l="Next PM">{s?.next_due || '—'}</td>
+                        <td data-l="PM state">{s
+                          ? <span className={schedChip(s.state)}><span className="dot" />{SCHED_LABEL[s.state]}{s.overdue_count > 1 ? ` · ${s.overdue_count}` : ''}</span>
+                          : <span className="dim">—</span>}</td>
+                      </tr>
                     )
                   })}
-                </div>
-              </section>
-            )
-          })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
       )}
     </>
