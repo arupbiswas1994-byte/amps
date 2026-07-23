@@ -484,11 +484,17 @@ function deriveSchedule(log) {
     if (!latest[e.subtype] || e.log_date > latest[e.subtype].log_date) latest[e.subtype] = e
   }
   return FREQ_ORDER.filter((f) => latest[f]).map((f) => {
-    const e = latest[f]
-    const due = addDays(e.log_date, FREQ_DAYS[f])
+    // A more comprehensive service fulfils the shorter cycles under it — doing the
+    // Yearly is doing that period's Quarterly and Half-Yearly too. So the effective
+    // last-done is the most recent maintenance at this frequency OR any longer one.
+    let best = null
+    for (const g of FREQ_ORDER) {
+      if (FREQ_DAYS[g] >= FREQ_DAYS[f] && latest[g] && (!best || latest[g].log_date > best.log_date)) best = latest[g]
+    }
+    const due = addDays(best.log_date, FREQ_DAYS[f])
     const daysLeft = daysUntil(due)
     const state = daysLeft < 0 ? 'overdue' : daysLeft <= 30 ? 'due_soon' : 'ok'
-    return { freq: f, last: e.log_date, by: e.attended_by || e.entered_by, due, daysLeft, state }
+    return { freq: f, last: best.log_date, via: best.subtype !== f ? best.subtype : null, due, daysLeft, state }
   })
 }
 
@@ -522,7 +528,7 @@ function MaintenanceSchedule({ log }) {
               {rows.map((r) => (
                 <tr key={r.freq}>
                   <td data-l="Frequency"><b>{r.freq}</b></td>
-                  <td className="dim dt" data-l="Last done">{r.last}</td>
+                  <td className="dim dt" data-l="Last done">{r.last}{r.via && <span className="sched-via"> · via {r.via}</span>}</td>
                   <td className="dt" data-l="Next due">{r.due}</td>
                   <td data-l="Days left">{r.daysLeft < 0 ? `${-r.daysLeft}d ago` : `in ${r.daysLeft}d`}</td>
                   <td data-l="State"><span className={`chip d-${r.state}`}><span className="dot" />{SCHED_LABEL[r.state]}</span></td>

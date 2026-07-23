@@ -253,6 +253,7 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 .sched-tbl tbody tr { cursor: default; }
 .sched-tbl tbody tr:hover { background: transparent; }
 .sched-tbl th, .sched-tbl td { white-space: nowrap; }
+.sched-via { color: var(--ink-3); font-style: italic; }
 .fact .fk { font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); }
 .fact .fv { font-size: 15px; color: var(--ink); font-weight: 550; overflow-wrap: anywhere; }
 @media screen and (max-width: 560px) {
