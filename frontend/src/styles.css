@@ -273,22 +273,24 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 .plan-ok { color: var(--good); font-size: 12px; font-weight: 600; }
 
 /* ---- register: search + PM-state filter above the table ---- */
-/* one wrapping row: search · state chips · system/class/status · count · actions.
-   Frozen: parks under the sticky topbar so it stays put while the table scrolls. */
-.asset-toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 6px 0 12px;
+/* one single row: search · state chips · system/class/location/status · count · actions.
+   No wrap — the search flexes and the row scrolls sideways if a narrow window
+   can't hold it all. Frozen: parks under the sticky topbar while the table scrolls. */
+.asset-toolbar { display: flex; gap: 7px; align-items: center; flex-wrap: nowrap; overflow-x: auto; margin: 6px 0 12px;
   position: sticky; top: calc(var(--topbar-h, 78px) - 2px); z-index: 25; background: var(--bg);
-  padding: 8px 0; }
-.asset-search { flex: 1 1 200px; min-width: 180px; max-width: 320px; font: inherit; font-size: 14px;
-  padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+  padding: 8px 0; scrollbar-width: thin; }
+.asset-search { flex: 1 1 150px; min-width: 120px; max-width: 260px; font: inherit; font-size: 13.5px;
+  padding: 7px 11px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
 .asset-search:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-.asset-filter { display: flex; gap: 8px; flex-wrap: wrap; margin: 0; }
+.asset-filter { display: flex; gap: 6px; flex-wrap: nowrap; margin: 0; flex: 0 0 auto; }
+.asset-filter .btn.preset { white-space: nowrap; padding: 6px 10px; }
 .asset-filter .btn.preset.has-od { color: #a32e2e; }
-.asset-toolbar select { font: inherit; font-size: 13px; max-width: 200px; padding: 7px 10px;
+.asset-toolbar select { flex: 0 0 auto; font: inherit; font-size: 12.5px; max-width: 130px; min-width: 0; padding: 6px 8px;
   border: 1px solid var(--border); border-radius: 8px; background: #fff; color: var(--ink); }
 .asset-toolbar select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-.asset-count { font-size: 12px; color: var(--ink-3); margin-left: auto; white-space: nowrap; }
-/* the three quick actions: new · download filtered · import */
-.asset-actions { display: flex; gap: 6px; align-items: center; }
+.asset-count { flex: 0 0 auto; font-size: 12px; color: var(--ink-3); margin-left: auto; white-space: nowrap; }
+/* the quick actions: new · download filtered · print · import */
+.asset-actions { display: flex; gap: 5px; align-items: center; flex: 0 0 auto; }
 .asset-actions .icon-btn { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 8px;
   border: 1px solid var(--border); background: #fff; color: var(--ink-2); cursor: pointer; transition: all .12s; }
 .asset-actions .icon-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
@@ -309,8 +311,9 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
   z-index: 15; background: #f1eeea; box-shadow: inset 0 -1px 0 var(--border); }
 @media screen and (max-width: 760px) {
   /* mobile: table becomes cards (thead hidden) and the topbar wraps tall —
-     drop the sticky offsets so nothing floats over the content */
-  .asset-toolbar { position: static; }
+     drop the sticky offset and let the controls wrap instead of side-scroll */
+  .asset-toolbar { position: static; flex-wrap: wrap; overflow-x: visible; }
+  .asset-search { max-width: none; }
 }
 /* the PM-state chip sits inline in the table's PM-state cell */
 td .chip.d-none { color: var(--ink-3); }
