@@ -179,23 +179,25 @@ def create_asset(asset: AssetIn, db: Session = Depends(get_db), user=Depends(cur
 #   criticality      A (vital) / B (important) / C (tolerable); default B
 #   status           in_service / under_maintenance / out_of_service / decommissioned
 #   commissioned_on  in service since — YYYY-MM-DD
-#   maintenance_cycles the PM cycles this asset needs, ';'-separated, from
-#                    Monthly / Quarterly / Half-Yearly / Yearly / 5-Yearly
-#                    (M / Q / HY / Y / 5Y abbreviations accepted). Blank ⇒ the
-#                    schedule is inferred from the logbook instead.
+#   Monthly … 5-Yearly  the PM cycles this asset needs — one column per cycle;
+#                    put TRUE (or a tick) in each cycle that applies. All blank ⇒
+#                    the schedule is inferred from the logbook instead.
 #   last_maintenance last PM date (YYYY-MM-DD) — seeds the schedule for history
 #                    recorded before the logbook; the log takes over after.
-SAMPLE_CSV = """code,name,asset_class,location,line,system,make_model,criticality,status,commissioned_on,maintenance_cycles,last_maintenance
-B2HB11,VCB,33KV SWITCHGEAR,Baranagar,Blue Line,HT · 33kV,"SIEMENS LTD.,INDIA",A,in_service,2019-03-15,Yearly,2025-11-06
-LP-C-01(BARA),Concourse Light Panel,DISTRIBUTION BOARD,Baranagar,Blue Line,LT · LT Panels,,B,in_service,,Quarterly;Yearly,2026-01-10
-AHU-M1(BARA),AHU Unit 1,ECS- AXIAL FLOW FAN,Baranagar,Blue Line,LT · ECS (AC),M/S VOLTAS,B,in_service,,Monthly;Half-Yearly;Yearly,
+SAMPLE_CSV = """code,name,asset_class,location,line,system,make_model,criticality,status,commissioned_on,Monthly,Quarterly,Half-Yearly,Yearly,5-Yearly,last_maintenance
+B2HB11,VCB,33KV SWITCHGEAR,Baranagar,Blue Line,HT · 33kV,"SIEMENS LTD.,INDIA",A,in_service,2019-03-15,,,,TRUE,,2025-11-06
+LP-C-01(BARA),Concourse Light Panel,DISTRIBUTION BOARD,Baranagar,Blue Line,LT · LT Panels,,B,in_service,,,TRUE,,TRUE,,2026-01-10
+AHU-M1(BARA),AHU Unit 1,ECS- AXIAL FLOW FAN,Baranagar,Blue Line,LT · ECS (AC),M/S VOLTAS,B,in_service,,TRUE,,TRUE,TRUE,,
 """
 
 REQUIRED_COLS = ("code", "name", "asset_class", "location")
 # columns fed straight to AssetIn
 OPTIONAL_COLS = ("line", "system", "make_model", "criticality", "status", "commissioned_on")
+
+# the five schedule cycles, each a checkbox column in the register sheet
+CYCLE_LABELS = ("Monthly", "Quarterly", "Half-Yearly", "Yearly", "5-Yearly")
 # maintenance-plan columns, handled separately (they seed pm_plans, not the asset)
-PLAN_COLS = ("maintenance_cycles", "last_maintenance")
+PLAN_COLS = CYCLE_LABELS + ("last_maintenance", "maintenance_cycles")
 
 # accept the master-sheet abbreviations as well as the full labels
 _CYCLE_ALIASES = {
@@ -205,10 +207,11 @@ _CYCLE_ALIASES = {
     "y": "Yearly", "yearly": "Yearly", "annual": "Yearly", "annually": "Yearly",
     "5y": "5-Yearly", "5-yearly": "5-Yearly", "5 yearly": "5-Yearly", "5yearly": "5-Yearly",
 }
+_TRUTHY = {"true", "yes", "y", "1", "x", "✓", "✔", "checked", "tick", "☑"}
 
 
 def _parse_cycles(raw: str) -> list[str]:
-    """Parse a 'maintenance_cycles' cell into canonical frequency labels."""
+    """Parse a free-text 'maintenance_cycles' cell into canonical labels."""
     out = []
     for part in raw.replace(",", ";").replace("|", ";").split(";"):
         key = part.strip().lower()
@@ -218,6 +221,17 @@ def _parse_cycles(raw: str) -> list[str]:
         if label and label not in out:
             out.append(label)
     return out
+
+
+def _cycles_from_row(raw: dict) -> list[str]:
+    """The asset's PM cycles from a CSV row. Per-cycle checkbox columns
+    (Monthly … 5-Yearly = TRUE) take precedence; otherwise the legacy free-text
+    'maintenance_cycles' cell is parsed."""
+    picked = [c for c in CYCLE_LABELS
+              if str(raw.get(c) or "").strip().lower() in _TRUTHY]
+    if picked:
+        return picked
+    return _parse_cycles(raw.get("maintenance_cycles") or "")
 
 
 def _parse_date(raw: str):
@@ -279,7 +293,7 @@ async def import_csv(request: Request, db: Session = Depends(get_db),
         try:
             obj = _create_one(db, AssetIn(**fields), user)
             # optional maintenance plan — seed pm_plans from the cycle columns
-            cycles = _parse_cycles(raw.get("maintenance_cycles") or "")
+            cycles = _cycles_from_row(raw)
             if cycles:
                 cycles = sorted(cycles, key=lambda x: SCHEDULE_FREQ[x])
                 seed = _parse_date(raw.get("last_maintenance") or "")

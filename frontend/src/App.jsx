@@ -146,6 +146,7 @@ function LiveDashboard({ go, initialLine = null }) {
   const [q, setQ] = useState('')
   const [fSystem, setFSystem] = useState('')
   const [fClass, setFClass] = useState('')
+  const [fLocation, setFLocation] = useState('')
   const [fStatus, setFStatus] = useState('')
   const [sortKey, setSortKey] = useState(null)  // null = register order
   const [sortDir, setSortDir] = useState('asc')
@@ -178,7 +179,8 @@ function LiveDashboard({ go, initialLine = null }) {
   const assets = effLine ? all.filter((a) => a.line === effLine) : all
   const stateOf = (a) => sched[a.code]?.state || null
   const uniq = (k) => [...new Set(assets.map((a) => a[k]).filter(Boolean))].sort()
-  const systemsList = uniq('sys'); const classesList = uniq('cls'); const statusesList = uniq('status')
+  const systemsList = uniq('sys'); const classesList = uniq('cls')
+  const locationsList = uniq('location'); const statusesList = uniq('status')
   const ql = q.trim().toLowerCase()
   // the sort accessor per column; PM columns read the derived schedule
   const sortVal = (a, k) => k === 'next_due' ? (sched[a.code]?.next_due || '9999')
@@ -190,6 +192,7 @@ function LiveDashboard({ go, initialLine = null }) {
   if (ql) base = base.filter((a) => [a.code, a.name, a.location, a.cls, a.sys].some((v) => (v || '').toLowerCase().includes(ql)))
   if (fSystem) base = base.filter((a) => a.sys === fSystem)
   if (fClass) base = base.filter((a) => a.cls === fClass)
+  if (fLocation) base = base.filter((a) => a.location === fLocation)
   if (fStatus) base = base.filter((a) => a.status === fStatus)
   const overdue = base.filter((a) => stateOf(a) === 'overdue')
   const dueSoon = base.filter((a) => stateOf(a) === 'due_soon')
@@ -292,13 +295,17 @@ function LiveDashboard({ go, initialLine = null }) {
               <option value="">All classes</option>
               {classesList.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
+            <select value={fLocation} onChange={(e) => setFLocation(e.target.value)} aria-label="Filter by location">
+              <option value="">All locations</option>
+              {locationsList.map((l) => <option key={l} value={l}>{l}</option>)}
+            </select>
             <select value={fStatus} onChange={(e) => setFStatus(e.target.value)} aria-label="Filter by status">
               <option value="">Any status</option>
               {statusesList.map((s) => <option key={s} value={s}>{STATUS_LABEL[s] || s}</option>)}
             </select>
-            {(fSystem || fClass || fStatus || q || filter !== 'all' || sortKey) && (
+            {(fSystem || fClass || fLocation || fStatus || q || filter !== 'all' || sortKey) && (
               <button type="button" className="btn ghost sm" onClick={() => {
-                setFSystem(''); setFClass(''); setFStatus(''); setQ(''); setFilter('all'); setSortKey(null)
+                setFSystem(''); setFClass(''); setFLocation(''); setFStatus(''); setQ(''); setFilter('all'); setSortKey(null)
               }}>Clear</button>
             )}
             <span className="asset-count">{shown.length} shown</span>
@@ -333,7 +340,7 @@ function LiveDashboard({ go, initialLine = null }) {
           {/* a caption that appears only on the printout: what's being shown */}
           <div className="print-caption">
             AMPS · {effLine || 'All lines'} — {filter === 'all' ? 'all assets' : filter === 'overdue' ? 'overdue PM' : 'PM due soon'}
-            {fSystem ? ` · ${fSystem}` : ''}{fClass ? ` · ${fClass}` : ''}{fStatus ? ` · ${STATUS_LABEL[fStatus] || fStatus}` : ''}
+            {fSystem ? ` · ${fSystem}` : ''}{fClass ? ` · ${fClass}` : ''}{fLocation ? ` · ${fLocation}` : ''}{fStatus ? ` · ${STATUS_LABEL[fStatus] || fStatus}` : ''}
             {q ? ` · “${q}”` : ''} · {shown.length} assets · {new Date().toISOString().slice(0, 10)}
           </div>
           {newOpen && canWrite && (
