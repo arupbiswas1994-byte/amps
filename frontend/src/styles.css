@@ -427,6 +427,31 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 .ep-grid input:focus, .ep-grid select:focus, .ep-grid textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .ep-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
 .ep-note { font-size: 11.5px; color: var(--ink-3); }
+
+/* add-entry form — same labelled-grid language as the edit panel */
+.entry-form { padding: 14px 16px; margin-bottom: 20px; }
+.ef-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 14px; }
+.ef-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; font-weight: 600; color: var(--ink-2); }
+.ef-grid .ef-opt { font-weight: 400; color: var(--ink-3); text-transform: none; letter-spacing: 0; }
+.ef-grid .ef-full { grid-column: 1 / -1; }
+.ef-grid .ef-wide { grid-column: span 2; }
+.ef-grid .ef-sub { }
+.ef-grid input, .ef-grid select, .ef-grid textarea {
+  font: inherit; font-size: 13.5px; font-weight: 400; color: var(--ink);
+  padding: 7px 9px; border: 1px solid var(--border); border-radius: 7px; background: #fff; width: 100%;
+}
+.ef-grid textarea { resize: vertical; line-height: 1.45; }
+.ef-grid input:focus, .ef-grid select:focus, .ef-grid textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.ef-grid .time-field { width: 100%; }
+.ef-grid .time-field input[type="time"] { width: 100%; }
+.ef-rect { margin-top: 12px; padding: 12px 12px 4px; border: 1px dashed #ecdfc7; border-radius: 9px; background: #fdfaf3; }
+.ef-sublbl { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--accent); margin-bottom: 9px; }
+.ef-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+@media screen and (max-width: 640px) {
+  .ef-grid { grid-template-columns: 1fr 1fr; }
+  .ef-grid .ef-wide { grid-column: 1 / -1; }
+}
 @media screen and (max-width: 640px) {
   .ep-grid { grid-template-columns: 1fr 1fr; }
   .ep-grid .ep-wide { grid-column: 1 / -1; }

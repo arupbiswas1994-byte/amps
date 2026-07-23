@@ -576,105 +576,125 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
                  onChange={(d) => { setLogDate(d); setAllDates(false) }} />
 
       {canWrite ? (
-        <form className="log-form card" onSubmit={add}>
-          {/* maintenance is always a night-shift job — lock the shift to N */}
-          <select value={type === 'maintenance' ? 'N' : shift} disabled={type === 'maintenance'}
-                  onChange={(e) => setShift(e.target.value)} aria-label="Shift"
-                  title={type === 'maintenance' ? 'Maintenance runs on the night shift' : 'Shift'}>
-            {ENTRY_SHIFTS.map((s) => <option key={s} value={s}>{s} — {SHIFT_LABEL[s]}</option>)}
-          </select>
-          {/* System first (a short list), then the class under it — the class
-              options narrow to that system so the picker stays short. */}
-          <select value={system} className="log-sys" aria-label="System"
-                  onChange={(e) => { setSystem(e.target.value); setCategory('') }}>
-            <option value="">System…</option>
-            {systems.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-          <select value={category} className="log-cat" aria-label="Asset class (optional)"
-                  disabled={!system && classesForSystem.length === 0}
-                  onChange={(e) => {
-                    const c = e.target.value
-                    setCategory(c)
-                    if (c && classSystem[c]) setSystem(classSystem[c])  // fill system from class
-                  }}>
-            <option value="">{system ? 'Class (optional)…' : 'Class…'}</option>
-            {classesForSystem.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-          <select value={type}
-                  onChange={(e) => { setType(e.target.value); if (e.target.value === 'maintenance') setShift('N') }}
-                  aria-label="Entry type">
-            {ENTRY_TYPES.map((t) => <option key={t} value={t}>{t[0].toUpperCase() + t.slice(1)}</option>)}
-          </select>
-          {type === 'maintenance' && (
-            <select value={subtype} onChange={(e) => setSubtype(e.target.value)} aria-label="Maintenance frequency">
-              {MAINT_SUBTYPES.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-          )}
-          {/* A failure needs its fault class and the moment supply came back —
-              downtime is derived from the two timestamps, never typed. Leave
-              the recovery blank while the breakdown is still open. */}
-          {type === 'failure' && (
-            <>
-              <input value={faultType} onChange={(e) => setFaultType(e.target.value)}
-                     placeholder="Fault type…" className="log-cat" aria-label="Fault type"
-                     maxLength={120} />
-              <select value={rectified ? 'rectified' : 'open'} aria-label="Failure state"
-                      onChange={(e) => {
-                        const on = e.target.value === 'rectified'
-                        setRectified(on)
-                        if (on && !rDate) setRDate(logDate)
-                      }}>
-                <option value="open">Still open</option>
-                <option value="rectified">Rectified</option>
+        <form className="entry-form card" onSubmit={add}>
+          <div className="ef-grid">
+            <label>Type
+              <select value={type}
+                      onChange={(e) => { setType(e.target.value); if (e.target.value === 'maintenance') setShift('N') }}>
+                {ENTRY_TYPES.map((t) => <option key={t} value={t}>{t[0].toUpperCase() + t.slice(1)}</option>)}
               </select>
-            </>
-          )}
-          <TimeInput value={tim} onChange={setTim} className="log-time" />
-          <input value={assetCode} list="register-codes" placeholder="Asset ID…"
-                 className="log-asset" aria-label="Asset code (optional)"
-                 onChange={(e) => {
-                   const v = e.target.value
-                   setAssetCode(v)
-                   const hit = assets.find((a) => a.code === v)  // auto-set system + class from the asset
-                   if (hit?.system) setSystem(hit.system)
-                   if (hit?.asset_class) setCategory(hit.asset_class)
-                 }} />
-          {/* code leads the visible label so the Asset ID shows in the list,
-              not just the name — some browsers hide the option value */}
-          <datalist id="register-codes">
-            {assets.map((a) => <option key={a.code} value={a.code}>{`${a.code} — ${a.name} · ${a.location}`}</option>)}
-          </datalist>
-          {!authOn && ( /* signed-in deployments stamp the author from the session */
-            <input value={author} onChange={(e) => setAuthor(e.target.value)}
-                   aria-label="Entered by" placeholder="Entered by…" className="log-author" maxLength={40} />
-          )}
-          <input value={team} onChange={(e) => setTeam(e.target.value)}
-                 placeholder="Team / attended by…" className="log-team"
-                 aria-label="Team — who did the work" maxLength={200} />
-          <input value={text} onChange={(e) => setText(e.target.value)}
-                 placeholder={`Log entry for ${fmtDate(logDate)} — work done, readings, events…`} />
-          <button className="btn" type="submit" disabled={busy || apiOk === false || !text.trim()}>
-            {busy ? 'Adding…' : rectified && type === 'failure' ? 'Add both entries' : 'Add entry'}
-          </button>
-          {err && <span className="import-msg err">{err}</span>}
-
-          {/* row two: the rectification, filed as its own entry */}
-          {type === 'failure' && rectified && (
-            <div className="log-row2">
-              <span className="log-row2-tag">Rectification</span>
-              <input type="date" value={rDate} onChange={(e) => setRDate(e.target.value)}
-                     aria-label="Rectified on" title="Rectified on" />
-              <TimeInput value={rTim} onChange={setRTim} className="log-time" label="Rectified at" />
-              <select value={rShift} onChange={(e) => setRShift(e.target.value)}
-                      aria-label="Rectification shift" title="Shift that did the work">
+            </label>
+            {/* maintenance is always a night-shift job — lock the shift to N */}
+            <label>Shift
+              <select value={type === 'maintenance' ? 'N' : shift} disabled={type === 'maintenance'}
+                      onChange={(e) => setShift(e.target.value)}
+                      title={type === 'maintenance' ? 'Maintenance runs on the night shift' : 'Shift'}>
                 {ENTRY_SHIFTS.map((s) => <option key={s} value={s}>{s} — {SHIFT_LABEL[s]}</option>)}
               </select>
-              <input value={rTeam} onChange={(e) => setRTeam(e.target.value)}
-                     placeholder="Team…" className="log-team" aria-label="Rectification team" />
-              <input value={rText} onChange={(e) => setRText(e.target.value)}
-                     placeholder="What was done to rectify it…" />
+            </label>
+            {type === 'maintenance' && (
+              <label>Frequency
+                <select value={subtype} onChange={(e) => setSubtype(e.target.value)}>
+                  {MAINT_SUBTYPES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </label>
+            )}
+            {type === 'failure' && (
+              <label>State
+                <select value={rectified ? 'rectified' : 'open'}
+                        onChange={(e) => { const on = e.target.value === 'rectified'; setRectified(on); if (on && !rDate) setRDate(logDate) }}>
+                  <option value="open">Still open</option>
+                  <option value="rectified">Rectified</option>
+                </select>
+              </label>
+            )}
+
+            {/* System first (short list), then the class under it */}
+            <label>System
+              <select value={system} onChange={(e) => { setSystem(e.target.value); setCategory('') }}>
+                <option value="">System…</option>
+                {systems.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </label>
+            <label>Class {type !== 'failure' && <span className="ef-opt">(optional)</span>}
+              <select value={category} disabled={!system && classesForSystem.length === 0}
+                      onChange={(e) => { const c = e.target.value; setCategory(c); if (c && classSystem[c]) setSystem(classSystem[c]) }}>
+                <option value="">Class…</option>
+                {classesForSystem.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </label>
+            <label>Time <span className="ef-opt">(optional)</span>
+              <TimeInput value={tim} onChange={setTim} />
+            </label>
+
+            <label>Equipment (Asset ID)
+              <input value={assetCode} list="register-codes" placeholder="scan/type code…"
+                     onChange={(e) => {
+                       const v = e.target.value; setAssetCode(v)
+                       const hit = assets.find((a) => a.code === v)
+                       if (hit?.system) setSystem(hit.system)
+                       if (hit?.asset_class) setCategory(hit.asset_class)
+                     }} />
+            </label>
+            <datalist id="register-codes">
+              {assets.map((a) => <option key={a.code} value={a.code}>{`${a.code} — ${a.name} · ${a.location}`}</option>)}
+            </datalist>
+            <label className={authOn ? 'ef-wide' : ''}>Team / attended by
+              <input value={team} onChange={(e) => setTeam(e.target.value)} maxLength={200}
+                     placeholder="crew that did the work" />
+            </label>
+            {!authOn && (
+              <label>Entered by
+                <input value={author} onChange={(e) => setAuthor(e.target.value)} maxLength={40} placeholder="you" />
+              </label>
+            )}
+
+            {type === 'failure' && (
+              <label className="ef-full ef-sub">Fault type
+                <input value={faultType} onChange={(e) => setFaultType(e.target.value)}
+                       placeholder="e.g. DC earth fault" maxLength={120} />
+              </label>
+            )}
+
+            <label className="ef-full">Entry
+              <textarea value={text} rows={2} onChange={(e) => setText(e.target.value)}
+                        placeholder={`Log entry for ${fmtDate(logDate)} — work done, readings, events…`} />
+            </label>
+          </div>
+
+          {/* rectification, filed as its own entry — shown when a failure is logged already-fixed */}
+          {type === 'failure' && rectified && (
+            <div className="ef-rect">
+              <span className="ef-sublbl">Rectification — filed as a second entry</span>
+              <div className="ef-grid">
+                <label>Rectified on
+                  <input type="date" value={rDate} onChange={(e) => setRDate(e.target.value)} />
+                </label>
+                <label>Rectified at
+                  <TimeInput value={rTim} onChange={setRTim} label="Rectified at" />
+                </label>
+                <label>Shift
+                  <select value={rShift} onChange={(e) => setRShift(e.target.value)}>
+                    {ENTRY_SHIFTS.map((s) => <option key={s} value={s}>{s} — {SHIFT_LABEL[s]}</option>)}
+                  </select>
+                </label>
+                <label className="ef-wide">Team
+                  <input value={rTeam} onChange={(e) => setRTeam(e.target.value)} placeholder="crew" />
+                </label>
+                <label className="ef-full">What was done
+                  <input value={rText} onChange={(e) => setRText(e.target.value)}
+                         placeholder="what was done to rectify it…" />
+                </label>
+              </div>
             </div>
           )}
+
+          <div className="ef-actions">
+            <button className="btn" type="submit" disabled={busy || apiOk === false || !text.trim()}>
+              {busy ? 'Adding…' : rectified && type === 'failure' ? 'Add both entries' : 'Add entry'}
+            </button>
+            {err && <span className="import-msg err">{err}</span>}
+          </div>
         </form>
       ) : (
         <p className="dim">Viewing only — sign in with your line account to add entries.</p>

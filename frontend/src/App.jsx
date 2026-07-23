@@ -1943,7 +1943,7 @@ export default function App() {
 <Brand />
         <nav className="nav">
           {NAV.map(([path, label]) => (
-            <a key={path} href={`#${path}`} className={route === path ? 'active' : ''}>{label}</a>
+            <a key={path} href={`#${path}`} className={routePath === path ? 'active' : ''}>{label}</a>
           ))}
           {!LIVE && <ShowcaseDropdown />}
           {signedIn && (
