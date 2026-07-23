@@ -158,7 +158,6 @@ function LiveDashboard({ go, initialLine = null }) {
   const stateOf = (a) => sched[a.code]?.state || null
   const overdue = assets.filter((a) => stateOf(a) === 'overdue')
   const dueSoon = assets.filter((a) => stateOf(a) === 'due_soon')
-  const stations = new Set(assets.map((a) => a.location)).size
   const uniq = (k) => [...new Set(assets.map((a) => a[k]).filter(Boolean))].sort()
   const systemsList = uniq('sys'); const classesList = uniq('cls'); const statusesList = uniq('status')
   const ql = q.trim().toLowerCase()
@@ -199,13 +198,6 @@ function LiveDashboard({ go, initialLine = null }) {
           ))}
         </div>
       )}
-      <div className="kpis">
-        <div className="tile"><div className="v">{assets.length}</div><div className="k">Assets registered</div></div>
-        <div className="tile"><div className="v">{stations}</div><div className="k">Locations covered</div></div>
-        <div className={dueSoon.length ? 'tile warn' : 'tile'}><div className="v">{dueSoon.length}</div><div className="k">PM due soon</div></div>
-        <div className={overdue.length ? 'tile alert' : 'tile'}><div className="v">{overdue.length}</div><div className="k">PM overdue</div></div>
-      </div>
-
       <h2>Assets</h2>
       <NewAssetBar defaultLine={effLine} />
       <ImportBar />
