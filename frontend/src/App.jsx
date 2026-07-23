@@ -1606,11 +1606,19 @@ function AboutPage() {
           <>
             <h3>In service of {ORG}</h3>
             <p>
-              AMPS is deployed here as departmental infrastructure under the
-              asset-maintenance monitoring initiative. All departmental data,
-              records and configuration entered in the application are the
-              property of {ORG}.
+              AMPS is deployed here as departmental infrastructure under Metro
+              Railway order No.&nbsp;MRK/CPD/E&amp;M/Co-Ord/6746 dated 22&nbsp;July&nbsp;2026,
+              on an open-source stack involving no procurement or licensing cost
+              to the railway.
             </p>
+            <blockquote className="about-extract">
+              “The licence files and notices of the open-source components shall
+              remain intact within the source code. All user-facing screens shall
+              display the name of Metro Railway, Kolkata, and all departmental
+              data, records and configuration entered in the application shall
+              remain the property of Metro Railway.”
+              <cite>— departmental order No.&nbsp;6746, 22.07.2026</cite>
+            </blockquote>
           </>
         ) : (
           <>
