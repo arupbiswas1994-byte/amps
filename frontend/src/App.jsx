@@ -1573,6 +1573,7 @@ function AboutPage() {
       <div className="about-hero">
         <h1>AMPS</h1>
         <p className="about-tag">Asset Maintenance &amp; Preventive Scheduling</p>
+        {LIVE && <p className="about-org">{ORG}</p>}
       </div>
 
       <div className="card about-note">
@@ -1589,17 +1590,48 @@ function AboutPage() {
         </p>
         <div className="about-sign">
           <SignatureMark />
-          <a className="about-by" href="https://github.com/arupbiswas1994-byte"
-             target="_blank" rel="noopener noreferrer">@arupbiswas1994-byte</a>
+          <span className="about-by-wrap">
+            <a className="about-by" href="https://github.com/arupbiswas1994-byte"
+               target="_blank" rel="noopener noreferrer">@arupbiswas1994-byte</a>
+            <span className="about-role">lead developer</span>
+          </span>
         </div>
       </div>
 
-      {/* acknowledgment — added deliberately once the wording is settled */}
+      {/* the department's standing — its infrastructure, its data. On the live
+          deployment this states Metro Railway's ownership (per the departmental
+          order); on the demo it names Metro Railway as where AMPS runs for real. */}
+      <div className="card about-dept">
+        {LIVE ? (
+          <>
+            <h3>In service of {ORG}</h3>
+            <p>
+              AMPS is deployed here as departmental infrastructure under the
+              asset-maintenance monitoring initiative. All departmental data,
+              records and configuration entered in the application are the
+              property of {ORG}.
+            </p>
+          </>
+        ) : (
+          <>
+            <h3>In production</h3>
+            <p>
+              AMPS runs in production at <b>Metro Railway, Kolkata</b>, monitoring
+              asset maintenance across the metro network — the open-source
+              framework, adopted as a departmental system.
+            </p>
+          </>
+        )}
+      </div>
 
       <div className="card about-credits">
         <div className="ac-row">
+          <span className="ac-k">Framework</span>
+          <span className="ac-v">AMPS · open source, free to use and adapt</span>
+        </div>
+        <div className="ac-row">
           <span className="ac-k">Licence</span>
-          <span className="ac-v">MIT · free and open source</span>
+          <span className="ac-v">MIT</span>
         </div>
         <div className="ac-row">
           <span className="ac-k">Source</span>

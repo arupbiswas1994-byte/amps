@@ -688,9 +688,18 @@ tbody tr:hover .edit-link { color: var(--accent); }
 .about-sign { margin-top: 22px; padding-top: 18px; border-top: 1px solid #f0efee;
   display: flex; align-items: center; gap: 14px; }
 .about-sign .sig-mark { height: 44px; opacity: 0.9; margin: 0; vertical-align: middle; }
+.about-org { font-size: 14px; font-weight: 650; color: var(--ink); margin-top: 6px; letter-spacing: .2px; }
+.about-by-wrap { display: flex; flex-direction: column; gap: 1px; }
 .about-by { font-size: 13px; color: var(--ink-2); font-family: ui-monospace, Menlo, Consolas, monospace;
   text-decoration: underline dotted; text-underline-offset: 2px; }
 .about-by:hover { color: var(--accent); }
+.about-role { font-size: 11px; color: var(--ink-3); letter-spacing: .04em; text-transform: uppercase; }
+/* the department block — quiet, institutional, not a banner */
+.about-dept { margin-top: 16px; padding: 18px 24px; border-left: 3px solid color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.about-dept h3 { font-size: 12px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--accent); margin-bottom: 8px; }
+.about-dept p { font-size: 14px; line-height: 1.65; color: var(--ink-2); }
+.about-dept b { color: var(--ink); font-weight: 600; }
 .about-credits a { color: var(--ink); text-decoration: underline dotted; text-underline-offset: 2px; }
 .about-credits a:hover { color: var(--accent); }
 .about-credits { margin-top: 16px; padding: 8px 12px; }
