@@ -226,8 +226,6 @@ function LiveDashboard({ go, initialLine = null }) {
                         onClick={() => setFilter(k)}>{lbl}</button>
               ))}
             </div>
-          </div>
-          <div className="asset-dropdowns">
             <select value={fSystem} onChange={(e) => setFSystem(e.target.value)} aria-label="Filter by system">
               <option value="">All systems</option>
               {systemsList.map((s) => <option key={s} value={s}>{s}</option>)}
