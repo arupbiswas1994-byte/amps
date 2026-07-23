@@ -401,11 +401,36 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 .btn.sm { padding: 3px 10px; font-size: 12px; margin-top: 6px; }
 .log-team { flex: 0 1 190px; min-width: 130px; }
 
-/* edit form row + version trail */
-.edit-row.log-row2 { background: #f4f8fb; border-color: #d5e2ec; }
-.edit-row .log-row2-tag { color: #2f6690; }
-.edit-row .resolve-lbl { font-size: 11px; font-weight: 600; text-transform: uppercase;
-  letter-spacing: .04em; color: var(--good); }
+/* the entry being edited — a clear focus ring so the deep-linked row stands out */
+.log-entry.editing { background: #f4f8fb; box-shadow: inset 3px 0 0 #2f6690; border-radius: 6px; }
+
+/* the edit panel — a proper labelled form, not a cramped inline row */
+.edit-panel {
+  margin: 10px 0 4px; padding: 14px 16px; border: 1px solid #d5e2ec;
+  background: #f6fafd; border-radius: 10px;
+}
+.ep-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 12px;
+  padding-bottom: 9px; border-bottom: 1px solid #dceaf2; }
+.ep-title { font-size: 12px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #2f6690; }
+.ep-ctx { font-size: 12px; color: var(--ink-3); }
+.ep-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 14px; }
+.ep-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; font-weight: 600; color: var(--ink-2); }
+.ep-grid .ep-full { grid-column: 1 / -1; }
+.ep-grid .ep-wide { grid-column: span 2; }
+.ep-grid .ep-sub { grid-column: 1 / -1; font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .04em; color: var(--serious); margin-top: 4px; padding-top: 8px; border-top: 1px dashed #dceaf2; }
+.ep-grid input, .ep-grid select, .ep-grid textarea {
+  font: inherit; font-size: 13.5px; font-weight: 400; color: var(--ink);
+  padding: 7px 9px; border: 1px solid var(--border); border-radius: 7px; background: #fff; width: 100%;
+}
+.ep-grid textarea { resize: vertical; line-height: 1.45; }
+.ep-grid input:focus, .ep-grid select:focus, .ep-grid textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.ep-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+.ep-note { font-size: 11.5px; color: var(--ink-3); }
+@media screen and (max-width: 640px) {
+  .ep-grid { grid-template-columns: 1fr 1fr; }
+  .ep-grid .ep-wide { grid-column: 1 / -1; }
+}
 .ver-hist { flex-basis: 100%; margin: 6px 0 2px; padding: 8px 12px;
   background: #faf9f7; border: 1px solid var(--border); border-radius: 8px; }
 .ver-row { padding: 6px 0; border-bottom: 1px dashed #e7e5e4; }

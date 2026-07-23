@@ -5,7 +5,7 @@
    the old one — the bound-paper-logbook discipline, enforced by software).
 
    API base: same-origin by default; demo hosting builds with VITE_AMPS_API. */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { LIVE, useMe } from './api.js'
 
 /* Optional time — the plain native picker. Blank = no time. */
@@ -208,6 +208,9 @@ function EditEntryForm({ entry, assets, systems, classSystem, onCancel, onSaved 
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
+  const textRef = useRef(null)
+  useEffect(() => { textRef.current?.focus({ preventScroll: true }) }, [])
+
   const classesFor = system
     ? [...new Set(assets.filter((a) => a.system === system).map((a) => a.asset_class).filter(Boolean))].sort()
     : [...new Set(assets.map((a) => a.asset_class).filter(Boolean))].sort()
@@ -238,43 +241,70 @@ function EditEntryForm({ entry, assets, systems, classSystem, onCancel, onSaved 
   }
 
   return (
-    <div className="log-row2 edit-row">
-      <span className="log-row2-tag">Edit entry</span>
-      <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Entry text…" />
-      {/* link the proper equipment — auto-fills system + class from the asset */}
-      <input value={assetCode} list="register-codes" placeholder="Asset ID (link equipment)…"
-             className="log-asset" onChange={(e) => {
-               const v = e.target.value; setAssetCode(v)
-               const hit = assets.find((a) => a.code === v)
-               if (hit?.system) setSystem(hit.system)
-               if (hit?.asset_class) setCategory(hit.asset_class)
-             }} />
-      <select value={system} className="log-sys" aria-label="System"
-              onChange={(e) => { setSystem(e.target.value); setCategory('') }}>
-        <option value="">System…</option>
-        {systems.map((s) => <option key={s} value={s}>{s}</option>)}
-      </select>
-      <select value={category} className="log-cat" aria-label="Class"
-              onChange={(e) => { const c = e.target.value; setCategory(c); if (c && classSystem[c]) setSystem(classSystem[c]) }}>
-        <option value="">Class…</option>
-        {classesFor.map((c) => <option key={c} value={c}>{c}</option>)}
-      </select>
-      <input type="time" value={tim} onChange={(e) => setTim(e.target.value)} className="log-time" aria-label="Time" />
-      <input value={team} onChange={(e) => setTeam(e.target.value)} placeholder="Team…" className="log-team" />
-      {isFail && <>
-        <input value={faultType} onChange={(e) => setFaultType(e.target.value)}
-               placeholder="Fault type…" className="log-cat" />
-        <span className="resolve-lbl">Resolved</span>
-        <input type="date" value={endDate} min={entry.log_date}
-               onChange={(e) => setEndDate(e.target.value)} aria-label="Resolved on" />
-        <input type="time" value={endTim} onChange={(e) => setEndTim(e.target.value)}
-               className="log-time" aria-label="Resolved at" />
-      </>}
-      <button type="button" className="btn" disabled={busy} onClick={save}>
-        {busy ? 'Saving…' : 'Save edit'}
-      </button>
-      <button type="button" className="btn ghost" onClick={onCancel}>Cancel</button>
-      {err && <span className="import-msg err">{err}</span>}
+    <div className="edit-panel">
+      <div className="ep-head">
+        <span className="ep-title">Edit entry</span>
+        <span className="ep-ctx">{fmtDate(entry.log_date)} · {SHIFT_LABEL[entry.shift] || entry.shift} · {entry.type}{entry.subtype ? ` · ${entry.subtype}` : ''}</span>
+      </div>
+      <div className="ep-grid">
+        <label className="ep-full">Entry
+          <textarea ref={textRef} value={text} rows={2}
+                    onChange={(e) => setText(e.target.value)} placeholder="What was done, readings, event…" />
+        </label>
+
+        <label>Equipment (Asset ID)
+          <input value={assetCode} list="register-codes" placeholder="scan/type code — links the asset"
+                 onChange={(e) => {
+                   const v = e.target.value; setAssetCode(v)
+                   const hit = assets.find((a) => a.code === v)
+                   if (hit?.system) setSystem(hit.system)
+                   if (hit?.asset_class) setCategory(hit.asset_class)
+                 }} />
+        </label>
+        <label>System
+          <select value={system} onChange={(e) => { setSystem(e.target.value); setCategory('') }}>
+            <option value="">System…</option>
+            {systems.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </label>
+        <label>Class
+          <select value={category}
+                  onChange={(e) => { const c = e.target.value; setCategory(c); if (c && classSystem[c]) setSystem(classSystem[c]) }}>
+            <option value="">Class…</option>
+            {classesFor.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </label>
+
+        <label>Time
+          <input type="time" value={tim} onChange={(e) => setTim(e.target.value)} />
+        </label>
+        <label className="ep-wide">Team / attended by
+          <input value={team} onChange={(e) => setTeam(e.target.value)} placeholder="crew that did the work" />
+        </label>
+
+        {isFail && <>
+          <label className="ep-full ep-sub">Failure — fault &amp; recovery</label>
+          <label>Fault type
+            <input value={faultType} onChange={(e) => setFaultType(e.target.value)} placeholder="e.g. DC earth fault" />
+          </label>
+          <label>Resolved on
+            <input type="date" value={endDate} min={entry.log_date}
+                   onChange={(e) => setEndDate(e.target.value)} />
+          </label>
+          <label>Resolved at
+            <input type="time" value={endTim} onChange={(e) => setEndTim(e.target.value)} />
+          </label>
+        </>}
+      </div>
+
+      <div className="ep-actions">
+        <button type="button" className="btn" disabled={busy} onClick={save}>
+          {busy ? 'Saving…' : 'Save edit'}
+        </button>
+        <button type="button" className="btn ghost" onClick={onCancel}>Cancel</button>
+        <span className="ep-note">Saving files a correction — the original is kept in this entry's history.</span>
+        {err && <span className="import-msg err">{err}</span>}
+      </div>
     </div>
   )
 }
@@ -429,6 +459,15 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
     setEditingId(Number(editId))
     setHistoryFor(null)
   }, [editId, focusDate])
+
+  // whenever an entry enters edit mode — a deep-link from another page, or a
+  // click here — bring it into the middle of the viewport so the form is seen.
+  // Keyed on entries too: on a deep-link the row only exists once the day loads.
+  useEffect(() => {
+    if (!editingId) return
+    const el = document.getElementById(`le-${editingId}`)
+    if (el) requestAnimationFrame(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }))
+  }, [editingId, entries])
 
   const add = async (e) => {
     e.preventDefault()
@@ -688,8 +727,9 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
                   </div>
                   {rows.map((en) => {
                     const openFail = en.type === 'failure' && !en.ended_at
+                    const editing = editingId === en.id
                     return (
-                    <div className="log-entry" key={en.id}>
+                    <div className={`log-entry${editing ? ' editing' : ''}`} id={`le-${en.id}`} key={en.id}>
                       <div className="le-row">
                         <div className="le-main">
                           <div className="log-meta">
