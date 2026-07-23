@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ASSETS, PM_SCHEDULES, JOB_CARDS, SPECS, PROCUREMENTS, PROC_STAGES,
   FAILURES, SPARES, spareStats, checksheetFor, CHECKSHEET_TEMPLATES, CHECKSHEET_RESULTS,
@@ -140,7 +140,7 @@ const SEV_RANK = { overdue: 0, due_soon: 1, ok: 2 }
 
 function LiveDashboard({ go, initialLine = null }) {
   const { assets: all, sched, loading, error } = useLiveAssets()
-  const { me } = useMe()
+  const { me, canWrite } = useMe()
   const [line, setLine] = useState(initialLine)
   const [filter, setFilter] = useState('all')   // all | overdue | due_soon
   const [q, setQ] = useState('')
@@ -149,7 +149,28 @@ function LiveDashboard({ go, initialLine = null }) {
   const [fStatus, setFStatus] = useState('')
   const [sortKey, setSortKey] = useState(null)  // null = register order
   const [sortDir, setSortDir] = useState('asc')
+  const [newOpen, setNewOpen] = useState(false)   // inline "+ new asset" form
+  const [impBusy, setImpBusy] = useState(false)
+  const [impResult, setImpResult] = useState(null)
+  const fileRef = useRef(null)
+  const toolbarRef = useRef(null)
   useEffect(() => { setLine(initialLine) }, [initialLine])
+  // freeze the toolbar + table header: measure the sticky topbar and this
+  // toolbar so the header parks exactly beneath them however the row wraps
+  useEffect(() => {
+    const setVars = () => {
+      const tb = document.querySelector('.topbar')
+      if (tb) document.documentElement.style.setProperty('--topbar-h', `${tb.offsetHeight}px`)
+      if (toolbarRef.current) document.documentElement.style.setProperty('--toolbar-h', `${toolbarRef.current.offsetHeight}px`)
+    }
+    setVars()
+    const ro = new ResizeObserver(setVars)
+    const tb = document.querySelector('.topbar')
+    if (tb) ro.observe(tb)
+    if (toolbarRef.current) ro.observe(toolbarRef.current)
+    window.addEventListener('resize', setVars)
+    return () => { ro.disconnect(); window.removeEventListener('resize', setVars) }
+  })
   const lines = [...new Set(all.map((a) => a.line).filter(Boolean))].sort()
   // each line stands alone — no aggregated all-lines view; default to the
   // signed-in user's own line, else the first registered line
@@ -185,6 +206,42 @@ function LiveDashboard({ go, initialLine = null }) {
   const sortArrow = (k) => sortKey === k ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''
   const COLS = [['code', 'Code'], ['name', 'Asset'], ['cls', 'Class'], ['location', 'Location'],
     ['sys', 'System'], ['status', 'Status'], ['next_due', 'Next PM'], ['pm', 'PM state']]
+
+  // download the table exactly as filtered & sorted, as CSV
+  const exportCsv = () => {
+    const cell = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
+    const head = COLS.map(([, l]) => l)
+    const body = shown.map((a) => {
+      const s = sched[a.code]
+      return [a.code, a.name, a.cls, a.location, a.sys || '', STATUS_LABEL[a.status] || a.status,
+        s?.next_due || '', s ? SCHED_LABEL[s.state] : ''].map(cell).join(',')
+    })
+    const csv = [head.map(cell).join(','), ...body].join('\n')
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `amps-assets-${effLine ? effLine.replace(/\s+/g, '-').toLowerCase() + '-' : ''}${new Date().toISOString().slice(0, 10)}.csv`
+    a.click(); URL.revokeObjectURL(url)
+  }
+  // bulk import the standard register CSV
+  const onImportFile = async (e) => {
+    const file = e.target.files[0]
+    e.target.value = ''
+    if (!file) return
+    setImpBusy(true); setImpResult(null)
+    try {
+      const base = import.meta.env.VITE_AMPS_API ?? ''
+      const r = await fetch(`${base}/api/assets/import`, {
+        method: 'POST', headers: { 'Content-Type': 'text/csv' }, body: await file.text(),
+      })
+      const body = await r.json().catch(() => null)
+      setImpResult(r.ok ? body : { error: body?.detail || `HTTP ${r.status}` })
+    } catch (err) {
+      setImpResult({ error: String(err) })
+    }
+    setImpBusy(false)
+  }
+
   if (loading) return <p className="dim">Loading the asset register…</p>
   if (error) return <div className="card offline-note">Backend unreachable — {error}. Check the server and reload.</div>
   return (
@@ -199,17 +256,25 @@ function LiveDashboard({ go, initialLine = null }) {
         </div>
       )}
       <h2>Assets</h2>
-      <NewAssetBar defaultLine={effLine} />
-      <ImportBar />
       {assets.length === 0 ? (
         <div className="card"><p className="dim" style={{ margin: 0 }}>
-          The register is empty. Download the sample CSV above, fill one row per asset
-          (the standard register format), and import it back — the register, QR tags and
-          asset pages fill in from here.
-        </p></div>
+          The register is empty.{' '}
+          {canWrite ? <>Download the <a href={`${import.meta.env.VITE_AMPS_API ?? ''}/api/assets/import/sample`} download>blank template</a>, fill one row per asset, then import it with the <b>↑</b> button — the register, QR tags and asset pages all fill in from here.</>
+            : <>A writer can import the standard register CSV to fill it.</>}
+        </p>
+        {canWrite && (
+          <div className="import-status" style={{ marginTop: 12 }}>
+            <button type="button" className="btn ghost sm" onClick={() => fileRef.current?.click()} disabled={impBusy}>{impBusy ? 'Importing…' : '↑ Import CSV'}</button>
+            <input ref={fileRef} type="file" accept=".csv,text/csv" hidden onChange={onImportFile} />
+            {impResult && (impResult.error
+              ? <span className="import-msg err">{impResult.error}</span>
+              : <span className="import-msg">{impResult.created} created · {impResult.skipped} skipped · {impResult.failed} failed{impResult.created > 0 && <button type="button" className="mini-btn" onClick={() => location.reload()}>Reload</button>}</span>)}
+          </div>
+        )}
+        </div>
       ) : (
         <>
-          <div className="asset-toolbar">
+          <div className="asset-toolbar" ref={toolbarRef}>
             <input className="asset-search" type="search" value={q} onChange={(e) => setQ(e.target.value)}
                    placeholder="Search code, asset, class or location…" aria-label="Search assets" />
             <div className="asset-filter" role="tablist" aria-label="PM state filter">
@@ -230,13 +295,54 @@ function LiveDashboard({ go, initialLine = null }) {
               <option value="">Any status</option>
               {statusesList.map((s) => <option key={s} value={s}>{STATUS_LABEL[s] || s}</option>)}
             </select>
-            <span className="asset-count">{shown.length} shown</span>
             {(fSystem || fClass || fStatus || q || filter !== 'all' || sortKey) && (
               <button type="button" className="btn ghost sm" onClick={() => {
                 setFSystem(''); setFClass(''); setFStatus(''); setQ(''); setFilter('all'); setSortKey(null)
               }}>Clear</button>
             )}
+            <span className="asset-count">{shown.length} shown</span>
+            <div className="asset-actions">
+              {canWrite && (
+                <button type="button" className={`icon-btn${newOpen ? ' on' : ''}`} title="New asset"
+                        aria-label="New asset" onClick={() => setNewOpen((v) => !v)}>
+                  <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                    <path d="M8 3.2v9.6M3.2 8h9.6" /></svg>
+                </button>
+              )}
+              <button type="button" className="icon-btn" title="Download the filtered table (CSV)"
+                      aria-label="Download filtered table" onClick={exportCsv}>
+                <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M8 2.4v7.2M4.8 6.6 8 9.8l3.2-3.2M3 12.8h10" /></svg>
+              </button>
+              {canWrite && (
+                <button type="button" className={`icon-btn${impBusy ? ' disabled' : ''}`} title="Import register CSV"
+                        aria-label="Import CSV" onClick={() => fileRef.current?.click()} disabled={impBusy}>
+                  <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M8 9.8V2.6M4.8 5.8 8 2.6l3.2 3.2M3 12.8h10" /></svg>
+                </button>
+              )}
+              <input ref={fileRef} type="file" accept=".csv,text/csv" hidden onChange={onImportFile} />
+            </div>
           </div>
+          {newOpen && canWrite && (
+            <div className="card newasset-card">
+              <AssetForm mode="create"
+                         initial={effLine ? { line: effLine, criticality: 'B', status: 'in_service' } : null}
+                         onCancel={() => setNewOpen(false)}
+                         onDone={(code) => { setNewOpen(false); location.hash = `/asset/${code}` }} />
+            </div>
+          )}
+          {(impBusy || impResult) && (
+            <div className="import-status">
+              {impBusy ? <span className="dim">Importing…</span>
+                : impResult.error ? <span className="import-msg err">{impResult.error}</span>
+                : <span className="import-msg">
+                    {impResult.created} created · {impResult.skipped} skipped · {impResult.failed} failed
+                    {impResult.errors?.length ? ` — ${impResult.errors[0]}` : ''}
+                    {impResult.created > 0 && <button type="button" className="mini-btn" onClick={() => location.reload()}>Reload register</button>}
+                  </span>}
+            </div>
+          )}
           {shown.length === 0 ? (
             <div className="card"><p className="dim" style={{ margin: 0 }}>No assets match — clear the search or filters.</p></div>
           ) : (
@@ -276,70 +382,6 @@ function LiveDashboard({ go, initialLine = null }) {
         </>
       )}
     </>
-  )
-}
-
-/* bulk import: download the standard CSV template, upload the filled one.
-   The Green Line register format is the base for every line. */
-/* Register one asset by hand — the counterpart to bulk CSV import, for the
-   asset that arrives after the sheet was filled. Writers only. */
-function NewAssetBar({ defaultLine }) {
-  const { canWrite } = useMe()
-  const [open, setOpen] = useState(false)
-  const [flash, setFlash] = useState('')
-  if (!canWrite) return null
-  return (
-    <div className="newasset">
-      {!open
-        ? <button className="btn ghost" type="button" onClick={() => setOpen(true)}>+ New asset</button>
-        : <AssetForm mode="create"
-                     initial={defaultLine ? { line: defaultLine, criticality: 'B', status: 'in_service' } : null}
-                     onCancel={() => setOpen(false)}
-                     onDone={(code) => { setOpen(false); setFlash(`${code} registered.`); location.hash = `/asset/${code}` }} />}
-      {flash && <span className="import-msg">{flash}</span>}
-    </div>
-  )
-}
-
-function ImportBar() {
-  const { canWrite } = useMe()
-  const [busy, setBusy] = useState(false)
-  const [result, setResult] = useState(null)
-  if (!canWrite) return null
-  const base = import.meta.env.VITE_AMPS_API ?? ''
-  const onFile = async (e) => {
-    const file = e.target.files[0]
-    e.target.value = ''
-    if (!file) return
-    setBusy(true); setResult(null)
-    try {
-      const r = await fetch(`${base}/api/assets/import`, {
-        method: 'POST', headers: { 'Content-Type': 'text/csv' },
-        body: await file.text(),
-      })
-      const body = await r.json().catch(() => null)
-      if (!r.ok) setResult({ error: body?.detail || `HTTP ${r.status}` })
-      else setResult(body)
-    } catch (err) {
-      setResult({ error: String(err) })
-    }
-    setBusy(false)
-  }
-  return (
-    <div className="import-bar">
-      <a className="btn ghost" href={`${base}/api/assets/import/sample`} download>⬇ Sample CSV</a>
-      <label className={`btn ghost${busy ? ' disabled' : ''}`}>
-        {busy ? 'Importing…' : '⬆ Import CSV'}
-        <input type="file" accept=".csv,text/csv" onChange={onFile} disabled={busy} hidden />
-      </label>
-      {result && (result.error
-        ? <span className="import-msg err">{result.error}</span>
-        : <span className="import-msg">
-            {result.created} created · {result.skipped} skipped · {result.failed} failed
-            {result.errors?.length ? ` — ${result.errors[0]}` : ''}
-            {result.created > 0 && <button type="button" className="mini-btn" onClick={() => location.reload()}>Reload register</button>}
-          </span>)}
-    </div>
   )
 }
 
