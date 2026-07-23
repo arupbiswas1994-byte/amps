@@ -66,11 +66,14 @@ class Asset(Base):
     __tablename__ = "assets"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    code: Mapped[str] = mapped_column(String(60), unique=True, index=True)  # printed on QR tag
+    code: Mapped[str] = mapped_column(String(120), unique=True, index=True)  # printed on QR tag
     name: Mapped[str] = mapped_column(String(160))
     asset_class_id: Mapped[int] = mapped_column(ForeignKey("asset_classes.id"))
     location_id: Mapped[int] = mapped_column(ForeignKey("locations.id"))
     make_model: Mapped[str | None] = mapped_column(String(160))
+    # Reporting rollup a department thinks in (e.g. "Traction / PS", "Station E&M").
+    # Free text so every deployment names its own systems; distinct from asset_class.
+    system: Mapped[str | None] = mapped_column(String(80))
     commissioned_on: Mapped[date | None]
     status: Mapped[AssetStatus] = mapped_column(default=AssetStatus.IN_SERVICE)
     criticality: Mapped[Criticality] = mapped_column(default=Criticality.B)
@@ -101,6 +104,24 @@ class PMSchedule(Base):
     next_due: Mapped[date | None]
 
     asset: Mapped[Asset] = relationship(back_populates="pm_schedules")
+
+
+class PMPlan(Base):
+    """One frequency an asset is scheduled for — its maintenance plan.
+
+    Applicability lives here (which cycles the asset needs); the *last done* is
+    read from the logbook — a comprehensive service fulfils the shorter cycles
+    under it — with an optional manual seed for history that predates the log.
+    When an asset has no plan rows, the schedule falls back to the frequencies
+    present in its log, so the register keeps working before anyone sets a plan.
+    Frequency is a plain label (Monthly … 5-Yearly), free of the PMSchedule enum
+    so 5-Yearly and future cycles need no type migration."""
+    __tablename__ = "pm_plans"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id"), index=True)
+    frequency: Mapped[str] = mapped_column(String(20))       # Monthly … 5-Yearly
+    last_done_seed: Mapped[date | None]                       # optional manual baseline
 
 
 class WorkOrderStatus(str, Enum):
@@ -190,9 +211,20 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(60), unique=True)
     full_name: Mapped[str] = mapped_column(String(120))
     role: Mapped[UserRole] = mapped_column(default=UserRole.VIEWER)
+    password_hash: Mapped[str | None] = mapped_column(String(200))
+    # Access scope: a SITE location (e.g. a metro line). NULL = all sites (HQ/admin).
+    line_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id"))
+
+    line: Mapped["Location | None"] = relationship()
 
 
 class LogEntryType(str, Enum):
+    # Current taxonomy (2026-07, per the section's practice)
+    MAINTENANCE = "maintenance"      # PM work — subtype carries the frequency
+    FAILURE = "failure"              # breakdown noted in the book
+    RECTIFICATION = "rectification"  # repair/fix work
+    GENERAL = "general"              # everything else
+    # Legacy values — kept for rows written before the taxonomy change
     OPERATION = "operation"      # switching, isolations, normal ops events
     OBSERVATION = "observation"  # readings, conditions noticed
     DEFECT = "defect"            # something wrong, to become a work order
@@ -212,13 +244,65 @@ class LogEntry(Base):
     at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     log_date: Mapped[date]                     # the duty date the entry belongs to
     shift: Mapped[ShiftCode] = mapped_column(default=ShiftCode.GENERAL)
-    type: Mapped[LogEntryType] = mapped_column(default=LogEntryType.OPERATION)
+    type: Mapped[LogEntryType] = mapped_column(default=LogEntryType.GENERAL)
+    # maintenance frequency (Monthly / Quarterly / Half-Yearly / Yearly / Special)
+    subtype: Mapped[str | None] = mapped_column(String(40))
+    # Two-level equipment tag. `system` is the coarse rollup (~a dozen: "HT ·
+    # 750V DC", "LT · ECS (AC)") the section thinks in; `category` is the finer
+    # asset class under it (optional). System-first keeps the class picker
+    # short. Both auto-fill from the asset when one is named.
+    system: Mapped[str | None] = mapped_column(String(80))
+    # equipment category — the asset class (auto-filled from the asset, editable)
+    category: Mapped[str | None] = mapped_column(String(80))
+    # Failure rows only: recovery moment and fault classification. `at` is the
+    # start; downtime is derived (ended_at − at), never typed. NULL end on a
+    # failure entry = still down. Kept on the one ledger rather than a second
+    # table so the logbook stays the single source of truth.
+    ended_at: Mapped[datetime | None]
+    fault_type: Mapped[str | None] = mapped_column(String(120))
     asset_id: Mapped[int | None] = mapped_column(ForeignKey("assets.id"))
     text: Mapped[str] = mapped_column(Text)
+    # Who WROTE the entry (the session on authenticated deployments) versus
+    # who DID the work. The sheets only ever had the latter, and the import
+    # put it in entered_by for want of anywhere else; keeping them apart lets
+    # a supervisor log a night crew's job without claiming it.
     entered_by: Mapped[str] = mapped_column(String(120), default="unknown")
+    attended_by: Mapped[str | None] = mapped_column(String(200))
     corrects_id: Mapped[int | None] = mapped_column(ForeignKey("log_entries.id"))
+    # Rectification rows only: the FAILURE entry this work fixes. Distinct from
+    # corrects_id, which means "this entry corrects a mis-written entry" —
+    # conflating the two would confuse a typo with a repair.
+    #
+    # State rule: THE LATEST ENTRY DOMINATES. A failure is open until a
+    # rectification is logged against it, and the newest rectification carries
+    # the recovery time — so a temporary fix followed by a permanent one just
+    # works, and a fresh failure on the same asset opens it again.
+    rectifies_id: Mapped[int | None] = mapped_column(ForeignKey("log_entries.id"))
+    # Which site's (line's) logbook the entry belongs to. NULL = department-wide.
+    line_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id"))
 
     asset: Mapped["Asset | None"] = relationship()
+
+
+class Failure(Base):
+    """A breakdown record: from the moment an asset fails to its recovery.
+
+    Mirrors how power-supply sections actually log failures on paper:
+    start/end time, fault type, what was done, who attended. Downtime is
+    derived (end − start), never entered — one source of truth."""
+    __tablename__ = "failures"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id"))
+    started_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    ended_at: Mapped[datetime | None]
+    fault_type: Mapped[str | None] = mapped_column(String(120))  # e.g. "DC earth fault"
+    description: Mapped[str] = mapped_column(Text)               # what happened / how noticed
+    work_done: Mapped[str | None] = mapped_column(Text)          # rectification, on close
+    attended_by: Mapped[str | None] = mapped_column(String(160))
+    work_order_id: Mapped[int | None] = mapped_column(ForeignKey("work_orders.id"))
+
+    asset: Mapped[Asset] = relationship()
 
 
 class AuditLog(Base):

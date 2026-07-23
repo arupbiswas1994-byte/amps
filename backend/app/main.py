@@ -6,16 +6,17 @@
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import assets, logbook, maintenance, qr, roster
+from app.api import assets, auth, failures, logbook, maintenance, qr, roster
 from app.db import init_db
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    auth.ensure_admin()
     yield
 
 
@@ -40,11 +41,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Access model (AMPS_AUTH=1): READS are open — the QR-scan / walk-up surface
+# shows every line's asset lists view-only. WRITES require a session and are
+# scoped to the user's line; each endpoint enforces this via current_user.
+app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(assets.router, prefix="/api/assets", tags=["assets"])
+app.include_router(assets.lines_router, prefix="/api/lines", tags=["assets"])
 app.include_router(maintenance.router, prefix="/api/maintenance", tags=["maintenance"])
 app.include_router(qr.router, prefix="/api/qr", tags=["qr"])
 app.include_router(roster.router, prefix="/api/roster", tags=["roster"])
 app.include_router(logbook.router, prefix="/api/logbook", tags=["logbook"])
+app.include_router(failures.router, prefix="/api/failures", tags=["failures"])
 
 
 @app.get("/")

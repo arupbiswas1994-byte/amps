@@ -6,8 +6,50 @@
 from datetime import date, timedelta
 
 from app.engine import (
-    compute_coverage, next_due, overdue_days, priority_score,
+    build_schedule, compute_coverage, next_due, overdue_days, priority_score,
+    summarize_schedule,
 )
+
+
+def test_schedule_rolls_next_due_by_interval():
+    today = date(2026, 7, 23)
+    rows = build_schedule({"Yearly"}, {"Yearly": date(2025, 12, 3)}, today)
+    r = rows[0]
+    assert r["frequency"] == "Yearly"
+    assert r["next_due"] == date(2026, 12, 3)
+    assert r["state"] == "ok" and r["via"] is None
+
+
+def test_schedule_comprehensive_service_fulfils_shorter_cycles():
+    # a Yearly on 2025-12-03 also counts as that period's Quarterly
+    today = date(2026, 7, 23)
+    done = {"Quarterly": date(2022, 11, 13), "Yearly": date(2025, 12, 3)}
+    rows = {r["frequency"]: r for r in build_schedule({"Quarterly", "Yearly"}, done, today)}
+    # quarterly's effective last-done rolls up to the yearly, not the 2022 quarterly
+    assert rows["Quarterly"]["last_done"] == date(2025, 12, 3)
+    assert rows["Quarterly"]["via"] == "Yearly"
+    assert rows["Quarterly"]["next_due"] == date(2026, 3, 4)  # +91d, overdue but not by years
+    assert rows["Quarterly"]["state"] == "overdue"
+
+
+def test_schedule_planned_but_never_done_is_never():
+    rows = build_schedule({"Monthly"}, {}, date(2026, 7, 23))
+    assert rows[0]["state"] == "never" and rows[0]["next_due"] is None
+
+
+def test_recent_yearly_keeps_monthly_on_schedule():
+    # the roll-up means a fresh Yearly also satisfies the Monthly cycle
+    today = date(2026, 7, 23)
+    rows = {r["frequency"]: r for r in
+            build_schedule({"Monthly", "Yearly"}, {"Yearly": date(2026, 7, 1)}, today)}
+    assert rows["Monthly"]["via"] == "Yearly"
+    assert rows["Monthly"]["state"] == "due_soon"  # next monthly 2026-07-31, not overdue
+
+
+def test_summarize_counts_never_as_overdue():
+    # a planned cycle with nothing to fulfil it is overdue
+    s = summarize_schedule(build_schedule({"Yearly"}, {}, date(2026, 7, 23)))
+    assert s["state"] == "overdue" and s["overdue_count"] == 1
 
 
 def test_next_due_never_done_is_today():

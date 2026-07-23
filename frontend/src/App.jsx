@@ -2,13 +2,14 @@
 // Copyright (c) 2026 Arup Biswas and AMPS contributors (binidev)
 // AMPS - Asset & Preventive Maintenance System (https://github.com/arupbiswas1994-byte/amps)
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ASSETS, PM_SCHEDULES, JOB_CARDS, SPECS, PROCUREMENTS, PROC_STAGES,
   FAILURES, SPARES, spareStats, checksheetFor, CHECKSHEET_TEMPLATES, CHECKSHEET_RESULTS,
   completedChecksheets, kpis, fmtDate, fmtTime, dueState, durationHrs, failureStats,
   failuresByMonth, classCountsAll, downtimeByAsset, recoveryStatus, pmOccurrencesInMonth,
 } from './data.js'
+import { LIVE, ORG, getJSON, useLiveAssets, useLiveAsset, useMe, apiLogin, apiLogout } from './api.js'
 import QR, { assetUrl } from './qr.jsx'
 import DutyRoster from './roster.jsx'
 import LogBook from './logbook.jsx'
@@ -22,6 +23,104 @@ const STATUS_LABEL = {
 
 const StatusChip = ({ status }) => (
   <span className={`chip s-${status}`}><span className="dot" />{STATUS_LABEL[status]}</span>
+)
+
+/* the maker's mark — Arup's own signature, the way an artist signs a canvas.
+   alt carries the full name so the credit stays in the source and for readers. */
+const SignatureMark = () => (
+  <img src="/signature.png" className="sig-mark" alt="maker's signature" title="AMPS" />
+)
+/* a pencil that deep-links a log entry into the log book for editing — the
+   single editing surface everything else points at */
+const EditLink = ({ id, date, label = 'Edit in log book' }) => (
+  <a href={`#/log?d=${date}&edit=${id}`} className="icon-btn edit-link"
+     title={label} aria-label={label} onClick={(e) => e.stopPropagation()}>
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none"
+         stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M11.4 2.3a1.35 1.35 0 0 1 1.9 1.9L5 12.6l-2.6.6.6-2.6 8.4-8.3z" />
+    </svg>
+  </a>
+)
+
+/* the word AMPS is the doorway to the about/credits page — but only once
+   signed in; a public walk-up sees plain text, not a link */
+const AmpsLink = () => {
+  const { canWrite } = useMe()
+  return canWrite
+    ? <a href="#/about" className="foot-amps">AMPS</a>
+    : <span>AMPS</span>
+}
+/* the footer signature links to About only for signed-in staff */
+const FootSig = () => {
+  const { canWrite } = useMe()
+  return canWrite
+    ? <a href="#/about" className="foot-sig" aria-label="About AMPS"><SignatureMark /></a>
+    : <SignatureMark />
+}
+
+/* Showcase dropdown — demo-only (amps.binihost.com). Points to the real
+   deployments of AMPS so a demo visitor can see it running in the field.
+   Metro AMPS is served from the office server over a Cloudflare Tunnel. */
+const SHOWCASE = [
+  { name: 'Metro AMPS', sub: 'Live · Kolkata Metro power-supply', href: 'https://metro.binihost.com', live: true },
+  { name: 'This demo', sub: 'Synthetic data — you are here', href: '#/', here: true },
+  { divider: true },
+  { name: 'biniHost', sub: 'The platform behind it', href: 'https://binihost.com' },
+]
+
+function ShowcaseDropdown() {
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    if (!open) return undefined
+    const close = () => setOpen(false)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [open])
+  return (
+    <span className="showcase" onClick={(e) => e.stopPropagation()}>
+      <button type="button" className={`showcase-btn${open ? ' open' : ''}`}
+              onClick={() => setOpen(!open)} aria-expanded={open} aria-haspopup="true">
+        Showcase <span className="caret">▾</span>
+      </button>
+      {open && (
+        <div className="showcase-menu" role="menu">
+          {SHOWCASE.map((it, i) => it.divider
+            ? <div className="sc-divider" key={i} />
+            : (
+              <a key={i} className="sc-item" role="menuitem"
+                 href={it.href}
+                 target={it.href.startsWith('http') ? '_blank' : undefined}
+                 rel={it.href.startsWith('http') ? 'noopener noreferrer' : undefined}
+                 onClick={() => setOpen(false)}>
+                <span className="sc-name">
+                  {it.name}
+                  {it.live && <span className="sc-live">● LIVE</span>}
+                  {it.here && <span className="sc-here">•</span>}
+                </span>
+                <span className="sc-sub">{it.sub}</span>
+              </a>
+            ))}
+        </div>
+      )}
+    </span>
+  )
+}
+
+/* the masthead: emblem + AMPS wordmark with its full form, and the
+   organisation on a second line so it never drops out after sign-in */
+const Brand = () => (
+  <a href="#/" className="brand">
+    {/* the real Indian Railways emblem is for the live office deployment only —
+       a public synthetic demo must not carry a national/government emblem */}
+    {LIVE && <img className="brand-emblem" src={`${import.meta.env.BASE_URL}ir-railways.png`} alt="" />}
+    <span className="brand-lines">
+      <span className="brand-l1">
+        <span className="brand-name">AMPS</span>
+        <span className="brand-org">{ORG}</span>
+      </span>
+      <span className="brand-tag">Asset Maintenance &amp; Preventive Scheduling</span>
+    </span>
+  </a>
 )
 
 const DueChip = ({ nextDue }) => {
@@ -38,6 +137,298 @@ const WoChip = ({ status }) => (
 const StageChip = ({ stage }) => (
   <span className={`chip p-${stage}`}><span className="dot" />{cap(stage)}</span>
 )
+
+/* ---------- dashboard (live) ---------- */
+
+const SEV_RANK = { overdue: 0, due_soon: 1, ok: 2 }
+
+function LiveDashboard({ go, initialLine = null }) {
+  const { assets: all, sched, loading, error } = useLiveAssets()
+  const { me, canWrite } = useMe()
+  const [line, setLine] = useState(initialLine)
+  const [filter, setFilter] = useState('all')   // all | overdue | due_soon
+  const [q, setQ] = useState('')
+  const [fSystem, setFSystem] = useState('')
+  const [fClass, setFClass] = useState('')
+  const [fLocation, setFLocation] = useState('')
+  const [fStatus, setFStatus] = useState('')
+  const [sortKey, setSortKey] = useState(null)  // null = register order
+  const [sortDir, setSortDir] = useState('asc')
+  const [newOpen, setNewOpen] = useState(false)   // inline "+ new asset" form
+  const [impBusy, setImpBusy] = useState(false)
+  const [impResult, setImpResult] = useState(null)
+  const fileRef = useRef(null)
+  const toolbarRef = useRef(null)
+  useEffect(() => { setLine(initialLine) }, [initialLine])
+  // freeze the toolbar + table header: measure the sticky topbar and this
+  // toolbar so the header parks exactly beneath them however the row wraps
+  useEffect(() => {
+    const setVars = () => {
+      const tb = document.querySelector('.topbar')
+      if (tb) document.documentElement.style.setProperty('--topbar-h', `${tb.offsetHeight}px`)
+      if (toolbarRef.current) document.documentElement.style.setProperty('--toolbar-h', `${toolbarRef.current.offsetHeight}px`)
+    }
+    setVars()
+    const ro = new ResizeObserver(setVars)
+    const tb = document.querySelector('.topbar')
+    if (tb) ro.observe(tb)
+    if (toolbarRef.current) ro.observe(toolbarRef.current)
+    window.addEventListener('resize', setVars)
+    return () => { ro.disconnect(); window.removeEventListener('resize', setVars) }
+  })
+  const lines = [...new Set(all.map((a) => a.line).filter(Boolean))].sort()
+  // each line stands alone — no aggregated all-lines view; default to the
+  // signed-in user's own line, else the first registered line
+  const effLine = line ?? me?.line ?? lines[0] ?? null
+  const assets = effLine ? all.filter((a) => a.line === effLine) : all
+  const stateOf = (a) => sched[a.code]?.state || null
+  const uniq = (k) => [...new Set(assets.map((a) => a[k]).filter(Boolean))].sort()
+  const systemsList = uniq('sys'); const classesList = uniq('cls')
+  const locationsList = uniq('location'); const statusesList = uniq('status')
+  const ql = q.trim().toLowerCase()
+  // the sort accessor per column; PM columns read the derived schedule
+  const sortVal = (a, k) => k === 'next_due' ? (sched[a.code]?.next_due || '9999')
+    : k === 'pm' ? (SEV_RANK[stateOf(a)] ?? 3)
+    : (a[k] || '')
+  // base = everything the search + dropdown filters allow (state chip excluded),
+  // so the chip counts reflect the current view and update as you filter
+  let base = assets
+  if (ql) base = base.filter((a) => [a.code, a.name, a.location, a.cls, a.sys].some((v) => (v || '').toLowerCase().includes(ql)))
+  if (fSystem) base = base.filter((a) => a.sys === fSystem)
+  if (fClass) base = base.filter((a) => a.cls === fClass)
+  if (fLocation) base = base.filter((a) => a.location === fLocation)
+  if (fStatus) base = base.filter((a) => a.status === fStatus)
+  const overdue = base.filter((a) => stateOf(a) === 'overdue')
+  const dueSoon = base.filter((a) => stateOf(a) === 'due_soon')
+  let shown = filter === 'all' ? base : base.filter((a) => stateOf(a) === filter)
+  if (sortKey) {
+    const dir = sortDir === 'asc' ? 1 : -1
+    shown = [...shown].sort((x, y) => {
+      const a = sortVal(x, sortKey), b = sortVal(y, sortKey)
+      return (a < b ? -1 : a > b ? 1 : x.code.localeCompare(y.code)) * dir
+    })
+  }
+  const toggleSort = (k) => {
+    if (sortKey === k) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    else { setSortKey(k); setSortDir('asc') }
+  }
+  const sortArrow = (k) => sortKey === k ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''
+  const COLS = [['code', 'Code'], ['name', 'Asset'], ['cls', 'Class'], ['location', 'Location'],
+    ['sys', 'System'], ['status', 'Status'], ['next_due', 'Next PM'], ['pm', 'PM state']]
+
+  // download the table exactly as filtered & sorted, as CSV
+  const exportCsv = () => {
+    const cell = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
+    const head = COLS.map(([, l]) => l)
+    const body = shown.map((a) => {
+      const s = sched[a.code]
+      return [a.code, a.name, a.cls, a.location, a.sys || '', STATUS_LABEL[a.status] || a.status,
+        s?.next_due || '', s ? SCHED_LABEL[s.state] : ''].map(cell).join(',')
+    })
+    const csv = [head.map(cell).join(','), ...body].join('\n')
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `amps-assets-${effLine ? effLine.replace(/\s+/g, '-').toLowerCase() + '-' : ''}${new Date().toISOString().slice(0, 10)}.csv`
+    a.click(); URL.revokeObjectURL(url)
+  }
+  // bulk import the standard register CSV
+  const onImportFile = async (e) => {
+    const file = e.target.files[0]
+    e.target.value = ''
+    if (!file) return
+    setImpBusy(true); setImpResult(null)
+    try {
+      const base = import.meta.env.VITE_AMPS_API ?? ''
+      const r = await fetch(`${base}/api/assets/import`, {
+        method: 'POST', headers: { 'Content-Type': 'text/csv' }, body: await file.text(),
+      })
+      const body = await r.json().catch(() => null)
+      setImpResult(r.ok ? body : { error: body?.detail || `HTTP ${r.status}` })
+    } catch (err) {
+      setImpResult({ error: String(err) })
+    }
+    setImpBusy(false)
+  }
+
+  if (loading) return <p className="dim">Loading the asset register…</p>
+  if (error) return <div className="card offline-note">Backend unreachable — {error}. Check the server and reload.</div>
+  return (
+    <>
+      {!initialLine && lines.length > 1 && (
+        <div className="preset-bar" role="tablist" aria-label="Line">
+          {lines.map((l) => (
+            <button key={l} type="button" className={`btn preset ${effLine === l ? 'active' : ''}`} onClick={() => setLine(l)}>
+              <span className="dot" style={{ background: lineColor(l), display: 'inline-block', width: 8, height: 8, borderRadius: 99, marginRight: 6 }} />{l}
+            </button>
+          ))}
+        </div>
+      )}
+      {assets.length === 0 ? (
+        <div className="card"><p className="dim" style={{ margin: 0 }}>
+          The register is empty.{' '}
+          {canWrite ? <>Download the <a href={`${import.meta.env.VITE_AMPS_API ?? ''}/api/assets/import/sample`} download>blank template</a>, fill one row per asset, then import it with the <b>↑</b> button — the register, QR tags and asset pages all fill in from here.</>
+            : <>A writer can import the standard register CSV to fill it.</>}
+        </p>
+        {canWrite && (
+          <div className="import-status" style={{ marginTop: 12 }}>
+            <button type="button" className="btn ghost sm" onClick={() => fileRef.current?.click()} disabled={impBusy}>{impBusy ? 'Importing…' : '↑ Import CSV'}</button>
+            <input ref={fileRef} type="file" accept=".csv,text/csv" hidden onChange={onImportFile} />
+            {impResult && (impResult.error
+              ? <span className="import-msg err">{impResult.error}</span>
+              : <span className="import-msg">{impResult.created} created · {impResult.skipped} skipped · {impResult.failed} failed{impResult.created > 0 && <button type="button" className="mini-btn" onClick={() => location.reload()}>Reload</button>}</span>)}
+          </div>
+        )}
+        </div>
+      ) : (
+        <>
+          <div className="asset-toolbar" ref={toolbarRef}>
+            <input className="asset-search" type="search" value={q} onChange={(e) => setQ(e.target.value)}
+                   placeholder="Search code, asset, class or location…" aria-label="Search assets" />
+            <div className="asset-filter" role="tablist" aria-label="PM state filter">
+              {[['all', `All ${base.length}`], ['overdue', `Overdue ${overdue.length}`], ['due_soon', `Due soon ${dueSoon.length}`]].map(([k, lbl]) => (
+                <button key={k} type="button" className={`btn preset ${filter === k ? 'active' : ''}${k === 'overdue' && overdue.length ? ' has-od' : ''}`}
+                        onClick={() => setFilter(k)}>{lbl}</button>
+              ))}
+            </div>
+            <select value={fSystem} onChange={(e) => setFSystem(e.target.value)} aria-label="Filter by system">
+              <option value="">All systems</option>
+              {systemsList.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <select value={fClass} onChange={(e) => setFClass(e.target.value)} aria-label="Filter by class">
+              <option value="">All classes</option>
+              {classesList.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <select value={fLocation} onChange={(e) => setFLocation(e.target.value)} aria-label="Filter by location">
+              <option value="">All locations</option>
+              {locationsList.map((l) => <option key={l} value={l}>{l}</option>)}
+            </select>
+            <select value={fStatus} onChange={(e) => setFStatus(e.target.value)} aria-label="Filter by status">
+              <option value="">Any status</option>
+              {statusesList.map((s) => <option key={s} value={s}>{STATUS_LABEL[s] || s}</option>)}
+            </select>
+            {(fSystem || fClass || fLocation || fStatus || q || filter !== 'all' || sortKey) && (
+              <button type="button" className="btn ghost sm" onClick={() => {
+                setFSystem(''); setFClass(''); setFLocation(''); setFStatus(''); setQ(''); setFilter('all'); setSortKey(null)
+              }}>Clear</button>
+            )}
+            <span className="asset-count">{shown.length} shown</span>
+            <div className="asset-actions">
+              {canWrite && (
+                <button type="button" className={`icon-btn${newOpen ? ' on' : ''}`} title="New asset"
+                        aria-label="New asset" onClick={() => setNewOpen((v) => !v)}>
+                  <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                    <path d="M8 3.2v9.6M3.2 8h9.6" /></svg>
+                </button>
+              )}
+              <button type="button" className="icon-btn" title="Download the filtered table (CSV)"
+                      aria-label="Download filtered table" onClick={exportCsv}>
+                <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M8 2.4v7.2M4.8 6.6 8 9.8l3.2-3.2M3 12.8h10" /></svg>
+              </button>
+              <button type="button" className="icon-btn" title="Print the filtered table"
+                      aria-label="Print filtered table" onClick={() => window.print()}>
+                <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4.5 6V2.5h7V6M4.5 12H3.2V6.4h9.6V12H11.5M4.5 9.6h7V13.5h-7z" /></svg>
+              </button>
+              {canWrite && (
+                <button type="button" className={`icon-btn${impBusy ? ' disabled' : ''}`} title="Import register CSV"
+                        aria-label="Import CSV" onClick={() => fileRef.current?.click()} disabled={impBusy}>
+                  <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M8 9.8V2.6M4.8 5.8 8 2.6l3.2 3.2M3 12.8h10" /></svg>
+                </button>
+              )}
+              <input ref={fileRef} type="file" accept=".csv,text/csv" hidden onChange={onImportFile} />
+            </div>
+          </div>
+          {/* a caption that appears only on the printout: what's being shown */}
+          <div className="print-caption">
+            AMPS · {effLine || 'All lines'} — {filter === 'all' ? 'all assets' : filter === 'overdue' ? 'overdue PM' : 'PM due soon'}
+            {fSystem ? ` · ${fSystem}` : ''}{fClass ? ` · ${fClass}` : ''}{fLocation ? ` · ${fLocation}` : ''}{fStatus ? ` · ${STATUS_LABEL[fStatus] || fStatus}` : ''}
+            {q ? ` · “${q}”` : ''} · {shown.length} assets · {new Date().toISOString().slice(0, 10)}
+          </div>
+          {newOpen && canWrite && (
+            <div className="card newasset-card">
+              <AssetForm mode="create"
+                         initial={effLine ? { line: effLine, criticality: 'B', status: 'in_service' } : null}
+                         onCancel={() => setNewOpen(false)}
+                         onDone={(code) => { setNewOpen(false); location.hash = `/asset/${code}` }} />
+            </div>
+          )}
+          {(impBusy || impResult) && (
+            <div className="import-status">
+              {impBusy ? <span className="dim">Importing…</span>
+                : impResult.error ? <span className="import-msg err">{impResult.error}</span>
+                : <span className="import-msg">
+                    {impResult.created} created · {impResult.skipped} skipped · {impResult.failed} failed
+                    {impResult.errors?.length ? ` — ${impResult.errors[0]}` : ''}
+                    {impResult.created > 0 && <button type="button" className="mini-btn" onClick={() => location.reload()}>Reload register</button>}
+                  </span>}
+            </div>
+          )}
+          {shown.length === 0 ? (
+            <div className="card"><p className="dim" style={{ margin: 0 }}>No assets match — clear the search or filters.</p></div>
+          ) : (
+            <div className="card tbl-wrap freeze-head">
+              <table className="sortable">
+                <thead>
+                  <tr>
+                    {COLS.map(([k, lbl]) => (
+                      <th key={k} className={`th-sort${sortKey === k ? ' active' : ''}`}
+                          onClick={() => toggleSort(k)} title={`Sort by ${lbl}`}>{lbl}{sortArrow(k)}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {shown.map((a) => {
+                    const s = sched[a.code]
+                    return (
+                      <tr key={a.code} tabIndex={0} onClick={() => go(`/asset/${a.code}`)}
+                          onKeyDown={(e) => e.key === 'Enter' && go(`/asset/${a.code}`)}>
+                        <td className="code" data-l="Code">{a.code}</td>
+                        <td data-l="Asset">{a.name}</td>
+                        <td className="dim" data-l="Class">{a.cls}</td>
+                        <td className="dim" data-l="Location">{a.location}</td>
+                        <td className="dim" data-l="System">{a.sys ?? '—'}</td>
+                        <td data-l="Status"><StatusChip status={a.status} /></td>
+                        <td className="dim dt" data-l="Next PM">{s?.next_due || '—'}</td>
+                        <td data-l="PM state">{s
+                          ? <span className={schedChip(s.state)}><span className="dot" />{SCHED_LABEL[s.state]}{s.overdue_count > 1 ? ` · ${s.overdue_count}` : ''}</span>
+                          : <span className="dim">—</span>}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </>
+  )
+}
+
+const daysUntil = (iso) => Math.round((new Date(iso) - new Date()) / 86400000)
+
+/* Lines named after colours get their colour as the chip dot — free for any
+   org that names lines that way; everyone else gets a neutral dot. */
+const LINE_COLORS = {
+  green: '#1c7a44', blue: '#2b5c99', purple: '#5b3fbf', yellow: '#b98a00',
+  red: '#a32e2e', orange: '#c2571a', pink: '#b83280', grey: '#52525b', gray: '#52525b',
+}
+const lineColor = (name) => {
+  const word = (name || '').toLowerCase().split(/\s+/).find((w) => LINE_COLORS[w])
+  return word ? LINE_COLORS[word] : '#a1a1aa'
+}
+
+const LivePmChip = ({ item }) => {
+  const s = item.overdue_days > 0
+    ? { key: 'overdue', label: `Overdue ${item.overdue_days}d` }
+    : daysUntil(item.next_due) <= 7
+      ? { key: 'due_soon', label: `Due in ${Math.max(daysUntil(item.next_due), 0)}d` }
+      : { key: 'ok', label: 'On schedule' }
+  return <span className={`chip d-${s.key}`}><span className="dot" />{s.label}</span>
+}
 
 /* ---------- dashboard ---------- */
 
@@ -89,6 +480,496 @@ function Dashboard({ go }) {
   )
 }
 
+/* ---------- asset detail (live) ---------- */
+
+/* Historical rows carry import scaffolding that duplicates the chips beside
+   them — a "[YEARLY MAINTENANCE]" / "[failure]" prefix, a "· equipment: <name>"
+   tail, and an import note. Strip that noise for display only; the stored text
+   (and the edit form) keep the record verbatim. */
+const tidyLog = (t = '') => t
+  .replace(/^\s*\[[^\]]*\]\s*/, '')
+  .replace(/\s*·\s*equipment:\s*[^·]+/i, '')
+  .replace(/\s*·\s*\[historical import[^\]]*\]/i, '')
+  .trim()
+
+/* One entry row, shared by both history sections. The asset class is constant
+   for this asset (it's in the facts grid), so it's not repeated on every row. */
+function LogRow({ en, staff }) {
+  return (
+    <div className="wo">
+      <div className="row1">
+        <span className={`chip ${en.type === 'failure' ? 'd-overdue' : ''}`}>
+          <span className="dot" />{en.type}{en.subtype ? ` · ${en.subtype}` : ''}
+        </span>
+        {en.fault_type && <span className="chip"><span className="dot" />{en.fault_type}</span>}
+        <span className="sub dt">{en.log_date}</span>
+        {en.down_hours != null && <span className="sub">down <b>{en.down_hours}h</b></span>}
+        {en.type === 'failure' && !en.ended_at && <span className="chip d-overdue">still open</span>}
+        {staff && <span className="wo-edit"><EditLink id={en.id} date={en.log_date} /></span>}
+      </div>
+      <div className="findings">{tidyLog(en.text)}</div>
+      {(en.attended_by || en.entered_by) && (
+        <div className="sub">by <b>{en.attended_by || en.entered_by}</b>
+          {en.attended_by && en.attended_by !== en.entered_by && <> · recorded by {en.entered_by}</>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* Maintenance and failures are the two things a section is judged on, so the
+   asset card states them separately rather than as one blended stream — the
+   same ledger, split by what the reader came to check. */
+/* Long histories are the norm (some assets carry 60+ maintenance entries), and
+   a full list would push the failure section off the bottom of the page — the
+   very thing that made maintenance look missing before. Show a window, with
+   the rest one click away. */
+const LOG_WINDOW = 8
+
+function LogList({ rows, staff }) {
+  const [all, setAll] = useState(false)
+  const shown = all ? rows : rows.slice(0, LOG_WINDOW)
+  return (
+    <>
+      {shown.map((en) => <LogRow key={en.id} en={en} staff={staff} />)}
+      {rows.length > LOG_WINDOW && (
+        <button type="button" className="btn preset" onClick={() => setAll(!all)}>
+          {all ? `Show latest ${LOG_WINDOW}` : `Show all ${rows.length}`}
+        </button>
+      )}
+    </>
+  )
+}
+
+function AssetLogSections({ log, staff }) {
+  const maint = log.filter((e) => e.type === 'maintenance')
+  const allFails = log.filter((e) => e.type === 'failure')
+  const other = log.filter((e) => e.type !== 'maintenance' && e.type !== 'failure')
+  // A public walk-up (QR scan) sees only settled history — open breakdowns are
+  // operational and stay behind sign-in. Staff see them, pulled to the top and
+  // marked. The maintenance record is public either way.
+  const openFail = allFails.filter((e) => !e.ended_at)
+  const resolvedFail = allFails.filter((e) => e.ended_at)
+  // only timed entries carry a duration — see _down_hours on the API side
+  const timed = resolvedFail.filter((e) => e.down_hours != null)
+  const downtime = timed.reduce((s, e) => s + e.down_hours, 0)
+  return (
+    <>
+      {staff && openFail.length > 0 && (
+        <div className="sect open-fail-banner">
+          <h3>⚠ Open breakdown{openFail.length > 1 ? 's' : ''} — {openFail.length} awaiting recovery</h3>
+          <LogList rows={openFail} staff={staff} />
+        </div>
+      )}
+
+      <div className="sect">
+        <h3>
+          Maintenance history — {maint.length ? `${maint.length} entr${maint.length === 1 ? 'y' : 'ies'}, newest first` : 'none recorded'}
+        </h3>
+        {maint.length === 0
+          ? <p className="dim">No maintenance logged against this asset yet.</p>
+          : <LogList rows={maint} staff={staff} />}
+      </div>
+
+      <div className="sect">
+        <h3>
+          Failure history — {resolvedFail.length
+            ? <>{resolvedFail.length} resolved{timed.length > 0 && <> · {downtime.toFixed(1)}h downtime</>}</>
+            : 'none recorded'}
+          {!staff && openFail.length > 0 && <span className="dim"> · sign in for open breakdowns</span>}
+        </h3>
+        {resolvedFail.length === 0
+          ? <p className="dim">No resolved failures recorded against this asset.</p>
+          : <LogList rows={resolvedFail} staff={staff} />}
+      </div>
+
+      {other.length > 0 && (
+        <div className="sect">
+          <h3>Other log entries — notes & rectifications, newest first</h3>
+          <LogList rows={other} staff={staff} />
+        </div>
+      )}
+    </>
+  )
+}
+
+/* ---------- maintenance schedule (backend-derived) ---------- */
+
+/* The section's "grid scheduler". The backend rolls each cycle's next PM forward
+   from the last time that cycle — or any more comprehensive one — was recorded
+   (a Yearly service fulfils the Quarterly under it). Applicability comes from the
+   asset's plan when set, else it's inferred from what the log already holds. */
+const SCHED_FREQS = ['Monthly', 'Quarterly', 'Half-Yearly', 'Yearly', '5-Yearly']
+const SCHED_LABEL = { overdue: 'Overdue', due_soon: 'Due soon', ok: 'On schedule', never: 'Never done' }
+const schedChip = (state) => `chip d-${state === 'never' ? 'overdue' : state}`
+
+function useAssetSchedule(code) {
+  const [schedule, setSchedule] = useState(null)
+  const [nonce, setNonce] = useState(0)
+  useEffect(() => {
+    let alive = true
+    getJSON(`/api/assets/${encodeURIComponent(code)}/schedule`)
+      .then((s) => alive && setSchedule(s)).catch(() => alive && setSchedule(null))
+    return () => { alive = false }
+  }, [code, nonce])
+  return { schedule, reloadSchedule: () => setNonce((n) => n + 1) }
+}
+
+function MaintenanceSchedule({ schedule }) {
+  const rows = schedule?.rows || []
+  const s = schedule?.summary
+  return (
+    <div className="sect">
+      <h3>
+        Maintenance schedule
+        {schedule && !schedule.has_plan && rows.length > 0 && (
+          <span className="sched-tag" title="No plan set — cycles inferred from the log">inferred</span>
+        )}
+        {s && (
+          <span className="sched-sum">
+            {s.overdue_count > 0
+              ? <span className="ss-red">⚠ {s.overdue_count} overdue</span>
+              : s.next_due
+                ? <>next: <b>{s.next_frequency}</b> in {s.days_left}d · <span className="dt">{s.next_due}</span></>
+                : null}
+          </span>
+        )}
+      </h3>
+      {rows.length === 0 ? (
+        <p className="dim">No maintenance plan or recurring history yet — set a plan in “Edit details”, or log a Monthly / Quarterly / Half-Yearly / Yearly / 5-Yearly entry.</p>
+      ) : (
+        <div className="tbl-wrap">
+          <table className="sched-tbl">
+            <thead><tr><th>Frequency</th><th>Last done</th><th>Next due</th><th>Days left</th><th>State</th></tr></thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.frequency}>
+                  <td data-l="Frequency"><b>{r.frequency}</b></td>
+                  <td className="dim dt" data-l="Last done">{r.last_done || '—'}{r.via && <span className="sched-via"> · via {r.via}</span>}</td>
+                  <td className="dt" data-l="Next due">{r.next_due || '—'}</td>
+                  <td data-l="Days left">{r.days_left == null ? '—' : r.days_left < 0 ? `${-r.days_left}d ago` : `in ${r.days_left}d`}</td>
+                  <td data-l="State"><span className={schedChip(r.state)}><span className="dot" />{SCHED_LABEL[r.state]}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* The editable maintenance plan — tick the cycles this asset needs (with an
+   optional last-done seed for history that predates the logbook). Once a plan is
+   set it is authoritative; clearing every tick returns to log-inference. */
+function PlanEditor({ code, schedule, onSaved }) {
+  const lastByFreq = Object.fromEntries((schedule?.rows || []).map((r) => [r.frequency, r]))
+  const initial = schedule?.has_plan ? schedule.planned : (schedule?.rows || []).map((r) => r.frequency)
+  const [checked, setChecked] = useState(new Set(initial))
+  const [seeds, setSeeds] = useState({})
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [ok, setOk] = useState(false)
+  const toggle = (f) => setChecked((s) => { const n = new Set(s); n.has(f) ? n.delete(f) : n.add(f); return n })
+
+  const save = async () => {
+    setBusy(true); setErr(''); setOk(false)
+    try {
+      const seedPayload = {}
+      for (const f of checked) if (seeds[f]) seedPayload[f] = seeds[f]
+      const res = await fetch(`/api/assets/${encodeURIComponent(code)}/plan`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ frequencies: [...checked], seeds: seedPayload }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.detail || `HTTP ${res.status}`)
+      setOk(true); onSaved?.()
+    } catch (ex) {
+      setErr(String(ex.message || ex).replace(/^Error: /, ''))
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="plan-editor">
+      <p className="dim plan-hint">Tick the cycles this asset is due for. Last-done is read from the log — seed a date only for history from before the logbook.</p>
+      <div className="plan-rows">
+        {SCHED_FREQS.map((f) => {
+          const on = checked.has(f)
+          const r = lastByFreq[f]
+          return (
+            <label key={f} className={`plan-row${on ? ' on' : ''}`}>
+              <input type="checkbox" checked={on} onChange={() => toggle(f)} />
+              <span className="plan-freq">{f}</span>
+              {on && (
+                <span className="plan-meta">
+                  <span className="dim">last: {r?.last_done || '—'}{r?.via && ` · via ${r.via}`}</span>
+                  <input type="date" className="plan-seed" value={seeds[f] || ''}
+                         onChange={(e) => setSeeds({ ...seeds, [f]: e.target.value })}
+                         title="Optional last-done baseline" placeholder="seed" />
+                </span>
+              )}
+            </label>
+          )
+        })}
+      </div>
+      <div className="plan-actions">
+        <button type="button" className="btn" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save plan'}</button>
+        {ok && <span className="plan-ok">Saved</span>}
+        {err && <span className="import-msg err">{err}</span>}
+      </div>
+    </div>
+  )
+}
+
+/* The technical-detail editor, shared by "new asset" and "edit asset". A
+   create POSTs the whole record; an edit PATCHes only the fields that moved,
+   so the audit trail records real changes, not a rewrite of every field. */
+const CRITICALITY = ['A', 'B', 'C']
+const STATUSES = ['in_service', 'under_maintenance', 'out_of_service', 'decommissioned']
+
+function AssetForm({ initial, mode, onDone, onCancel }) {
+  const empty = {
+    code: '', name: '', asset_class: '', location: '', line: '',
+    system: '', make_model: '', criticality: 'B', status: 'in_service',
+    commissioned_on: '',
+  }
+  // edit maps the full asset view; create starts empty but honours a couple of
+  // sensible defaults (the line the register is currently showing)
+  const start = mode === 'edit' ? {
+    code: initial.code, name: initial.name, asset_class: initial.cls,
+    location: initial.location, line: initial.line || '', system: initial.sys || '',
+    make_model: initial.makeModel || '', criticality: initial.criticality,
+    status: initial.status, commissioned_on: initial.commissionedOn || '',
+  } : { ...empty, line: initial?.line || '' }
+  const [f, setF] = useState(start)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [classes, setClasses] = useState([])
+  useEffect(() => {
+    getJSON('/api/assets').then((rows) =>
+      setClasses([...new Set(rows.map((r) => r.asset_class).filter(Boolean))].sort())
+    ).catch(() => {})
+  }, [])
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
+  const codeChanged = mode === 'edit' && f.code !== start.code
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (busy) return
+    setBusy(true); setErr('')
+    try {
+      const payload = { ...f }
+      Object.keys(payload).forEach((k) => { if (payload[k] === '') payload[k] = null })
+      const url = mode === 'edit'
+        ? `/api/assets/${encodeURIComponent(start.code)}`
+        : '/api/assets'
+      const res = await fetch(url, {
+        method: mode === 'edit' ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      })
+      if (!res.ok) {
+        const b = await res.json().catch(() => null)
+        throw new Error(b?.detail || `HTTP ${res.status}`)
+      }
+      const saved = await res.json()
+      onDone(saved.code)
+    } catch (ex) {
+      setErr(String(ex.message || ex).replace(/^Error: /, ''))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form className="asset-form card" onSubmit={submit}>
+      <datalist id="af-classes">{classes.map((c) => <option key={c} value={c} />)}</datalist>
+      <div className="af-grid">
+        <label>Code<input value={f.code} onChange={set('code')} required
+                          placeholder="printed on the QR tag" /></label>
+        <label>Name<input value={f.name} onChange={set('name')} required /></label>
+        <label>Asset class<input value={f.asset_class} onChange={set('asset_class')} required
+                                 list="af-classes" /></label>
+        <label>Location / station<input value={f.location} onChange={set('location')} required /></label>
+        <label>Line<input value={f.line} onChange={set('line')} placeholder="e.g. Green Line" /></label>
+        <label>System<input value={f.system} onChange={set('system')} placeholder="reporting rollup" /></label>
+        <label>Make / model<input value={f.make_model} onChange={set('make_model')} /></label>
+        <label>Commissioned on<input type="date" value={f.commissioned_on} onChange={set('commissioned_on')} /></label>
+        <label>Criticality<select value={f.criticality} onChange={set('criticality')}>
+          {CRITICALITY.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select></label>
+        <label>Status<select value={f.status} onChange={set('status')}>
+          {STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+        </select></label>
+      </div>
+      {codeChanged && (
+        <p className="af-warn">Changing the code re-keys the asset — the printed QR tag will need reprinting. History is preserved.</p>
+      )}
+      <div className="af-actions">
+        <button className="btn" type="submit" disabled={busy}>
+          {busy ? 'Saving…' : mode === 'edit' ? 'Save changes' : 'Create asset'}
+        </button>
+        <button className="btn ghost" type="button" onClick={onCancel}>Cancel</button>
+        {err && <span className="import-msg err">{err}</span>}
+      </div>
+    </form>
+  )
+}
+
+/* The register's answer to "who changed this, and from what" — the asset's
+   audit trail, writers only. */
+function AssetAudit({ code }) {
+  const [rows, setRows] = useState(null)
+  useEffect(() => {
+    let alive = true
+    getJSON(`/api/assets/${encodeURIComponent(code)}/audit`)
+      .then((r) => alive && setRows(r)).catch(() => alive && setRows([]))
+    return () => { alive = false }
+  }, [code])
+  if (!rows || rows.length === 0) return null
+  return (
+    <div className="sect">
+      <h3>Change history — who edited this record</h3>
+      {rows.map((r, i) => (
+        <div className="wo" key={i}>
+          <div className="row1">
+            <span className={`chip ${r.action === 'created' ? 'w-done' : ''}`}>
+              <span className="dot" />{r.action}
+            </span>
+            <span className="dim">by <b>{r.actor}</b></span>
+            <span className="sub dt">{new Date(r.at).toLocaleString()}</span>
+          </div>
+          {r.detail && <div className="findings">{r.detail}</div>}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function LiveAssetDetail({ code }) {
+  const { asset: a, history, log, loading, error, reload } = useLiveAsset(code)
+  const { schedule, reloadSchedule } = useAssetSchedule(code)
+  const { canWrite } = useMe()
+  const [editing, setEditing] = useState(false)
+  if (loading) return <p className="dim">Loading {code}…</p>
+  if (error || !a) {
+    return (
+      <>
+        <a className="crumb" href="#/">← Assets</a>
+        <div className="card offline-note">
+          {error && !String(error).includes('404')
+            ? <>Backend unreachable — {error}.</>
+            : <>No asset with code <span className="code">{code}</span> in the register.</>}
+        </div>
+      </>
+    )
+  }
+  const accent = lineColor(a.line)
+  const maint = log.filter((e) => e.type === 'maintenance')
+  const resolvedFails = log.filter((e) => e.type === 'failure' && e.ended_at)
+  const lastServiced = maint.length ? maint[0].log_date : null
+  return (
+    <>
+      <a className="crumb" href="#/">← Assets</a>
+      <div className="asset-passport" style={{ '--line-c': accent }}>
+        {/* hero: the asset's identity, health and QR in one glance — the face
+            of the QR-scan page a visitor or manager lands on */}
+        <div className="card asset-hero">
+          <span className="hero-bar" />
+          <div className="hero-body">
+            <div className="hero-id">
+              <span className="hero-code">{a.code}</span>
+              <h1 className="hero-name">{a.name}</h1>
+              <div className="hero-sub">{a.cls}{a.sys ? ` · ${a.sys}` : ''}</div>
+              <div className="hero-loc">
+                <span className="ln-dot" style={{ background: accent }} />
+                {a.line ? <b>{a.line}</b> : null}{a.line ? ' · ' : ''}{a.location} · {ORG}
+              </div>
+              <div className="hero-badges">
+                <span className={`status-pill s-${a.status}`}><span className="dot" />{STATUS_LABEL[a.status]}</span>
+                <span className={`crit-badge c-${a.criticality}`} title="Criticality">Criticality {a.criticality}</span>
+                {canWrite && !editing && (
+                  <button className="btn ghost sm" type="button" onClick={() => setEditing(true)}>Edit details</button>
+                )}
+                <button className="btn ghost sm no-print" type="button" onClick={() => window.print()}>Print</button>
+              </div>
+            </div>
+            <div className="hero-qr">
+              <QR value={assetUrl(a.code)} size={148} />
+              <div className="hint">Scan to open<br />this record</div>
+            </div>
+          </div>
+        </div>
+
+        {/* the passport facts — one clean labelled grid, not a crammed line */}
+        <div className="asset-facts card">
+          {[
+            ['Location', a.location],
+            ['Line', a.line || '—'],
+            ['System', a.sys || '—'],
+            ['Asset class', a.cls],
+            ['Make / model', a.makeModel || '—'],
+            ['Commissioned', a.commissionedOn || '—'],
+            ['Last serviced', lastServiced || '—'],
+            ['Maintenance records', String(maint.length)],
+          ].map(([k, v]) => (
+            <div className="fact" key={k}>
+              <span className="fk">{k}</span>
+              <span className="fv">{v}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="card"><MaintenanceSchedule schedule={schedule} /></div>
+
+        {editing && (
+          <div className="card">
+            <div className="sect">
+              <h3>Edit technical details</h3>
+              <AssetForm initial={a} mode="edit"
+                         onCancel={() => setEditing(false)}
+                         onDone={(newCode) => {
+                           setEditing(false)
+                           if (newCode !== a.code) location.hash = `/asset/${newCode}`
+                           else reload()
+                         }} />
+            </div>
+            <div className="sect">
+              <h3>Maintenance plan</h3>
+              <PlanEditor code={a.code} schedule={schedule} onSaved={reloadSchedule} />
+            </div>
+          </div>
+        )}
+
+        <div className="card">
+          <AssetLogSections log={log} staff={canWrite} />
+
+          {history.length > 0 && (
+            <div className="sect">
+              <h3>Work-order history — completed jobs, newest first</h3>
+              {history.map((w) => (
+                <div className="wo" key={w.work_order_id}>
+                  <div className="row1">
+                    <span className="code">#{w.work_order_id}</span>
+                    <span className="t">{w.title}</span>
+                    <WoChip status={w.status} />
+                  </div>
+                  {w.findings && <div className="findings">{w.findings}</div>}
+                  <div className="sub">
+                    {w.type}
+                    {w.done_by && <> · by <b>{w.done_by}</b></>}
+                    {w.closed_at && <> · closed <span className="dt">{w.closed_at.slice(0, 10)}</span></>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {canWrite && <AssetAudit code={a.code} />}
+        </div>
+      </div>
+    </>
+  )
+}
+
 /* ---------- asset detail ---------- */
 
 function AssetDetail({ code }) {
@@ -106,7 +987,7 @@ function AssetDetail({ code }) {
             <h1><span className="code">{a.code}</span> · {a.name}</h1>
             <div className="meta">
               <span><b>{a.cls}</b></span>
-              <span>{a.location} · Demo Metro Line</span>
+              <span>{a.location} · {ORG}</span>
               <span>{a.makeModel}</span>
               <span>Commissioned <b className="dt">{a.commissioned}</b></span>
               <StatusChip status={a.status} />
@@ -415,6 +1296,192 @@ function Failures() {
   )
 }
 
+/* ---------- failures: live KPI surface over the one ledger ---------- */
+
+/* Reads failure entries straight from the logbook — no second table, no
+   pre-aggregation. The tiles answer the three questions a section head asks
+   at a glance: how often, how long down, and what is still open. */
+/* Imported history runs to Feb 2026 while the calendar says July, so a 90-day
+   default would open the page on an empty window and read as broken. Default
+   to the whole record and let the user narrow. */
+const FAIL_PERIODS = [
+  ['All time', 36500, 12],
+  ['Last 12 months', 365, 12],
+  ['Last 90 days', 90, 6],
+  ['Last 30 days', 30, 3],
+]
+
+function LiveFailures() {
+  const { canWrite } = useMe()
+  const [stats, setStats] = useState(null)
+  const [rows, setRows] = useState([])
+  const [error, setError] = useState(null)
+  const [cls, setCls] = useState('')
+  const [state, setState] = useState('open')   // tab: 'open' | 'resolved'
+  const [period, setPeriod] = useState(0)
+
+  const [periodLabel, days, months] = FAIL_PERIODS[period]
+
+  useEffect(() => {
+    let alive = true
+    setStats(null)
+    Promise.all([
+      getJSON(`/api/logbook/failure-stats?days=${days}&months=${months}`),
+      getJSON('/api/logbook?entry_type=failure&limit=1000'),
+    ])
+      .then(([s, l]) => { if (alive) { setStats(s); setRows(l) } })
+      .catch((e) => alive && setError(String(e)))
+    return () => { alive = false }
+  }, [days, months])
+
+  if (error) return <div className="card offline-note">Backend unreachable — {error}.</div>
+  if (!stats) return <p className="dim">Loading failure record…</p>
+
+  const trend = stats.per_month.map((m) => ({
+    label: new Date(`${m.month}-01T00:00:00`).toLocaleString(undefined, { month: 'short' }),
+    count: m.count,
+  }))
+  const prev3 = trend.slice(0, 3).reduce((a, m) => a + m.count, 0)
+  const last3 = trend.slice(3).reduce((a, m) => a + m.count, 0)
+  const dir = last3 < prev3 ? 'down' : last3 > prev3 ? 'up' : 'flat'
+  const asRows = (a) => a.map((c) => [c.name, c.count])
+
+  // two tabs: still-open breakdowns vs restored ones. A row is open until a
+  // recovery time exists (linked or not); unlinked-open rows are flagged.
+  const byClass = (r) => !cls || (r.category || 'Unclassified') === cls
+  const openRows = rows.filter((r) => !r.ended_at && byClass(r))
+  const resolvedRows = rows.filter((r) => r.ended_at && byClass(r))
+  const shown = state === 'open' ? openRows : resolvedRows
+
+  return (
+    <>
+      <div className="log-filters">
+        <label className="dim">Period <select value={period} onChange={(e) => setPeriod(Number(e.target.value))}>
+          {FAIL_PERIODS.map(([lbl], i) => <option key={lbl} value={i}>{lbl}</option>)}
+        </select></label>
+        <label className="dim">Class <select value={cls} onChange={(e) => setCls(e.target.value)}>
+          <option value="">All</option>
+          {stats.by_class.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
+        </select></label>
+        <span className="dim">Read-only — report a failure in the <a href="#/log">Log book</a>.</span>
+      </div>
+
+      <div className="kpis">
+        <div className="tile"><div className="v">{stats.total}</div>
+          <div className="k">Failures — {periodLabel.toLowerCase()}</div></div>
+        <div className={stats.open ? 'tile alert' : 'tile'}><div className="v">{stats.open}</div>
+          <div className="k">Open breakdowns</div></div>
+        <div className="tile"><div className="v">{stats.measured ? `${stats.downtime_hours} h` : '—'}</div>
+          <div className="k">Downtime{stats.measured ? ` · ${stats.measured} timed` : ' — none timed'}</div></div>
+        <div className="tile"><div className="v">{stats.mttr_hours != null ? `${stats.mttr_hours} h` : '—'}</div>
+          <div className="k">{stats.mttr_hours != null ? `MTTR · ${stats.measured} of ${stats.closed}` : 'MTTR — needs clock times'}</div></div>
+        <div className={stats.unlinked ? 'tile warn' : 'tile'}><div className="v">{stats.unlinked}</div>
+          <div className="k">Unlinked records</div></div>
+      </div>
+
+      {(stats.unmeasured > 0 || stats.unlinked > 0) && (
+        <p className="viz-insight">
+          {stats.unmeasured > 0 && <>Downtime and MTTR come from the {stats.measured} failure{stats.measured === 1 ? '' : 's'} logged
+            with clock times; {stats.unmeasured} imported record{stats.unmeasured === 1 ? '' : 's'} carry a date only and sit outside the averages. </>}
+          {stats.unlinked > 0 && <>{stats.unlinked} record{stats.unlinked === 1 ? '' : 's'} never matched an asset code in the register —
+            they are a data-quality backlog, not open work.</>}
+        </p>
+      )}
+
+      <div className="viz-grid2">
+        <section className="card viz-card">
+          <h2 className="viz-h">Failures per month <span className="viz-note">last {months} months</span></h2>
+          <TrendChart data={trend} />
+          <p className="viz-insight">
+            {dir === 'down' && <>Improving — {last3} in the last 3 months vs {prev3} in the previous 3.</>}
+            {dir === 'up' && <>Worsening — {last3} in the last 3 months vs {prev3} in the previous 3.</>}
+            {dir === 'flat' && <>Steady — {last3} in each of the last two quarters.</>}
+          </p>
+        </section>
+
+        <section className="card viz-card">
+          <h2 className="viz-h">By asset class <span className="viz-note">{periodLabel.toLowerCase()}</span></h2>
+          {stats.by_class.length === 0 ? <p className="dim">Nothing in this window.</p> : <>
+            <HBar rows={asRows(stats.by_class)} unit="" />
+            <p className="viz-insight">{stats.by_class[0].name} leads with {stats.by_class[0].count} — focus for the next PM review.</p>
+          </>}
+        </section>
+
+        <section className="card viz-card">
+          <h2 className="viz-h">Fault types <span className="viz-note">{periodLabel.toLowerCase()}</span></h2>
+          {stats.by_fault.length === 0
+            ? <p className="dim">No fault types classified in this window.</p>
+            : <HBar rows={asRows(stats.by_fault)} unit="" seq />}
+        </section>
+
+        <section className="card viz-card">
+          <h2 className="viz-h">Repeat offenders <span className="viz-note">most failures</span></h2>
+          {stats.by_asset.length === 0
+            ? <p className="dim">Nothing in this window.</p>
+            : <>
+                <HBar rows={asRows(stats.by_asset)} unit="" seq />
+                <p className="viz-insight">{stats.by_asset[0].name} has failed {stats.by_asset[0].count} times — worth a condition review.</p>
+              </>}
+        </section>
+      </div>
+
+      <h2>Failure &amp; recovery log</h2>
+      <div className="fail-tabs" role="tablist">
+        <button type="button" role="tab" aria-selected={state === 'open'}
+                className={`fail-tab${state === 'open' ? ' active' : ''}${openRows.length ? ' has-open' : ''}`}
+                onClick={() => setState('open')}>
+          Open failures <span className="fail-tab-n">{openRows.length}</span>
+        </button>
+        <button type="button" role="tab" aria-selected={state === 'resolved'}
+                className={`fail-tab${state === 'resolved' ? ' active' : ''}`}
+                onClick={() => setState('resolved')}>
+          Resolved <span className="fail-tab-n">{resolvedRows.length}</span>
+        </button>
+      </div>
+      <div className="card tbl-wrap">
+        <table>
+          <thead><tr><th>Asset</th><th>Class</th><th>Occurred</th><th>Restored</th><th>Down</th><th>State</th><th>Team</th><th>Fault → what happened</th>{canWrite && <th aria-label="Edit"></th>}</tr></thead>
+          <tbody>
+            {shown.map((f) => (
+              <tr key={f.id} tabIndex={0}
+                  onClick={() => f.asset_code && (location.hash = `/asset/${f.asset_code}`)}
+                  onKeyDown={(e) => e.key === 'Enter' && f.asset_code && (location.hash = `/asset/${f.asset_code}`)}>
+                <td className="code" data-l="Asset">{f.asset_code || '—'}</td>
+                <td className="dim" data-l="Class">{f.category || '—'}</td>
+                <td className="dim dt" data-l="Occurred">{f.log_date}</td>
+                {/* midnight means no clock time was recorded — show the date alone
+                    rather than an invented 00:00 (same rule as the log book) */}
+                <td className="dim dt" data-l="Restored">{f.ended_at
+                  ? (f.ended_at.slice(11, 16) === '00:00'
+                      ? f.ended_at.slice(0, 10)
+                      : f.ended_at.slice(0, 16).replace('T', ' '))
+                  : '—'}</td>
+                <td className="dt" data-l="Down">{f.down_hours != null ? `${f.down_hours} h` : '—'}</td>
+                <td data-l="State">{!f.asset_code
+                  ? <span className="chip"><span className="dot" />Unlinked</span>
+                  : f.ended_at
+                    ? <span className="chip w-done"><span className="dot" />Restored</span>
+                    : <span className="chip d-overdue"><span className="dot" />Open</span>}</td>
+                <td className="dim" data-l="Team">{f.attended_by || f.entered_by || '—'}</td>
+                <td className="wrap-cell" data-l="Fault">
+                  {f.fault_type && <b>{f.fault_type} </b>}{f.text}
+                </td>
+                {canWrite && (
+                  <td className="td-edit" data-l="Edit">
+                    <EditLink id={f.id} date={f.log_date}
+                              label={f.ended_at ? 'Edit in log book' : 'Resolve / link in log book'} />
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {shown.length === 0 && <p className="dim" style={{ padding: '1rem' }}>Nothing matches this filter.</p>}
+      </div>
+    </>
+  )
+}
+
 /* ---------- spares & stock ---------- */
 
 function Spares() {
@@ -510,12 +1577,12 @@ function ProposalLetter({ prId }) {
       </div>
       <div className="card letter">
         <p className="l-right dt">Ref: AMPS/{p.id}<br />Date: {fmtDate(new Date())}</p>
-        <p>To,<br />The Senior Manager (Procurement)<br />Demo Metro Line</p>
+        <p>To,<br />The Senior Manager (Procurement)<br />{ORG}</p>
         <p className="l-sub"><b>Subject: Proposal for procurement of {p.item} — {p.qty}</b></p>
         <p>Respected Sir,</p>
         <p>
           It is proposed to procure <b>{p.item}</b> ({p.qty}) for <b>{p.asset} — {a?.name}</b> installed
-          at {a?.location}, Demo Metro Line.
+          at {a?.location}, {ORG}.
         </p>
         {f && (
           <p>
@@ -527,7 +1594,7 @@ function ProposalLetter({ prId }) {
         {!f && <p>{p.note} The item is required to maintain preventive-maintenance readiness for this equipment.</p>}
         {p.cost !== '—' && <p>Estimated cost: <b>{p.cost}</b>.</p>}
         <p>Submitted for your kind approval, please.</p>
-        <p className="l-sign">Yours faithfully,<br /><br />Power Supply &amp; E&amp;M Maintenance<br />Demo Metro Line</p>
+        <p className="l-sign">Yours faithfully,<br /><br />Power Supply &amp; E&amp;M Maintenance<br />{ORG}</p>
       </div>
     </>
   )
@@ -552,8 +1619,8 @@ function JobCard({ jcId }) {
       <div className="osheet">
         <div className="os-top">
           <div className="os-brand">
-            <div className="os-org"><span className="bolt">⚡</span>AMPS</div>
-            <div className="os-dept">Power Supply &amp; E&amp;M Maintenance<br />Demo Metro Line</div>
+            <div className="os-org"><span className="brand-name">AMPS</span></div>
+            <div className="os-dept">Power Supply &amp; E&amp;M Maintenance<br />{ORG}</div>
           </div>
           <div className="os-title">
             <div className="os-t1">Job Card</div>
@@ -671,8 +1738,8 @@ function Checksheet({ kind, a1, a2 }) {
       <div className="osheet">
         <div className="os-top">
           <div className="os-brand">
-            <div className="os-org"><span className="bolt">⚡</span>AMPS</div>
-            <div className="os-dept">Power Supply &amp; E&amp;M Maintenance<br />Demo Metro Line</div>
+            <div className="os-org"><span className="brand-name">AMPS</span></div>
+            <div className="os-dept">Power Supply &amp; E&amp;M Maintenance<br />{ORG}</div>
           </div>
           <div className="os-title">
             <div className="os-t1">Preventive Maintenance Checksheet</div>
@@ -776,24 +1843,130 @@ function Checksheet({ kind, a1, a2 }) {
 
 /* ---------- QR tag sheet ---------- */
 
+/* The credits page — the story behind the tool, reachable from the footer.
+   Full attribution lives here (a page you choose to open), while the always-
+   visible footer stays a quiet signed mark. */
+function AboutPage() {
+  return (
+    <div className="about">
+      <a className="crumb" href="#/">← Back</a>
+      <div className="about-hero">
+        <h1>AMPS</h1>
+        <p className="about-tag">Asset Maintenance &amp; Preventive Scheduling</p>
+        {LIVE && <p className="about-org">{ORG}</p>}
+      </div>
+
+      <div className="card about-note">
+        <p>
+          AMPS grew out of the daily work of a power-supply section — the shift
+          logbook, the failure register and the maintenance schedule a team
+          keeps by hand. It sets out to give that discipline a digital home:
+          every asset a QR tag, every job a record, every failure a lesson kept.
+        </p>
+        <p>
+          It is built to stay simple enough for everyone, from the field to the
+          front office — a tool that earns trust by never losing what was
+          written, and by showing the equipment's story at a glance.
+        </p>
+        <div className="about-sign">
+          <SignatureMark />
+          <span className="about-by-wrap">
+            <a className="about-by" href="https://github.com/arupbiswas1994-byte"
+               target="_blank" rel="noopener noreferrer">@arupbiswas1994-byte</a>
+            <span className="about-role">lead developer</span>
+          </span>
+        </div>
+      </div>
+
+      {/* the department's standing — its infrastructure, its data. On the live
+          deployment this states Metro Railway's ownership (per the departmental
+          order); on the demo it names Metro Railway as where AMPS runs for real. */}
+      <div className="card about-dept">
+        {LIVE ? (
+          <>
+            <h3>Departmental deployment</h3>
+            <p>
+              Deployed under Metro Railway office order
+              No.&nbsp;MRK/CPD/E&amp;M/Co-Ord/6746, dated 22&nbsp;July&nbsp;2026:
+            </p>
+            <blockquote className="about-extract">
+              “The licence files and notices of the open-source components shall
+              remain intact within the source code. All user-facing screens shall
+              display the name of Metro Railway, Kolkata, and all departmental
+              data, records and configuration entered in the application shall
+              remain the property of Metro Railway.”
+              <cite>— office order No.&nbsp;6746, 22.07.2026</cite>
+            </blockquote>
+          </>
+        ) : (
+          <>
+            <h3>In production</h3>
+            <p>
+              AMPS runs in production at <b>Metro Railway, Kolkata</b>, monitoring
+              asset maintenance across the metro network — the open-source
+              framework, adopted as a departmental system.
+            </p>
+            {/* value proof-points — demo/showcase only; the office deployment
+                stays modest and institutional (no self-congratulatory savings) */}
+            <div className="about-kpis">
+              <span><b>3,050</b> assets</span>
+              <span><b>18,000+</b> maintenance records</span>
+              <span><b>₹0</b> software licence cost</span>
+              <span><b>~₹1–3 Cr</b> est. 5-year cost avoided</span>
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className="card about-credits">
+        <div className="ac-row">
+          <span className="ac-k">Framework</span>
+          <span className="ac-v">AMPS · open source, free to use and adapt</span>
+        </div>
+        <div className="ac-row">
+          <span className="ac-k">Licence</span>
+          <span className="ac-v">MIT</span>
+        </div>
+        <div className="ac-row">
+          <span className="ac-k">Source</span>
+          <span className="ac-v">
+            <a href="https://github.com/arupbiswas1994-byte/amps" target="_blank" rel="noopener noreferrer">
+              github.com/arupbiswas1994-byte/amps</a>
+          </span>
+        </div>
+        <div className="ac-row">
+          <span className="ac-k">Built with</span>
+          <span className="ac-v">FastAPI · React · PostgreSQL · client-side QR</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function TagSheet() {
+  const live = useLiveAssets()
+  const assets = LIVE ? live.assets : ASSETS
   return (
     <>
       <div className="sheet-bar">
         <button className="btn" onClick={() => window.print()}>Print tag sheet</button>
         <p>One tag per asset — print, laminate, stick on the equipment. Scanning opens the asset's live record.</p>
       </div>
-      <div className="tags">
-        {ASSETS.map((a) => (
-          <div className="tag" key={a.code}>
-            <QR value={assetUrl(a.code)} size={140} />
-            <div className="scan-cap">Scan for history</div>
-            <div className="nm">{a.name}</div>
-            <span className="code">{a.code}</span>
-            <div className="org">AMPS · DEMO METRO LINE</div>
+      {LIVE && live.loading ? <p className="dim">Loading the asset register…</p>
+        : assets.length === 0 ? <div className="card"><p className="dim" style={{ margin: 0 }}>No assets in the register yet — tags appear as assets are added.</p></div>
+        : (
+          <div className="tags">
+            {assets.map((a) => (
+              <div className="tag" key={a.code}>
+                <QR value={assetUrl(a.code)} size={140} />
+                <div className="scan-cap">Scan for history</div>
+                <div className="nm">{a.name}</div>
+                <span className="code">{a.code}</span>
+                <div className="org">AMPS · {ORG.toUpperCase()}</div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        )}
     </>
   )
 }
@@ -802,7 +1975,14 @@ function TagSheet() {
 
 const routeFromHash = () => location.hash.replace(/^#/, '') || '/'
 
-const NAV = [
+/* Live deployments only show modules whose backend exists; the rest join the
+   nav release by release. The demo build keeps the full walkthrough. */
+const NAV = LIVE ? [
+  ['/', 'Assets'],
+  ['/log', 'Log book'],
+  ['/failures', 'Failures'],
+  ['/tags', 'QR tags'],
+] : [
   ['/', 'Assets'],
   ['/planner', 'Planner'],
   ['/roster', 'Duty roster'],
@@ -813,49 +1993,273 @@ const NAV = [
   ['/tags', 'QR tags'],
 ]
 
+const NotYet = () => (
+  <div className="card"><p className="dim" style={{ margin: 0 }}>
+    This module isn't part of the installed release yet — it arrives with a
+    later version. <a className="crumb" href="#/">← Back to assets</a>
+  </p></div>
+)
+
+/* ---------- sign in (line-scoped operations) ---------- */
+
+function LoginForm({ autoFocus = false }) {
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [err, setErr] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const submit = async (e) => {
+    e.preventDefault()
+    setBusy(true); setErr(null)
+    try {
+      await apiLogin(username.trim(), password)
+      location.hash = '/'
+      location.reload() // fresh session everywhere: nav, scope, authorship
+    } catch (ex) {
+      setErr(String(ex.message || 'login failed'))
+      setBusy(false)
+    }
+  }
+  return (
+    <form className="login-form-fields" onSubmit={submit}>
+      <input autoFocus={autoFocus} autoComplete="username" placeholder="Username"
+             value={username} onChange={(e) => setUsername(e.target.value)} />
+      <input type="password" autoComplete="current-password" placeholder="Password"
+             value={password} onChange={(e) => setPassword(e.target.value)} />
+      {err && <div className="login-err">{err}</div>}
+      <button className="btn" type="submit" disabled={busy || !username.trim() || !password}>
+        {busy ? 'Signing in…' : 'Sign in'}
+      </button>
+    </form>
+  )
+}
+
+/* ---------- landing: four line squares + sign-in (anonymous home) ---------- */
+
+/* Abstract alpona — the Bengali dot-and-petal floor motif, geometrized:
+   a centre dot, two dotted rings, eight petal arcs. Watermark, not ornament. */
+function Alpona({ size = 120 }) {
+  const dots = (r, n, key) => Array.from({ length: n }, (_, i) => {
+    const a = (i / n) * Math.PI * 2
+    return <circle key={`${key}${i}`} cx={60 + r * Math.cos(a)} cy={60 + r * Math.sin(a)} r="1.6" />
+  })
+  const petals = Array.from({ length: 8 }, (_, i) => {
+    const a = (i / 8) * 360
+    return <path key={`p${i}`} d="M 60 22 Q 66 34 60 44 Q 54 34 60 22 Z"
+                 transform={`rotate(${a} 60 60)`} fill="currentColor" opacity="0.5" stroke="none" />
+  })
+  return (
+    <svg className="alpona" width={size} height={size} viewBox="0 0 120 120" aria-hidden="true"
+         fill="currentColor" stroke="currentColor" strokeWidth="1">
+      <circle cx="60" cy="60" r="4" stroke="none" />
+      <circle cx="60" cy="60" r="12" fill="none" opacity="0.7" />
+      {petals}
+      {dots(30, 16, 'a')}
+      <circle cx="60" cy="60" r="50" fill="none" strokeDasharray="2 6" opacity="0.6" />
+      {dots(57, 24, 'b')}
+    </svg>
+  )
+}
+
+function useLines() {
+  const [lines, setLines] = useState(null)
+  useEffect(() => {
+    let alive = true
+    fetch(`${import.meta.env.VITE_AMPS_API ?? ''}/api/lines`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((l) => alive && setLines(l))
+      .catch(() => alive && setLines([]))
+    return () => { alive = false }
+  }, [])
+  return lines
+}
+
+/* the metro-map ribbon: every line's colour in running order, blended
+   into one continuous band — no joints, colours flow into each other */
+const Ribbon = ({ lines }) => {
+  if (!lines?.length) return null
+  const n = lines.length
+  const blend = Math.min(4, 20 / n) // soft crossfade zone between neighbours
+  const stops = lines.map((l, i) => {
+    const c = lineColor(l.name)
+    return `${c} ${(i / n) * 100 + blend}%, ${c} ${((i + 1) / n) * 100 - blend}%`
+  }).join(', ')
+  return <div className="metro-ribbon" aria-hidden="true"
+              style={{ background: `linear-gradient(90deg, ${stops})` }} />
+}
+
+function Landing() {
+  const lines = useLines()
+  return (
+    <div className="gate land">
+      <div className="land-wrap">
+        <header className="land-head">
+          <img className="land-emblem" src={`${import.meta.env.BASE_URL}ir-railways.png`}
+               alt="Indian Railways" />
+          <div className="land-head-rule" aria-hidden="true" />
+          <div>
+            <div className="gate-badge">⚡ AMPS <span className="gate-live">● LIVE</span></div>
+            <h1 className="gate-title">{ORG}</h1>
+            <p className="gate-sub">Asset Maintenance &amp; Preventive Scheduling</p>
+          </div>
+          <a className="btn gate-signin-btn" href="#/login">Sign in</a>
+        </header>
+        <Ribbon lines={lines} />
+        <div className="land-tiles">
+          {lines === null ? <p className="gate-dim">Loading…</p> : lines.length === 0 ? (
+            <p className="gate-dim">No lines registered yet — the administrator adds them with the first assets.</p>
+          ) : lines.map((l) => (
+            <a key={l.name} className={`land-tile${l.initiator ? ' initiator' : ''}`}
+               href={`#/line/${encodeURIComponent(l.name)}`}
+               style={{ '--line-c': lineColor(l.name) }}>
+              {l.initiator && <Alpona />}
+              <span className="gate-line-dot" />
+              <span className="land-tile-name">{l.name}
+                {l.initiator && <span className="gate-initiator-chip">সূচনা · initiator</span>}
+              </span>
+              <span className="land-tile-sub">{l.assets} assets · {l.stations} locations</span>
+              <span className="land-tile-go">View →</span>
+            </a>
+          ))}
+        </div>
+        <div className="gate-foot"><AmpsLink /> · MIT © 2026 <SignatureMark /></div>
+      </div>
+    </div>
+  )
+}
+
+/* ---------- standalone sign-in page ---------- */
+
+function LoginPage() {
+  const lines = useLines()
+  return (
+    <div className="gate">
+      <div className="gate-panel solo">
+        <div className="gate-auth">
+          <Ribbon lines={lines} />
+          <div className="gate-auth-brand">Sign in to <span className="brand-name">AMPS</span></div>
+          <p className="gate-auth-sub">{ORG} — operational access for your line: report failures, write the log, register assets. Viewing needs no account.</p>
+          <LoginForm autoFocus />
+          <a className="gate-back" href="#/">← Back to lines</a>
+          <div className="gate-foot"><AmpsLink /> · MIT © 2026 <SignatureMark /></div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ---------- one line, view-only (from a landing square) ---------- */
+
+function LineView({ name }) {
+  return (
+    <>
+      <a className="crumb" href="#/">← All lines</a>
+      <LiveDashboard go={(r) => { location.hash = r }} initialLine={name} />
+    </>
+  )
+}
+
 export default function App() {
   const [route, setRoute] = useState(routeFromHash)
+  const { me, loading: meLoading } = useMe()
   useEffect(() => {
     const onHash = () => { setRoute(routeFromHash()); window.scrollTo(0, 0) }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
   const go = (r) => { location.hash = r }
+  const authOn = LIVE && me?.auth_enabled
+  const signedIn = authOn && me.username !== 'viewer'
+  const anonymous = authOn && !signedIn
 
-  const assetMatch = route.match(/^\/asset\/(.+)$/)
-  const letterMatch = route.match(/^\/procurement\/([^/]+)\/letter$/)
-  const csMatch = route.match(/^\/checksheet\/(wo|pm)\/([^/]+)(?:\/(.+))?$/)
-  const jcMatch = route.match(/^\/jobcard\/(.+)$/)
+  // split the path from its query (e.g. /log?d=2026-01-13&edit=13863) so a
+  // row anywhere can deep-link straight into the logbook to edit an entry
+  const routePath = route.split('?')[0]
+  const routeQuery = new URLSearchParams(route.split('?')[1] || '')
+  const assetMatch = routePath.match(/^\/asset\/(.+)$/)
+  const lineMatch = routePath.match(/^\/line\/(.+)$/)
+  const letterMatch = routePath.match(/^\/procurement\/([^/]+)\/letter$/)
+  const csMatch = routePath.match(/^\/checksheet\/(wo|pm)\/([^/]+)(?:\/(.+))?$/)
+  const jcMatch = routePath.match(/^\/jobcard\/(.+)$/)
 
+  if (LIVE && meLoading) return null // one clean paint: landing or app, never both
+
+  // The train artwork is mounted once, outside the page switch — it never
+  // reloads on navigation; only its opacity changes (full on the landing,
+  // muted behind every other page).
+  const onLanding = anonymous && routePath !== '/login' && !assetMatch && !lineMatch
+  const siteArt = (
+    <img className={`site-art${onLanding ? '' : ' muted'}`} alt="" aria-hidden="true"
+         src={`${import.meta.env.BASE_URL}landing-art.webp`} />
+  )
+
+  // Anonymous surface = landing (line squares + sign-in), a chosen line
+  // view-only, and QR-scanned asset pages. Everything else routes home.
+  if (anonymous) {
+    if (routePath === '/login') return <>{siteArt}<LoginPage /></>
+    if (onLanding) return <>{siteArt}<Landing /></> // full-screen, own chrome
+    const navLine = lineMatch ? decodeURIComponent(lineMatch[1]) : null
+    return (
+      <>{siteArt}
+      <div className="shell" style={navLine ? { '--nav-c': lineColor(navLine) } : undefined}>
+        <header className="topbar">
+  <Brand />
+          <nav className="nav">
+            <a href="#/login" className="btn login-btn">Sign in</a>
+          </nav>
+        </header>
+        {assetMatch ? <LiveAssetDetail code={assetMatch[1]} />
+          : <LineView name={decodeURIComponent(lineMatch[1])} />}
+        <footer className="foot">{ORG} · maintenance records · <AmpsLink />, MIT © 2026 <FootSig /></footer>
+      </div>
+      </>
+    )
+  }
+
+  const navLine = lineMatch ? decodeURIComponent(lineMatch[1]) : (signedIn && me.line) || null
   return (
-    <div className="shell">
+    <>{siteArt}
+    <div className="shell" style={navLine ? { '--nav-c': lineColor(navLine) } : undefined}>
       <header className="topbar">
-        <a href="#/" className="brand"><span className="bolt">⚡</span>AMPS
-          <span className="brand-sub">Asset Maintenance &amp; Preventive Scheduling</span>
-        </a>
+<Brand />
         <nav className="nav">
           {NAV.map(([path, label]) => (
-            <a key={path} href={`#${path}`} className={route === path ? 'active' : ''}>{label}</a>
+            <a key={path} href={`#${path}`} className={routePath === path ? 'active' : ''}>{label}</a>
           ))}
+          {!LIVE && <ShowcaseDropdown />}
+          {signedIn && (
+            <span className="who">
+              <span className="dot" style={{ background: lineColor(me.line || '') }} />
+              {me.full_name}{me.line ? ` · ${me.line}` : ''}
+              <button className="mini-btn muted" type="button" onClick={apiLogout}>Sign out</button>
+            </span>
+          )}
         </nav>
       </header>
 
-      {assetMatch ? <AssetDetail code={assetMatch[1]} />
-        : letterMatch ? <ProposalLetter prId={letterMatch[1]} />
-        : csMatch ? <Checksheet kind={csMatch[1]} a1={csMatch[2]} a2={csMatch[3]} />
-        : jcMatch ? <JobCard jcId={jcMatch[1]} />
-        : route === '/planner' ? <Planner />
-        : route === '/roster' ? <DutyRoster />
-        : route === '/log' ? <LogBook />
-        : route === '/failures' ? <Failures />
-        : route === '/spares' ? <Spares />
-        : route === '/procurement' ? <Procurement />
-        : route === '/tags' ? <TagSheet />
-        : <Dashboard go={go} />}
+      {assetMatch ? (LIVE ? <LiveAssetDetail code={assetMatch[1]} /> : <AssetDetail code={assetMatch[1]} />)
+        : lineMatch ? (LIVE ? <LineView name={decodeURIComponent(lineMatch[1])} /> : <NotYet />)
+        : letterMatch ? (LIVE ? <NotYet /> : <ProposalLetter prId={letterMatch[1]} />)
+        : csMatch ? (LIVE ? <NotYet /> : <Checksheet kind={csMatch[1]} a1={csMatch[2]} a2={csMatch[3]} />)
+        : jcMatch ? (LIVE ? <NotYet /> : <JobCard jcId={jcMatch[1]} />)
+        : routePath === '/planner' ? (LIVE ? <NotYet /> : <Planner />)
+        : routePath === '/roster' ? (LIVE ? <NotYet /> : <DutyRoster />)
+        : routePath === '/log' ? <LogBook editId={routeQuery.get('edit')} focusDate={routeQuery.get('d')} />
+        /* one ledger still: this reads failure entries out of the logbook,
+           it is not a second record — reporting stays in the log book */
+        : routePath === '/failures' ? (LIVE ? <LiveFailures /> : <Failures />)
+        : routePath === '/spares' ? (LIVE ? <NotYet /> : <Spares />)
+        : routePath === '/procurement' ? (LIVE ? <NotYet /> : <Procurement />)
+        : routePath === '/tags' ? <TagSheet />
+        : routePath === '/about' ? <AboutPage />
+        : (LIVE ? <LiveDashboard go={go} /> : <Dashboard go={go} />)}
 
       <footer className="foot">
-        Demonstration environment · synthetic data only · MIT © 2026 Arup Biswas
+        {LIVE
+          ? <>{ORG} · maintenance records · <AmpsLink />, MIT © 2026 </>
+          : <>Demonstration environment · synthetic data only · <AmpsLink />, MIT © 2026 </>}
+        <FootSig />
       </footer>
     </div>
+    </>
   )
 }
