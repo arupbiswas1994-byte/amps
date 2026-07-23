@@ -136,23 +136,30 @@ const StageChip = ({ stage }) => (
 
 /* ---------- dashboard (live) ---------- */
 
+const SEV_RANK = { overdue: 0, due_soon: 1, ok: 2 }
+
 function LiveDashboard({ go, initialLine = null }) {
-  const { assets: all, due: dueAll, loading, error } = useLiveAssets()
+  const { assets: all, sched, loading, error } = useLiveAssets()
   const { me } = useMe()
   const [line, setLine] = useState(initialLine)
+  const [filter, setFilter] = useState('all')   // all | overdue | due_soon
   useEffect(() => { setLine(initialLine) }, [initialLine])
   const lines = [...new Set(all.map((a) => a.line).filter(Boolean))].sort()
   // each line stands alone — no aggregated all-lines view; default to the
   // signed-in user's own line, else the first registered line
   const effLine = line ?? me?.line ?? lines[0] ?? null
   const assets = effLine ? all.filter((a) => a.line === effLine) : all
-  const codes = new Set(assets.map((a) => a.code))
-  const due = dueAll.filter((d) => codes.has(d.asset_code))
-  const overdue = due.filter((d) => d.overdue_days > 0)
-  const dueSoon = due.filter((d) => d.overdue_days <= 0 && daysUntil(d.next_due) <= 7)
-  const nextPM = (code) => due.filter((d) => d.asset_code === code)
-    .sort((x, y) => x.next_due.localeCompare(y.next_due))[0] ?? null
+  const stateOf = (a) => sched[a.code]?.state || null
+  const overdue = assets.filter((a) => stateOf(a) === 'overdue')
+  const dueSoon = assets.filter((a) => stateOf(a) === 'due_soon')
   const stations = new Set(assets.map((a) => a.location)).size
+  // group by the system a department thinks in, worst-health first inside each
+  const shown = filter === 'all' ? assets : assets.filter((a) => stateOf(a) === filter)
+  const bySystem = {}
+  shown.forEach((a) => { (bySystem[a.sys || 'Unassigned'] ??= []).push(a) })
+  const systems = Object.keys(bySystem).sort()
+  systems.forEach((s) => bySystem[s].sort((x, y) =>
+    (SEV_RANK[stateOf(x)] ?? 3) - (SEV_RANK[stateOf(y)] ?? 3) || x.code.localeCompare(y.code)))
   if (loading) return <p className="dim">Loading the asset register…</p>
   if (error) return <div className="card offline-note">Backend unreachable — {error}. Check the server and reload.</div>
   return (
@@ -169,7 +176,7 @@ function LiveDashboard({ go, initialLine = null }) {
       <div className="kpis">
         <div className="tile"><div className="v">{assets.length}</div><div className="k">Assets registered</div></div>
         <div className="tile"><div className="v">{stations}</div><div className="k">Locations covered</div></div>
-        <div className={dueSoon.length ? 'tile warn' : 'tile'}><div className="v">{dueSoon.length}</div><div className="k">PM due within 7 days</div></div>
+        <div className={dueSoon.length ? 'tile warn' : 'tile'}><div className="v">{dueSoon.length}</div><div className="k">PM due soon</div></div>
         <div className={overdue.length ? 'tile alert' : 'tile'}><div className="v">{overdue.length}</div><div className="k">PM overdue</div></div>
       </div>
 
@@ -183,31 +190,50 @@ function LiveDashboard({ go, initialLine = null }) {
           asset pages fill in from here.
         </p></div>
       ) : (
-        <div className="card tbl-wrap">
-          <table>
-            <thead>
-              <tr><th>Code</th><th>Asset</th><th>Class</th><th>Location</th><th>System</th><th>Status</th><th>Next PM</th><th>PM state</th></tr>
-            </thead>
-            <tbody>
-              {assets.map((a) => {
-                const pm = nextPM(a.code)
-                return (
-                  <tr key={a.code} tabIndex={0} onClick={() => go(`/asset/${a.code}`)}
-                      onKeyDown={(e) => e.key === 'Enter' && go(`/asset/${a.code}`)}>
-                    <td className="code" data-l="Code">{a.code}</td>
-                    <td data-l="Asset">{a.name}</td>
-                    <td className="dim" data-l="Class">{a.cls}</td>
-                    <td className="dim" data-l="Location">{a.location}</td>
-                    <td className="dim" data-l="System">{a.sys ?? '—'}</td>
-                    <td data-l="Status"><StatusChip status={a.status} /></td>
-                    <td className="dim dt" data-l="Next PM">{pm ? pm.next_due : '—'}</td>
-                    <td data-l="PM state">{pm ? <LivePmChip item={pm} /> : <span className="dim">—</span>}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <div className="asset-filter" role="tablist" aria-label="PM state filter">
+            {[['all', `All ${assets.length}`], ['overdue', `Overdue ${overdue.length}`], ['due_soon', `Due soon ${dueSoon.length}`]].map(([k, lbl]) => (
+              <button key={k} type="button" className={`btn preset ${filter === k ? 'active' : ''}${k === 'overdue' && overdue.length ? ' has-od' : ''}`}
+                      onClick={() => setFilter(k)}>{lbl}</button>
+            ))}
+          </div>
+          {shown.length === 0 ? (
+            <div className="card"><p className="dim" style={{ margin: 0 }}>Nothing {filter === 'overdue' ? 'overdue' : 'due soon'} on this line — the schedule is clear.</p></div>
+          ) : systems.map((sysName) => {
+            const group = bySystem[sysName]
+            const od = group.filter((a) => stateOf(a) === 'overdue').length
+            return (
+              <section className="sysgroup" key={sysName}>
+                <div className="sysgroup-h">
+                  <h3>{sysName}</h3>
+                  <span className="sg-count">{group.length}</span>
+                  {od > 0 && <span className="sg-od">{od} overdue</span>}
+                </div>
+                <div className="asset-grid">
+                  {group.map((a) => {
+                    const s = sched[a.code]
+                    const st = s?.state || 'none'
+                    return (
+                      <a className={`asset-card sc-${st}`} key={a.code} href={`#/asset/${a.code}`}>
+                        <span className="ac-bar" />
+                        <div className="ac-top">
+                          <span className="ac-code">{a.code}</span>
+                          <StatusChip status={a.status} />
+                        </div>
+                        <div className="ac-name">{a.name}</div>
+                        <div className="ac-sub dim">{a.cls} · {a.location}</div>
+                        <div className="ac-health">
+                          <span className={schedChip(s?.state || 'none')}><span className="dot" />{s ? SCHED_LABEL[s.state] : 'No schedule'}</span>
+                          {s?.next_due && <span className="ac-due dim dt">{s.overdue_count > 0 ? 'due ' : 'next '}{s.next_due}</span>}
+                        </div>
+                      </a>
+                    )
+                  })}
+                </div>
+              </section>
+            )
+          })}
+        </>
       )}
     </>
   )
@@ -462,82 +488,129 @@ function AssetLogSections({ log, staff }) {
   )
 }
 
-/* ---------- maintenance schedule, derived from the log ---------- */
+/* ---------- maintenance schedule (backend-derived) ---------- */
 
-/* The section's "grid scheduler": each recurring frequency rolls its next PM
-   forward from the last time that frequency was actually recorded. Rebuilt from
-   AMPS's own append-only log — so it stays live, advancing itself every time
-   maintenance is logged — rather than a separate table that drifts. Ad-hoc work
-   (Unscheduled / no frequency) has no cycle and is left out. */
-const FREQ_DAYS = { Monthly: 30, Quarterly: 91, 'Half-Yearly': 182, Yearly: 365, '5-Yearly': 1825 }
-const FREQ_ORDER = ['Monthly', 'Quarterly', 'Half-Yearly', 'Yearly', '5-Yearly']
+/* The section's "grid scheduler". The backend rolls each cycle's next PM forward
+   from the last time that cycle — or any more comprehensive one — was recorded
+   (a Yearly service fulfils the Quarterly under it). Applicability comes from the
+   asset's plan when set, else it's inferred from what the log already holds. */
+const SCHED_FREQS = ['Monthly', 'Quarterly', 'Half-Yearly', 'Yearly', '5-Yearly']
+const SCHED_LABEL = { overdue: 'Overdue', due_soon: 'Due soon', ok: 'On schedule', never: 'Never done' }
+const schedChip = (state) => `chip d-${state === 'never' ? 'overdue' : state}`
 
-const addDays = (iso, n) => {
-  const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+function useAssetSchedule(code) {
+  const [schedule, setSchedule] = useState(null)
+  const [nonce, setNonce] = useState(0)
+  useEffect(() => {
+    let alive = true
+    getJSON(`/api/assets/${encodeURIComponent(code)}/schedule`)
+      .then((s) => alive && setSchedule(s)).catch(() => alive && setSchedule(null))
+    return () => { alive = false }
+  }, [code, nonce])
+  return { schedule, reloadSchedule: () => setNonce((n) => n + 1) }
 }
 
-function deriveSchedule(log) {
-  const latest = {}   // frequency → its newest maintenance entry
-  for (const e of log) {
-    if (e.type !== 'maintenance' || !FREQ_DAYS[e.subtype]) continue
-    if (!latest[e.subtype] || e.log_date > latest[e.subtype].log_date) latest[e.subtype] = e
-  }
-  return FREQ_ORDER.filter((f) => latest[f]).map((f) => {
-    // A more comprehensive service fulfils the shorter cycles under it — doing the
-    // Yearly is doing that period's Quarterly and Half-Yearly too. So the effective
-    // last-done is the most recent maintenance at this frequency OR any longer one.
-    let best = null
-    for (const g of FREQ_ORDER) {
-      if (FREQ_DAYS[g] >= FREQ_DAYS[f] && latest[g] && (!best || latest[g].log_date > best.log_date)) best = latest[g]
-    }
-    const due = addDays(best.log_date, FREQ_DAYS[f])
-    const daysLeft = daysUntil(due)
-    const state = daysLeft < 0 ? 'overdue' : daysLeft <= 30 ? 'due_soon' : 'ok'
-    return { freq: f, last: best.log_date, via: best.subtype !== f ? best.subtype : null, due, daysLeft, state }
-  })
-}
-
-const SCHED_LABEL = { overdue: 'Overdue', due_soon: 'Due soon', ok: 'On schedule' }
-
-function MaintenanceSchedule({ log }) {
-  const rows = deriveSchedule(log)
-  const overdue = rows.filter((r) => r.state === 'overdue')
-  const upcoming = rows.filter((r) => r.state !== 'overdue').sort((a, b) => a.due.localeCompare(b.due))[0]
+function MaintenanceSchedule({ schedule }) {
+  const rows = schedule?.rows || []
+  const s = schedule?.summary
   return (
     <div className="sect">
       <h3>
         Maintenance schedule
-        {rows.length > 0 && (
+        {schedule && !schedule.has_plan && rows.length > 0 && (
+          <span className="sched-tag" title="No plan set — cycles inferred from the log">inferred</span>
+        )}
+        {s && (
           <span className="sched-sum">
-            {overdue.length > 0
-              ? <span className="ss-red">⚠ {overdue.length} overdue</span>
-              : upcoming
-                ? <>next: <b>{upcoming.freq}</b> in {upcoming.daysLeft}d · <span className="dt">{upcoming.due}</span></>
+            {s.overdue_count > 0
+              ? <span className="ss-red">⚠ {s.overdue_count} overdue</span>
+              : s.next_due
+                ? <>next: <b>{s.next_frequency}</b> in {s.days_left}d · <span className="dt">{s.next_due}</span></>
                 : null}
           </span>
         )}
       </h3>
       {rows.length === 0 ? (
-        <p className="dim">No recurring maintenance recorded yet — log a Monthly / Quarterly / Half-Yearly / Yearly / 5-Yearly entry and its cycle appears here.</p>
+        <p className="dim">No maintenance plan or recurring history yet — set a plan in “Edit details”, or log a Monthly / Quarterly / Half-Yearly / Yearly / 5-Yearly entry.</p>
       ) : (
         <div className="tbl-wrap">
           <table className="sched-tbl">
             <thead><tr><th>Frequency</th><th>Last done</th><th>Next due</th><th>Days left</th><th>State</th></tr></thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.freq}>
-                  <td data-l="Frequency"><b>{r.freq}</b></td>
-                  <td className="dim dt" data-l="Last done">{r.last}{r.via && <span className="sched-via"> · via {r.via}</span>}</td>
-                  <td className="dt" data-l="Next due">{r.due}</td>
-                  <td data-l="Days left">{r.daysLeft < 0 ? `${-r.daysLeft}d ago` : `in ${r.daysLeft}d`}</td>
-                  <td data-l="State"><span className={`chip d-${r.state}`}><span className="dot" />{SCHED_LABEL[r.state]}</span></td>
+                <tr key={r.frequency}>
+                  <td data-l="Frequency"><b>{r.frequency}</b></td>
+                  <td className="dim dt" data-l="Last done">{r.last_done || '—'}{r.via && <span className="sched-via"> · via {r.via}</span>}</td>
+                  <td className="dt" data-l="Next due">{r.next_due || '—'}</td>
+                  <td data-l="Days left">{r.days_left == null ? '—' : r.days_left < 0 ? `${-r.days_left}d ago` : `in ${r.days_left}d`}</td>
+                  <td data-l="State"><span className={schedChip(r.state)}><span className="dot" />{SCHED_LABEL[r.state]}</span></td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
+    </div>
+  )
+}
+
+/* The editable maintenance plan — tick the cycles this asset needs (with an
+   optional last-done seed for history that predates the logbook). Once a plan is
+   set it is authoritative; clearing every tick returns to log-inference. */
+function PlanEditor({ code, schedule, onSaved }) {
+  const lastByFreq = Object.fromEntries((schedule?.rows || []).map((r) => [r.frequency, r]))
+  const initial = schedule?.has_plan ? schedule.planned : (schedule?.rows || []).map((r) => r.frequency)
+  const [checked, setChecked] = useState(new Set(initial))
+  const [seeds, setSeeds] = useState({})
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [ok, setOk] = useState(false)
+  const toggle = (f) => setChecked((s) => { const n = new Set(s); n.has(f) ? n.delete(f) : n.add(f); return n })
+
+  const save = async () => {
+    setBusy(true); setErr(''); setOk(false)
+    try {
+      const seedPayload = {}
+      for (const f of checked) if (seeds[f]) seedPayload[f] = seeds[f]
+      const res = await fetch(`/api/assets/${encodeURIComponent(code)}/plan`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ frequencies: [...checked], seeds: seedPayload }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.detail || `HTTP ${res.status}`)
+      setOk(true); onSaved?.()
+    } catch (ex) {
+      setErr(String(ex.message || ex).replace(/^Error: /, ''))
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="plan-editor">
+      <p className="dim plan-hint">Tick the cycles this asset is due for. Last-done is read from the log — seed a date only for history from before the logbook.</p>
+      <div className="plan-rows">
+        {SCHED_FREQS.map((f) => {
+          const on = checked.has(f)
+          const r = lastByFreq[f]
+          return (
+            <label key={f} className={`plan-row${on ? ' on' : ''}`}>
+              <input type="checkbox" checked={on} onChange={() => toggle(f)} />
+              <span className="plan-freq">{f}</span>
+              {on && (
+                <span className="plan-meta">
+                  <span className="dim">last: {r?.last_done || '—'}{r?.via && ` · via ${r.via}`}</span>
+                  <input type="date" className="plan-seed" value={seeds[f] || ''}
+                         onChange={(e) => setSeeds({ ...seeds, [f]: e.target.value })}
+                         title="Optional last-done baseline" placeholder="seed" />
+                </span>
+              )}
+            </label>
+          )
+        })}
+      </div>
+      <div className="plan-actions">
+        <button type="button" className="btn" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save plan'}</button>
+        {ok && <span className="plan-ok">Saved</span>}
+        {err && <span className="import-msg err">{err}</span>}
+      </div>
     </div>
   )
 }
@@ -668,6 +741,7 @@ function AssetAudit({ code }) {
 
 function LiveAssetDetail({ code }) {
   const { asset: a, history, log, loading, error, reload } = useLiveAsset(code)
+  const { schedule, reloadSchedule } = useAssetSchedule(code)
   const { canWrite } = useMe()
   const [editing, setEditing] = useState(false)
   if (loading) return <p className="dim">Loading {code}…</p>
@@ -738,19 +812,25 @@ function LiveAssetDetail({ code }) {
           ))}
         </div>
 
-        <div className="card"><MaintenanceSchedule log={log} /></div>
+        <div className="card"><MaintenanceSchedule schedule={schedule} /></div>
 
         {editing && (
-          <div className="card"><div className="sect">
-            <h3>Edit technical details</h3>
-            <AssetForm initial={a} mode="edit"
-                       onCancel={() => setEditing(false)}
-                       onDone={(newCode) => {
-                         setEditing(false)
-                         if (newCode !== a.code) location.hash = `/asset/${newCode}`
-                         else reload()
-                       }} />
-          </div></div>
+          <div className="card">
+            <div className="sect">
+              <h3>Edit technical details</h3>
+              <AssetForm initial={a} mode="edit"
+                         onCancel={() => setEditing(false)}
+                         onDone={(newCode) => {
+                           setEditing(false)
+                           if (newCode !== a.code) location.hash = `/asset/${newCode}`
+                           else reload()
+                         }} />
+            </div>
+            <div className="sect">
+              <h3>Maintenance plan</h3>
+              <PlanEditor code={a.code} schedule={schedule} onSaved={reloadSchedule} />
+            </div>
+          </div>
         )}
 
         <div className="card">

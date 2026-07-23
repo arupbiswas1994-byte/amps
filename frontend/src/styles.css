@@ -254,6 +254,50 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 .sched-tbl tbody tr:hover { background: transparent; }
 .sched-tbl th, .sched-tbl td { white-space: nowrap; }
 .sched-via { color: var(--ink-3); font-style: italic; }
+.sched-tag { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3);
+  background: #f0f0ee; border: 1px solid var(--border); border-radius: 99px; padding: 1px 7px; margin-left: 10px; vertical-align: middle; }
+.chip.d-none { color: var(--ink-3); }
+.chip.d-none .dot { background: #c9c9c6; }
+
+/* ---- editable maintenance plan (edit-asset view) ---- */
+.plan-hint { font-size: 12px; margin: 0 0 10px; }
+.plan-rows { display: flex; flex-direction: column; gap: 2px; }
+.plan-row { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 8px; cursor: pointer; }
+.plan-row:hover { background: #f7faf9; }
+.plan-row.on { background: #f2f8f4; }
+.plan-row input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); flex: none; }
+.plan-freq { font-size: 13.5px; font-weight: 600; min-width: 92px; }
+.plan-meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 12px; }
+.plan-seed { font: inherit; font-size: 12px; padding: 3px 6px; border: 1px solid var(--border); border-radius: 6px; background: #fff; }
+.plan-actions { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+.plan-ok { color: var(--good); font-size: 12px; font-weight: 600; }
+
+/* ---- register: filter + system groups + asset cards ---- */
+.asset-filter { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 2px; }
+.asset-filter .btn.preset.has-od { color: #a32e2e; }
+.sysgroup { margin: 2px 0 16px; }
+.sysgroup-h { display: flex; align-items: baseline; gap: 10px; margin: 16px 2px 9px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.sysgroup-h h3 { font-size: 13px; font-weight: 700; letter-spacing: .01em; color: var(--ink); text-transform: none; margin: 0; }
+.sg-count { font-size: 12px; color: var(--ink-3); font-weight: 600; }
+.sg-od { font-size: 11px; font-weight: 700; color: #a32e2e; background: #fdf1f1; border: 1px solid #f5d5d5;
+  border-radius: 99px; padding: 1px 8px; margin-left: auto; }
+.asset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 12px; }
+.asset-card { position: relative; display: block; padding: 12px 14px 12px 17px; background: #fff;
+  border: 1px solid var(--border); border-radius: 10px; text-decoration: none; color: inherit; overflow: hidden;
+  transition: box-shadow .12s, transform .12s; }
+.asset-card:hover { box-shadow: 0 6px 18px -11px rgba(20, 40, 80, .32); transform: translateY(-1px); }
+.asset-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ac-bar { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: #d8d8d5; }
+.sc-overdue .ac-bar { background: var(--critical); }
+.sc-due_soon .ac-bar { background: var(--warning); }
+.sc-ok .ac-bar { background: var(--good); }
+.ac-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ac-code { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size: 12px; font-weight: 700;
+  color: #3a566f; letter-spacing: .02em; }
+.ac-name { font-size: 14px; font-weight: 600; margin-top: 5px; overflow-wrap: anywhere; line-height: 1.25; }
+.ac-sub { font-size: 12px; margin-top: 2px; }
+.ac-health { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 9px; }
+.ac-due { font-size: 11.5px; }
 .fact .fk { font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); }
 .fact .fv { font-size: 15px; color: var(--ink); font-weight: 550; overflow-wrap: anywhere; }
 @media screen and (max-width: 560px) {

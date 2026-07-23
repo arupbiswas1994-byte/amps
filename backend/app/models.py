@@ -102,6 +102,24 @@ class PMSchedule(Base):
     asset: Mapped[Asset] = relationship(back_populates="pm_schedules")
 
 
+class PMPlan(Base):
+    """One frequency an asset is scheduled for — its maintenance plan.
+
+    Applicability lives here (which cycles the asset needs); the *last done* is
+    read from the logbook — a comprehensive service fulfils the shorter cycles
+    under it — with an optional manual seed for history that predates the log.
+    When an asset has no plan rows, the schedule falls back to the frequencies
+    present in its log, so the register keeps working before anyone sets a plan.
+    Frequency is a plain label (Monthly … 5-Yearly), free of the PMSchedule enum
+    so 5-Yearly and future cycles need no type migration."""
+    __tablename__ = "pm_plans"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id"), index=True)
+    frequency: Mapped[str] = mapped_column(String(20))       # Monthly … 5-Yearly
+    last_done_seed: Mapped[date | None]                       # optional manual baseline
+
+
 class WorkOrderStatus(str, Enum):
     OPEN = "open"
     ASSIGNED = "assigned"

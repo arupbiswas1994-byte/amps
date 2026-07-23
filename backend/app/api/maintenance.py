@@ -1,17 +1,75 @@
 """Preventive-maintenance endpoints — v0.2.1: history-preserving, priority-ranked."""
+from collections import defaultdict
 from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.auth import current_user, optional_user, scope_location_ids
 from app.db import audit, get_db
-from app.engine import next_due, overdue_days, priority_score
-from app.models import Asset, PMSchedule, WorkOrder, WorkOrderStatus, WorkOrderType
+from app.engine import (SCHEDULE_FREQ, build_schedule, next_due, overdue_days,
+                        priority_score, summarize_schedule)
+from app.models import (Asset, LogEntry, LogEntryType, PMPlan, PMSchedule,
+                        WorkOrder, WorkOrderStatus, WorkOrderType)
 
 router = APIRouter()
+
+
+class AssetScheduleSummary(BaseModel):
+    asset_code: str
+    next_frequency: str | None
+    next_due: date | None
+    days_left: int | None
+    state: str              # ok | due_soon | overdue
+    overdue_count: int
+
+
+@router.get("/schedule", response_model=list[AssetScheduleSummary])
+def schedule_all(db: Session = Depends(get_db), user=Depends(optional_user)):
+    """Per-asset maintenance-schedule health for the register — one grouped pass
+    over the log plus any plans. Plan-driven where a plan exists, else inferred
+    from the frequencies logged. Scoped to the caller's line like /due."""
+    labels = list(SCHEDULE_FREQ)
+    log_rows = db.execute(
+        select(LogEntry.asset_id, LogEntry.subtype, func.max(LogEntry.log_date))
+        .where(LogEntry.type == LogEntryType.MAINTENANCE, LogEntry.subtype.in_(labels),
+               LogEntry.asset_id.isnot(None))
+        .group_by(LogEntry.asset_id, LogEntry.subtype)).all()
+    log_by = defaultdict(dict)
+    for aid, sub, d in log_rows:
+        if d:
+            log_by[aid][sub] = d
+    plan_freqs, plan_seeds = defaultdict(set), defaultdict(dict)
+    for p in db.scalars(select(PMPlan)).all():
+        if p.frequency in SCHEDULE_FREQ:
+            plan_freqs[p.asset_id].add(p.frequency)
+            if p.last_done_seed:
+                plan_seeds[p.asset_id][p.frequency] = p.last_done_seed
+    ids = set(log_by) | set(plan_freqs)
+    code_by = {a.id: a.code for a in db.scalars(
+        select(Asset).where(Asset.id.in_(ids))).all()} if ids else {}
+    out = []
+    for aid in ids:
+        log_dates, seeds = log_by.get(aid, {}), plan_seeds.get(aid, {})
+        done = {}
+        for f in SCHEDULE_FREQ:
+            cands = [d for d in (log_dates.get(f), seeds.get(f)) if d]
+            if cands:
+                done[f] = max(cands)
+        freqs = plan_freqs.get(aid) or set(log_dates)
+        if not freqs:
+            continue
+        s = summarize_schedule(build_schedule(freqs, done))
+        if s:
+            out.append(AssetScheduleSummary(asset_code=code_by[aid], **s))
+    scope = scope_location_ids(db, user)
+    if scope is not None:
+        codes = {a.code for a in db.scalars(
+            select(Asset).where(Asset.location_id.in_(scope))).all()}
+        out = [o for o in out if o.asset_code in codes]
+    return out
 
 
 class PMDueItem(BaseModel):

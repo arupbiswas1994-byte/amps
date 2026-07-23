@@ -5,14 +5,16 @@ from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.auth import current_user, optional_user, scope_location_ids
 from app.db import audit, get_db
+from app.engine import (SCHEDULE_FREQ, build_schedule, summarize_schedule)
 from app.models import (Asset, AssetClass, AssetStatus, AuditLog, Criticality,
-                        Location, LocationKind, WorkOrder)
+                        Location, LocationKind, LogEntry, LogEntryType, PMPlan,
+                        WorkOrder)
 
 router = APIRouter()
 
@@ -344,6 +346,101 @@ def asset_audit(code: str, db: Session = Depends(get_db), user=Depends(current_u
         .order_by(AuditLog.at.desc(), AuditLog.id.desc())
     ).all()
     return [AuditOut(at=r.at, actor=r.actor, action=r.action, detail=r.detail) for r in rows]
+
+
+# ---------------- maintenance schedule + plan ----------------
+
+class ScheduleRow(BaseModel):
+    frequency: str
+    last_done: date | None
+    via: str | None           # the longer cycle that fulfilled this one, if any
+    next_due: date | None
+    days_left: int | None
+    state: str                # ok | due_soon | overdue | never
+
+
+class ScheduleSummary(BaseModel):
+    next_frequency: str | None
+    next_due: date | None
+    days_left: int | None
+    state: str
+    overdue_count: int
+
+
+class ScheduleOut(BaseModel):
+    planned: list[str]        # the frequencies the plan explicitly sets
+    has_plan: bool            # false ⇒ rows are inferred from the log (fallback)
+    rows: list[ScheduleRow]
+    summary: ScheduleSummary | None
+
+
+def _asset_schedule(db: Session, a: Asset) -> ScheduleOut:
+    """Build one asset's schedule: log dates + optional plan seeds, rolled up."""
+    labels = list(SCHEDULE_FREQ)
+    log_rows = db.execute(
+        select(LogEntry.subtype, func.max(LogEntry.log_date))
+        .where(LogEntry.asset_id == a.id, LogEntry.type == LogEntryType.MAINTENANCE,
+               LogEntry.subtype.in_(labels))
+        .group_by(LogEntry.subtype)).all()
+    log_dates = {sub: d for sub, d in log_rows if d}
+    plans = db.scalars(select(PMPlan).where(PMPlan.asset_id == a.id)).all()
+    planned = {p.frequency for p in plans if p.frequency in SCHEDULE_FREQ}
+    seeds = {p.frequency: p.last_done_seed for p in plans if p.last_done_seed}
+    done = {}
+    for f in SCHEDULE_FREQ:
+        cands = [d for d in (log_dates.get(f), seeds.get(f)) if d]
+        if cands:
+            done[f] = max(cands)
+    # a plan, once set, is authoritative; without one, infer from what's logged
+    freqs = planned if planned else set(log_dates)
+    rows = build_schedule(freqs, done)
+    return ScheduleOut(
+        planned=sorted(planned, key=lambda x: SCHEDULE_FREQ[x]),
+        has_plan=bool(planned), rows=rows, summary=summarize_schedule(rows))
+
+
+@router.get("/{code}/schedule", response_model=ScheduleOut)
+def asset_schedule(code: str, db: Session = Depends(get_db), user=Depends(optional_user)):
+    """One asset's maintenance schedule — open like the rest of the walk-up
+    record (single-asset scope). Plan-driven when a plan exists, else inferred."""
+    return _asset_schedule(db, visible_asset(db, code, user))
+
+
+class PlanIn(BaseModel):
+    frequencies: list[str]                     # the cycles this asset is scheduled for
+    seeds: dict[str, date | None] = {}         # optional last-done baseline per cycle
+
+
+@router.put("/{code}/plan", response_model=ScheduleOut)
+def set_plan(code: str, plan: PlanIn, db: Session = Depends(get_db),
+             user=Depends(current_user)):
+    """Set the asset's maintenance plan — which cycles it needs, with optional
+    seed dates. Replaces the plan wholesale; the change is audited. Writers only,
+    line-scoped (a plan on an asset outside your line 404s)."""
+    a = visible_asset(db, code, user)
+    bad = [f for f in plan.frequencies if f not in SCHEDULE_FREQ]
+    if bad:
+        raise HTTPException(422, f"unknown frequency: {', '.join(bad)}")
+    existing = db.scalars(select(PMPlan).where(PMPlan.asset_id == a.id)).all()
+    old = {p.frequency for p in existing}
+    for p in existing:
+        db.delete(p)
+    db.flush()
+    new = set(plan.frequencies)
+    for f in sorted(new, key=lambda x: SCHEDULE_FREQ[x]):
+        db.add(PMPlan(asset_id=a.id, frequency=f, last_done_seed=plan.seeds.get(f)))
+    if old != new:
+        added = sorted(new - old, key=lambda x: SCHEDULE_FREQ[x])
+        removed = sorted(old - new, key=lambda x: SCHEDULE_FREQ[x])
+        parts = []
+        if added:
+            parts.append("added " + ", ".join(added))
+        if removed:
+            parts.append("removed " + ", ".join(removed))
+        audit(db, "asset", a.id, "pm_plan", detail="; ".join(parts), actor=user.username)
+    db.commit()
+    db.refresh(a)
+    return _asset_schedule(db, a)
 
 
 class HistoryItem(BaseModel):
