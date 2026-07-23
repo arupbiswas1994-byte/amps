@@ -144,6 +144,11 @@ function LiveDashboard({ go, initialLine = null }) {
   const [line, setLine] = useState(initialLine)
   const [filter, setFilter] = useState('all')   // all | overdue | due_soon
   const [q, setQ] = useState('')
+  const [fSystem, setFSystem] = useState('')
+  const [fClass, setFClass] = useState('')
+  const [fStatus, setFStatus] = useState('')
+  const [sortKey, setSortKey] = useState(null)  // null = register order
+  const [sortDir, setSortDir] = useState('asc')
   useEffect(() => { setLine(initialLine) }, [initialLine])
   const lines = [...new Set(all.map((a) => a.line).filter(Boolean))].sort()
   // each line stands alone — no aggregated all-lines view; default to the
@@ -154,12 +159,33 @@ function LiveDashboard({ go, initialLine = null }) {
   const overdue = assets.filter((a) => stateOf(a) === 'overdue')
   const dueSoon = assets.filter((a) => stateOf(a) === 'due_soon')
   const stations = new Set(assets.map((a) => a.location)).size
-  const byFilter = filter === 'all' ? assets : assets.filter((a) => stateOf(a) === filter)
+  const uniq = (k) => [...new Set(assets.map((a) => a[k]).filter(Boolean))].sort()
+  const systemsList = uniq('sys'); const classesList = uniq('cls'); const statusesList = uniq('status')
   const ql = q.trim().toLowerCase()
-  const shown = ql
-    ? byFilter.filter((a) => [a.code, a.name, a.location, a.cls, a.sys]
-        .some((v) => (v || '').toLowerCase().includes(ql)))
-    : byFilter
+  // the sort accessor per column; PM columns read the derived schedule
+  const sortVal = (a, k) => k === 'next_due' ? (sched[a.code]?.next_due || '9999')
+    : k === 'pm' ? (SEV_RANK[stateOf(a)] ?? 3)
+    : (a[k] || '')
+  let shown = assets
+  if (filter !== 'all') shown = shown.filter((a) => stateOf(a) === filter)
+  if (ql) shown = shown.filter((a) => [a.code, a.name, a.location, a.cls, a.sys].some((v) => (v || '').toLowerCase().includes(ql)))
+  if (fSystem) shown = shown.filter((a) => a.sys === fSystem)
+  if (fClass) shown = shown.filter((a) => a.cls === fClass)
+  if (fStatus) shown = shown.filter((a) => a.status === fStatus)
+  if (sortKey) {
+    const dir = sortDir === 'asc' ? 1 : -1
+    shown = [...shown].sort((x, y) => {
+      const a = sortVal(x, sortKey), b = sortVal(y, sortKey)
+      return (a < b ? -1 : a > b ? 1 : x.code.localeCompare(y.code)) * dir
+    })
+  }
+  const toggleSort = (k) => {
+    if (sortKey === k) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    else { setSortKey(k); setSortDir('asc') }
+  }
+  const sortArrow = (k) => sortKey === k ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''
+  const COLS = [['code', 'Code'], ['name', 'Asset'], ['cls', 'Class'], ['location', 'Location'],
+    ['sys', 'System'], ['status', 'Status'], ['next_due', 'Next PM'], ['pm', 'PM state']]
   if (loading) return <p className="dim">Loading the asset register…</p>
   if (error) return <div className="card offline-note">Backend unreachable — {error}. Check the server and reload.</div>
   return (
@@ -201,13 +227,38 @@ function LiveDashboard({ go, initialLine = null }) {
               ))}
             </div>
           </div>
+          <div className="asset-dropdowns">
+            <select value={fSystem} onChange={(e) => setFSystem(e.target.value)} aria-label="Filter by system">
+              <option value="">All systems</option>
+              {systemsList.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <select value={fClass} onChange={(e) => setFClass(e.target.value)} aria-label="Filter by class">
+              <option value="">All classes</option>
+              {classesList.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <select value={fStatus} onChange={(e) => setFStatus(e.target.value)} aria-label="Filter by status">
+              <option value="">Any status</option>
+              {statusesList.map((s) => <option key={s} value={s}>{STATUS_LABEL[s] || s}</option>)}
+            </select>
+            <span className="asset-count">{shown.length} shown</span>
+            {(fSystem || fClass || fStatus || q || filter !== 'all' || sortKey) && (
+              <button type="button" className="btn ghost sm" onClick={() => {
+                setFSystem(''); setFClass(''); setFStatus(''); setQ(''); setFilter('all'); setSortKey(null)
+              }}>Clear</button>
+            )}
+          </div>
           {shown.length === 0 ? (
-            <div className="card"><p className="dim" style={{ margin: 0 }}>No assets match — clear the search or filter.</p></div>
+            <div className="card"><p className="dim" style={{ margin: 0 }}>No assets match — clear the search or filters.</p></div>
           ) : (
             <div className="card tbl-wrap">
-              <table>
+              <table className="sortable">
                 <thead>
-                  <tr><th>Code</th><th>Asset</th><th>Class</th><th>Location</th><th>System</th><th>Status</th><th>Next PM</th><th>PM state</th></tr>
+                  <tr>
+                    {COLS.map(([k, lbl]) => (
+                      <th key={k} className={`th-sort${sortKey === k ? ' active' : ''}`}
+                          onClick={() => toggleSort(k)} title={`Sort by ${lbl}`}>{lbl}{sortArrow(k)}</th>
+                    ))}
+                  </tr>
                 </thead>
                 <tbody>
                   {shown.map((a) => {
