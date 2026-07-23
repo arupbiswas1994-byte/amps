@@ -351,12 +351,22 @@ function Dashboard({ go }) {
 
 /* ---------- asset detail (live) ---------- */
 
-/* One entry row, shared by both history sections. */
+/* Historical rows carry import scaffolding that duplicates the chips beside
+   them — a "[YEARLY MAINTENANCE]" / "[failure]" prefix, a "· equipment: <name>"
+   tail, and an import note. Strip that noise for display only; the stored text
+   (and the edit form) keep the record verbatim. */
+const tidyLog = (t = '') => t
+  .replace(/^\s*\[[^\]]*\]\s*/, '')
+  .replace(/\s*·\s*equipment:\s*[^·]+/i, '')
+  .replace(/\s*·\s*\[historical import[^\]]*\]/i, '')
+  .trim()
+
+/* One entry row, shared by both history sections. The asset class is constant
+   for this asset (it's in the facts grid), so it's not repeated on every row. */
 function LogRow({ en, staff }) {
   return (
     <div className="wo">
       <div className="row1">
-        {en.category && <span className="chip grp"><span className="dot" />{en.category}</span>}
         <span className={`chip ${en.type === 'failure' ? 'd-overdue' : ''}`}>
           <span className="dot" />{en.type}{en.subtype ? ` · ${en.subtype}` : ''}
         </span>
@@ -366,7 +376,7 @@ function LogRow({ en, staff }) {
         {en.type === 'failure' && !en.ended_at && <span className="chip d-overdue">still open</span>}
         {staff && <span className="wo-edit"><EditLink id={en.id} date={en.log_date} /></span>}
       </div>
-      <div className="findings">{en.text}</div>
+      <div className="findings">{tidyLog(en.text)}</div>
       {(en.attended_by || en.entered_by) && (
         <div className="sub">by <b>{en.attended_by || en.entered_by}</b>
           {en.attended_by && en.attended_by !== en.entered_by && <> · recorded by {en.entered_by}</>}
@@ -449,6 +459,81 @@ function AssetLogSections({ log, staff }) {
         </div>
       )}
     </>
+  )
+}
+
+/* ---------- maintenance schedule, derived from the log ---------- */
+
+/* The section's "grid scheduler": each recurring frequency rolls its next PM
+   forward from the last time that frequency was actually recorded. Rebuilt from
+   AMPS's own append-only log — so it stays live, advancing itself every time
+   maintenance is logged — rather than a separate table that drifts. Ad-hoc work
+   (Unscheduled / no frequency) has no cycle and is left out. */
+const FREQ_DAYS = { Monthly: 30, Quarterly: 91, 'Half-Yearly': 182, Yearly: 365, '5-Yearly': 1825 }
+const FREQ_ORDER = ['Monthly', 'Quarterly', 'Half-Yearly', 'Yearly', '5-Yearly']
+
+const addDays = (iso, n) => {
+  const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function deriveSchedule(log) {
+  const latest = {}   // frequency → its newest maintenance entry
+  for (const e of log) {
+    if (e.type !== 'maintenance' || !FREQ_DAYS[e.subtype]) continue
+    if (!latest[e.subtype] || e.log_date > latest[e.subtype].log_date) latest[e.subtype] = e
+  }
+  return FREQ_ORDER.filter((f) => latest[f]).map((f) => {
+    const e = latest[f]
+    const due = addDays(e.log_date, FREQ_DAYS[f])
+    const daysLeft = daysUntil(due)
+    const state = daysLeft < 0 ? 'overdue' : daysLeft <= 30 ? 'due_soon' : 'ok'
+    return { freq: f, last: e.log_date, by: e.attended_by || e.entered_by, due, daysLeft, state }
+  })
+}
+
+const SCHED_LABEL = { overdue: 'Overdue', due_soon: 'Due soon', ok: 'On schedule' }
+
+function MaintenanceSchedule({ log }) {
+  const rows = deriveSchedule(log)
+  const overdue = rows.filter((r) => r.state === 'overdue')
+  const upcoming = rows.filter((r) => r.state !== 'overdue').sort((a, b) => a.due.localeCompare(b.due))[0]
+  return (
+    <div className="sect">
+      <h3>
+        Maintenance schedule
+        {rows.length > 0 && (
+          <span className="sched-sum">
+            {overdue.length > 0
+              ? <span className="ss-red">⚠ {overdue.length} overdue</span>
+              : upcoming
+                ? <>next: <b>{upcoming.freq}</b> in {upcoming.daysLeft}d · <span className="dt">{upcoming.due}</span></>
+                : null}
+          </span>
+        )}
+      </h3>
+      {rows.length === 0 ? (
+        <p className="dim">No recurring maintenance recorded yet — log a Monthly / Quarterly / Half-Yearly / Yearly / 5-Yearly entry and its cycle appears here.</p>
+      ) : (
+        <div className="tbl-wrap">
+          <table className="sched-tbl">
+            <thead><tr><th>Frequency</th><th>Last done</th><th>Attended by</th><th>Next due</th><th>Days left</th><th>State</th></tr></thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.freq}>
+                  <td data-l="Frequency"><b>{r.freq}</b></td>
+                  <td className="dim dt" data-l="Last done">{r.last}</td>
+                  <td className="dim wrap-cell" data-l="Attended by">{r.by || '—'}</td>
+                  <td className="dt" data-l="Next due">{r.due}</td>
+                  <td data-l="Days left">{r.daysLeft < 0 ? `${-r.daysLeft}d ago` : `in ${r.daysLeft}d`}</td>
+                  <td data-l="State"><span className={`chip d-${r.state}`}><span className="dot" />{SCHED_LABEL[r.state]}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -648,6 +733,8 @@ function LiveAssetDetail({ code }) {
           ))}
         </div>
 
+        <div className="card"><MaintenanceSchedule log={log} /></div>
+
         {editing && (
           <div className="card"><div className="sect">
             <h3>Edit technical details</h3>
@@ -664,24 +751,26 @@ function LiveAssetDetail({ code }) {
         <div className="card">
           <AssetLogSections log={log} staff={canWrite} />
 
-          <div className="sect">
-            <h3>Work-order history — completed jobs, newest first</h3>
-            {history.length === 0 ? <p className="dim">No records yet. Completed job cards and PM work appear here.</p> : history.map((w) => (
-              <div className="wo" key={w.work_order_id}>
-                <div className="row1">
-                  <span className="code">#{w.work_order_id}</span>
-                  <span className="t">{w.title}</span>
-                  <WoChip status={w.status} />
+          {history.length > 0 && (
+            <div className="sect">
+              <h3>Work-order history — completed jobs, newest first</h3>
+              {history.map((w) => (
+                <div className="wo" key={w.work_order_id}>
+                  <div className="row1">
+                    <span className="code">#{w.work_order_id}</span>
+                    <span className="t">{w.title}</span>
+                    <WoChip status={w.status} />
+                  </div>
+                  {w.findings && <div className="findings">{w.findings}</div>}
+                  <div className="sub">
+                    {w.type}
+                    {w.done_by && <> · by <b>{w.done_by}</b></>}
+                    {w.closed_at && <> · closed <span className="dt">{w.closed_at.slice(0, 10)}</span></>}
+                  </div>
                 </div>
-                {w.findings && <div className="findings">{w.findings}</div>}
-                <div className="sub">
-                  {w.type}
-                  {w.done_by && <> · by <b>{w.done_by}</b></>}
-                  {w.closed_at && <> · closed <span className="dt">{w.closed_at.slice(0, 10)}</span></>}
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
 
           {canWrite && <AssetAudit code={a.code} />}
         </div>

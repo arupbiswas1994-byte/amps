@@ -21,7 +21,7 @@ const API = import.meta.env.VITE_AMPS_API ?? ''
 const SHIFT_LABEL = { M: 'Morning', E: 'Evening', N: 'Night', G: 'General', R: 'Rest' }
 const ENTRY_SHIFTS = ['M', 'E', 'N', 'G']  // R = roster-only, never a log shift
 const ENTRY_TYPES = ['maintenance', 'failure', 'rectification', 'general']
-const MAINT_SUBTYPES = ['Monthly', 'Quarterly', 'Half-Yearly', 'Yearly', 'Special']
+const MAINT_SUBTYPES = ['Monthly', 'Quarterly', 'Half-Yearly', 'Yearly', '5-Yearly', 'Unscheduled']
 /* local-calendar ISO — toISOString() is UTC and shifts IST dates a day back */
 const isoLocal = (d) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
