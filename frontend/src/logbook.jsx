@@ -243,58 +243,78 @@ function EditEntryForm({ entry, assets, systems, classSystem, onCancel, onSaved 
   return (
     <div className="edit-panel">
       <div className="ep-head">
-        <span className="ep-title">Edit entry</span>
+        <span className="ep-title">✎ Editing entry</span>
         <span className="ep-ctx">{fmtDate(entry.log_date)} · {SHIFT_LABEL[entry.shift] || entry.shift} · {entry.type}{entry.subtype ? ` · ${entry.subtype}` : ''}</span>
       </div>
-      <div className="ep-grid">
-        <label className="ep-full">Entry
-          <textarea ref={textRef} value={text} rows={2}
-                    onChange={(e) => setText(e.target.value)} placeholder="What was done, readings, event…" />
-        </label>
 
-        <label>Equipment (Asset ID)
-          <input value={assetCode} list="register-codes" placeholder="scan/type code — links the asset"
-                 onChange={(e) => {
-                   const v = e.target.value; setAssetCode(v)
-                   const hit = assets.find((a) => a.code === v)
-                   if (hit?.system) setSystem(hit.system)
-                   if (hit?.asset_class) setCategory(hit.asset_class)
-                 }} />
-        </label>
-        <label>System
-          <select value={system} onChange={(e) => { setSystem(e.target.value); setCategory('') }}>
-            <option value="">System…</option>
-            {systems.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </label>
-        <label>Class
-          <select value={category}
-                  onChange={(e) => { const c = e.target.value; setCategory(c); if (c && classSystem[c]) setSystem(classSystem[c]) }}>
-            <option value="">Class…</option>
-            {classesFor.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </label>
+      <div className="fg-set">
+        <section className="fg fg-record">
+          <span className="fg-lbl">The record</span>
+          <div className="fg-fields">
+            <label className="fg-span">Entry
+              <textarea ref={textRef} value={text} rows={2}
+                        onChange={(e) => setText(e.target.value)} placeholder="What was done, readings, event…" />
+            </label>
+          </div>
+        </section>
 
-        <label>Time
-          <input type="time" value={tim} onChange={(e) => setTim(e.target.value)} />
-        </label>
-        <label className="ep-wide">Team / attended by
-          <input value={team} onChange={(e) => setTeam(e.target.value)} placeholder="crew that did the work" />
-        </label>
+        <section className="fg">
+          <span className="fg-lbl">Asset &amp; location</span>
+          <div className="fg-fields">
+            <label>Equipment (Asset ID)
+              <input value={assetCode} list="register-codes" placeholder="scan/type code — links the asset"
+                     onChange={(e) => {
+                       const v = e.target.value; setAssetCode(v)
+                       const hit = assets.find((a) => a.code === v)
+                       if (hit?.system) setSystem(hit.system)
+                       if (hit?.asset_class) setCategory(hit.asset_class)
+                     }} />
+            </label>
+            <label>System
+              <select value={system} onChange={(e) => { setSystem(e.target.value); setCategory('') }}>
+                <option value="">System…</option>
+                {systems.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </label>
+            <label>Class
+              <select value={category}
+                      onChange={(e) => { const c = e.target.value; setCategory(c); if (c && classSystem[c]) setSystem(classSystem[c]) }}>
+                <option value="">Class…</option>
+                {classesFor.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </label>
+          </div>
+        </section>
 
-        {isFail && <>
-          <label className="ep-full ep-sub">Failure — fault &amp; recovery</label>
-          <label>Fault type
-            <input value={faultType} onChange={(e) => setFaultType(e.target.value)} placeholder="e.g. DC earth fault" />
-          </label>
-          <label>Resolved on
-            <input type="date" value={endDate} min={entry.log_date}
-                   onChange={(e) => setEndDate(e.target.value)} />
-          </label>
-          <label>Resolved at
-            <input type="time" value={endTim} onChange={(e) => setEndTim(e.target.value)} />
-          </label>
-        </>}
+        <section className="fg">
+          <span className="fg-lbl">Execution</span>
+          <div className="fg-fields">
+            <label>Time
+              <input type="time" value={tim} onChange={(e) => setTim(e.target.value)} />
+            </label>
+            <label className="fg-span-2">Team / attended by
+              <input value={team} onChange={(e) => setTeam(e.target.value)} placeholder="crew that did the work" />
+            </label>
+          </div>
+        </section>
+
+        {isFail && (
+          <section className="fg fg-fail">
+            <span className="fg-lbl">Failure — fault &amp; recovery</span>
+            <div className="fg-fields">
+              <label>Fault type
+                <input value={faultType} onChange={(e) => setFaultType(e.target.value)} placeholder="e.g. DC earth fault" />
+              </label>
+              <label>Resolved on
+                <input type="date" value={endDate} min={entry.log_date}
+                       onChange={(e) => setEndDate(e.target.value)} />
+              </label>
+              <label>Resolved at
+                <input type="time" value={endTim} onChange={(e) => setEndTim(e.target.value)} />
+              </label>
+            </div>
+          </section>
+        )}
       </div>
 
       <div className="ep-actions">
@@ -584,96 +604,120 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
 
       {canWrite ? (
         <form className="entry-form card" onSubmit={add}>
-          <div className="ef-grid">
-            <label>Type
-              <select value={type}
-                      onChange={(e) => { setType(e.target.value); if (e.target.value === 'maintenance') setShift('N') }}>
-                {ENTRY_TYPES.map((t) => <option key={t} value={t}>{t[0].toUpperCase() + t.slice(1)}</option>)}
-              </select>
-            </label>
-            {/* maintenance is always a night-shift job — lock the shift to N */}
-            <label>Shift
-              <select value={type === 'maintenance' ? 'N' : shift} disabled={type === 'maintenance'}
-                      onChange={(e) => setShift(e.target.value)}
-                      title={type === 'maintenance' ? 'Maintenance runs on the night shift' : 'Shift'}>
-                {ENTRY_SHIFTS.map((s) => <option key={s} value={s}>{s} — {SHIFT_LABEL[s]}</option>)}
-              </select>
-            </label>
-            {type === 'maintenance' && (
-              <label>Frequency
-                <select value={subtype} onChange={(e) => setSubtype(e.target.value)}>
-                  {MAINT_SUBTYPES.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </label>
-            )}
-            {type === 'failure' && (
-              <label>State
-                <select value={rectified ? 'rectified' : 'open'}
-                        onChange={(e) => { const on = e.target.value === 'rectified'; setRectified(on); if (on && !rDate) setRDate(logDate) }}>
-                  <option value="open">Still open</option>
-                  <option value="rectified">Rectified</option>
-                </select>
-              </label>
-            )}
+          <div className="ef-head">
+            <span className="ep-title">＋ New log entry</span>
+            <span className="ep-ctx">{fmtDate(logDate)}</span>
+          </div>
 
-            {/* System first (short list), then the class under it */}
-            <label>System
-              <select value={system} onChange={(e) => { setSystem(e.target.value); setCategory('') }}>
-                <option value="">System…</option>
-                {systems.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </label>
-            <label>Class {type !== 'failure' && <span className="ef-opt">(optional)</span>}
-              <select value={category} disabled={!system && classesForSystem.length === 0}
-                      onChange={(e) => { const c = e.target.value; setCategory(c); if (c && classSystem[c]) setSystem(classSystem[c]) }}>
-                <option value="">Class…</option>
-                {classesForSystem.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </label>
-            <label>Time <span className="ef-opt">(optional)</span>
-              <TimeInput value={tim} onChange={setTim} />
-            </label>
+          <div className="fg-set">
+            <section className="fg">
+              <span className="fg-lbl">Classification</span>
+              <div className="fg-fields">
+                <label>Type
+                  <select value={type}
+                          onChange={(e) => { setType(e.target.value); if (e.target.value === 'maintenance') setShift('N') }}>
+                    {ENTRY_TYPES.map((t) => <option key={t} value={t}>{t[0].toUpperCase() + t.slice(1)}</option>)}
+                  </select>
+                </label>
+                {/* maintenance is always a night-shift job — lock the shift to N */}
+                <label>Shift
+                  <select value={type === 'maintenance' ? 'N' : shift} disabled={type === 'maintenance'}
+                          onChange={(e) => setShift(e.target.value)}
+                          title={type === 'maintenance' ? 'Maintenance runs on the night shift' : 'Shift'}>
+                    {ENTRY_SHIFTS.map((s) => <option key={s} value={s}>{s} — {SHIFT_LABEL[s]}</option>)}
+                  </select>
+                </label>
+                {type === 'maintenance' && (
+                  <label>Frequency
+                    <select value={subtype} onChange={(e) => setSubtype(e.target.value)}>
+                      {MAINT_SUBTYPES.map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </label>
+                )}
+                {type === 'failure' && (
+                  <label>State
+                    <select value={rectified ? 'rectified' : 'open'}
+                            onChange={(e) => { const on = e.target.value === 'rectified'; setRectified(on); if (on && !rDate) setRDate(logDate) }}>
+                      <option value="open">Still open</option>
+                      <option value="rectified">Rectified</option>
+                    </select>
+                  </label>
+                )}
+              </div>
+            </section>
 
-            <label>Equipment (Asset ID)
-              <input value={assetCode} list="register-codes" placeholder="scan/type code…"
-                     onChange={(e) => {
-                       const v = e.target.value; setAssetCode(v)
-                       const hit = assets.find((a) => a.code === v)
-                       if (hit?.system) setSystem(hit.system)
-                       if (hit?.asset_class) setCategory(hit.asset_class)
-                     }} />
-            </label>
-            <datalist id="register-codes">
-              {assets.map((a) => <option key={a.code} value={a.code}>{`${a.code} — ${a.name} · ${a.location}`}</option>)}
-            </datalist>
-            <label className={authOn ? 'ef-wide' : ''}>Team / attended by
-              <input value={team} onChange={(e) => setTeam(e.target.value)} maxLength={200}
-                     placeholder="crew that did the work" />
-            </label>
-            {!authOn && (
-              <label>Entered by
-                <input value={author} onChange={(e) => setAuthor(e.target.value)} maxLength={40} placeholder="you" />
-              </label>
-            )}
+            <section className="fg">
+              <span className="fg-lbl">Asset &amp; location</span>
+              <div className="fg-fields">
+                <label>Equipment (Asset ID)
+                  <input value={assetCode} list="register-codes" placeholder="scan/type code…"
+                         onChange={(e) => {
+                           const v = e.target.value; setAssetCode(v)
+                           const hit = assets.find((a) => a.code === v)
+                           if (hit?.system) setSystem(hit.system)
+                           if (hit?.asset_class) setCategory(hit.asset_class)
+                         }} />
+                </label>
+                <datalist id="register-codes">
+                  {assets.map((a) => <option key={a.code} value={a.code}>{`${a.code} — ${a.name} · ${a.location}`}</option>)}
+                </datalist>
+                {/* System first (short list), then the class under it */}
+                <label>System
+                  <select value={system} onChange={(e) => { setSystem(e.target.value); setCategory('') }}>
+                    <option value="">System…</option>
+                    {systems.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </label>
+                <label>Class {type !== 'failure' && <span className="ef-opt">(optional)</span>}
+                  <select value={category} disabled={!system && classesForSystem.length === 0}
+                          onChange={(e) => { const c = e.target.value; setCategory(c); if (c && classSystem[c]) setSystem(classSystem[c]) }}>
+                    <option value="">Class…</option>
+                    {classesForSystem.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </label>
+              </div>
+            </section>
 
-            {type === 'failure' && (
-              <label className="ef-full ef-sub">Fault type
-                <input value={faultType} onChange={(e) => setFaultType(e.target.value)}
-                       placeholder="e.g. DC earth fault" maxLength={120} />
-              </label>
-            )}
+            <section className="fg">
+              <span className="fg-lbl">Execution</span>
+              <div className="fg-fields">
+                <label>Time <span className="ef-opt">(optional)</span>
+                  <TimeInput value={tim} onChange={setTim} />
+                </label>
+                <label className={authOn ? 'fg-span-2' : ''}>Team / attended by
+                  <input value={team} onChange={(e) => setTeam(e.target.value)} maxLength={200}
+                         placeholder="crew that did the work" />
+                </label>
+                {!authOn && (
+                  <label>Entered by
+                    <input value={author} onChange={(e) => setAuthor(e.target.value)} maxLength={40} placeholder="you" />
+                  </label>
+                )}
+              </div>
+            </section>
 
-            <label className="ef-full">Entry
-              <textarea value={text} rows={2} onChange={(e) => setText(e.target.value)}
-                        placeholder={`Log entry for ${fmtDate(logDate)} — work done, readings, events…`} />
-            </label>
+            <section className="fg fg-record">
+              <span className="fg-lbl">The record</span>
+              <div className="fg-fields">
+                {type === 'failure' && (
+                  <label className="fg-span">Fault type
+                    <input value={faultType} onChange={(e) => setFaultType(e.target.value)}
+                           placeholder="e.g. DC earth fault" maxLength={120} />
+                  </label>
+                )}
+                <label className="fg-span">Entry
+                  <textarea value={text} rows={2} onChange={(e) => setText(e.target.value)}
+                            placeholder={`Log entry for ${fmtDate(logDate)} — work done, readings, events…`} />
+                </label>
+              </div>
+            </section>
           </div>
 
           {/* rectification, filed as its own entry — shown when a failure is logged already-fixed */}
           {type === 'failure' && rectified && (
             <div className="ef-rect">
               <span className="ef-sublbl">Rectification — filed as a second entry</span>
-              <div className="ef-grid">
+              <div className="fg-fields">
                 <label>Rectified on
                   <input type="date" value={rDate} onChange={(e) => setRDate(e.target.value)} />
                 </label>
@@ -685,10 +729,10 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
                     {ENTRY_SHIFTS.map((s) => <option key={s} value={s}>{s} — {SHIFT_LABEL[s]}</option>)}
                   </select>
                 </label>
-                <label className="ef-wide">Team
+                <label className="fg-span-2">Team
                   <input value={rTeam} onChange={(e) => setRTeam(e.target.value)} placeholder="crew" />
                 </label>
-                <label className="ef-full">What was done
+                <label className="fg-span">What was done
                   <input value={rText} onChange={(e) => setRText(e.target.value)}
                          placeholder="what was done to rectify it…" />
                 </label>

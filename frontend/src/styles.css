@@ -402,54 +402,76 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 .log-team { flex: 0 1 190px; min-width: 130px; }
 
 /* the entry being edited — a clear focus ring so the deep-linked row stands out */
-.log-entry.editing { background: #f4f8fb; box-shadow: inset 3px 0 0 #2f6690; border-radius: 6px; }
+.log-entry.editing { background: #eef5fb; box-shadow: inset 3px 0 0 #2f6690; border-radius: 6px; }
 
-/* ---- shared labelled form-grid — used by the edit panel AND the add form.
-   Compact: micro-labels above snug fields, four dense columns. ---- */
-.ep-grid, .ef-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 10px; }
-.ep-grid label, .ef-grid label {
+/* ============================================================
+   Entry forms (edit panel + add form) — one highlighted, grouped
+   surface. Fields are clustered into productivity groups (what it
+   is · where · when/who · the record) and each group flows in a
+   dynamic auto-fit grid, so the columns pack to whatever fits.
+   ============================================================ */
+
+/* the highlighted panel: header band + elevation, so the form
+   reads as a distinct working surface, not just inline fields */
+.edit-panel, .entry-form.card {
+  margin: 10px 0 4px; padding: 0; overflow: hidden;
+  border: 1px solid #bcd4e6; border-radius: 12px; background: #fff;
+  box-shadow: 0 8px 26px -14px rgba(20, 60, 100, .38);
+}
+.entry-form.card { margin-bottom: 18px; }
+
+.ep-head, .ef-head {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  padding: 9px 15px; border-bottom: 1px solid #cadff0;
+  background: linear-gradient(180deg, #eaf3fb, #ddecf8);
+}
+.ef-head { background: linear-gradient(180deg, #f4f8fc, #eaf1f8); border-bottom-color: #dde7f0; }
+.ep-title { font-size: 10.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #235c86; }
+.ef-head .ep-title { color: #2f6690; }
+.ep-ctx { font-size: 11px; color: var(--ink-3); }
+
+/* the stack of field groups */
+.fg-set { padding: 4px 15px 10px; }
+.fg { padding: 9px 0 4px; border-top: 1px solid #eef2f5; }
+.fg:first-child { border-top: 0; }
+.fg-lbl { display: block; margin-bottom: 6px;
+  font-size: 9px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); }
+.fg-record .fg-lbl { color: #2f6690; }
+.fg-fail .fg-lbl { color: var(--serious); }
+
+/* dynamic grid — auto-fit so fields pack to the available width */
+.fg-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  gap: 7px 12px; align-items: end; }
+.fg-span { grid-column: 1 / -1; }
+.fg-span-2 { grid-column: span 2; }
+.fg-fields label {
   display: flex; flex-direction: column; gap: 2px;
   font-size: 9.5px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; color: var(--ink-3);
 }
-.ep-grid .ep-full, .ef-grid .ef-full { grid-column: 1 / -1; }
-.ep-grid .ep-wide, .ef-grid .ef-wide { grid-column: span 2; }
-.ep-opt, .ef-opt { font-weight: 400; text-transform: none; letter-spacing: 0; }
-.ep-grid input, .ep-grid select, .ep-grid textarea,
-.ef-grid input, .ef-grid select, .ef-grid textarea {
+.ef-opt, .ep-opt { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--ink-3); }
+.fg-fields input, .fg-fields select, .fg-fields textarea {
   font: inherit; font-size: 12.5px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--ink);
-  padding: 4px 7px; border: 1px solid var(--border); border-radius: 6px; background: #fff; width: 100%;
+  padding: 5px 8px; border: 1px solid var(--border); border-radius: 7px; background: #fff; width: 100%;
 }
-.ep-grid textarea, .ef-grid textarea { resize: vertical; line-height: 1.4; }
-.ep-grid input:focus, .ep-grid select:focus, .ep-grid textarea:focus,
-.ef-grid input:focus, .ef-grid select:focus, .ef-grid textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-.ep-grid .time-field, .ef-grid .time-field { width: 100%; }
-.ep-grid .time-field input[type="time"], .ef-grid .time-field input[type="time"] { width: 100%; }
-/* the failure sub-section header, full width */
-.ep-grid .ep-sub, .ef-grid .ef-sub {
-  grid-column: 1 / -1; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
-  color: var(--serious); margin-top: 3px; padding-top: 6px; border-top: 1px dashed #e3ddd4;
+.fg-fields textarea { resize: vertical; line-height: 1.4; }
+.fg-fields input:focus, .fg-fields select:focus, .fg-fields textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.fg-fields .time-field, .fg-fields .time-field input[type="time"] { width: 100%; }
+
+/* rectification sub-block inside the add form */
+.ef-rect { margin: 2px 15px 12px; padding: 9px 12px 4px;
+  border: 1px dashed #ecdfc7; border-radius: 9px; background: #fdfaf3; }
+.ef-sublbl { display: block; margin-bottom: 7px;
+  font-size: 9px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+
+/* action bar — sits on its own tinted footer */
+.ep-actions, .ef-actions {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 10px 15px; margin: 0; background: #f6fafc; border-top: 1px solid #eef2f5;
 }
-.ep-actions, .ef-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
 .ep-note { font-size: 11px; color: var(--ink-3); }
 
-/* edit panel container */
-.edit-panel { margin: 8px 0 3px; padding: 11px 13px; border: 1px solid #d5e2ec; background: #f6fafd; border-radius: 9px; }
-.ep-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 9px;
-  padding-bottom: 7px; border-bottom: 1px solid #dceaf2; }
-.ep-title { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #2f6690; }
-.ep-ctx { font-size: 11px; color: var(--ink-3); }
-
-/* add-entry form container + its rectification sub-block */
-.entry-form { padding: 12px 14px; margin-bottom: 18px; }
-.ef-rect { grid-column: 1 / -1; margin-top: 8px; padding: 9px 11px 3px; border: 1px dashed #ecdfc7;
-  border-radius: 8px; background: #fdfaf3; }
-.ef-rect .ef-grid { margin-top: 2px; }
-.ef-sublbl { display: block; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
-  color: var(--accent); margin-bottom: 7px; }
-
-@media screen and (max-width: 720px) {
-  .ep-grid, .ef-grid { grid-template-columns: repeat(2, 1fr); }
-  .ep-grid .ep-wide, .ef-grid .ef-wide { grid-column: 1 / -1; }
+@media screen and (max-width: 560px) {
+  .fg-span-2 { grid-column: 1 / -1; }
 }
 .ver-hist { flex-basis: 100%; margin: 6px 0 2px; padding: 8px 12px;
   background: #faf9f7; border: 1px solid var(--border); border-radius: 8px; }
