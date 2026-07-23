@@ -469,6 +469,13 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
     if (el) requestAnimationFrame(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }))
   }, [editingId, entries])
 
+  // close the edit form and, if we arrived via a deep-link (?edit=…), strip
+  // that param so a page refresh doesn't reopen the form on the same row.
+  const closeEdit = () => {
+    setEditingId(null)
+    if (editId) location.hash = `/log${focusDate ? `?d=${focusDate}` : ''}`
+  }
+
   const add = async (e) => {
     e.preventDefault()
     if (!text.trim() || busy) return
@@ -792,8 +799,8 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
                       {historyFor === en.id && <VersionHistory id={en.id} />}
                       {canWrite && editingId === en.id && (
                         <EditEntryForm entry={en} assets={assets} systems={systems} classSystem={classSystem}
-                                       onCancel={() => setEditingId(null)}
-                                       onSaved={() => { setEditingId(null); load() }} />
+                                       onCancel={closeEdit}
+                                       onSaved={() => { closeEdit(); load() }} />
                       )}
                       {canWrite && rectifying === en.id && openFail && (
                         <RectifyForm failure={en} busy={busy}
