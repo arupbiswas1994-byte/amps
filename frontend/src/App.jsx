@@ -1604,12 +1604,10 @@ function AboutPage() {
       <div className="card about-dept">
         {LIVE ? (
           <>
-            <h3>In service of {ORG}</h3>
+            <h3>Departmental deployment</h3>
             <p>
-              AMPS is deployed here as departmental infrastructure under Metro
-              Railway order No.&nbsp;MRK/CPD/E&amp;M/Co-Ord/6746 dated 22&nbsp;July&nbsp;2026,
-              on an open-source stack involving no procurement or licensing cost
-              to the railway.
+              Deployed under Metro Railway office order
+              No.&nbsp;MRK/CPD/E&amp;M/Co-Ord/6746, dated 22&nbsp;July&nbsp;2026:
             </p>
             <blockquote className="about-extract">
               “The licence files and notices of the open-source components shall
@@ -1617,7 +1615,7 @@ function AboutPage() {
               display the name of Metro Railway, Kolkata, and all departmental
               data, records and configuration entered in the application shall
               remain the property of Metro Railway.”
-              <cite>— departmental order No.&nbsp;6746, 22.07.2026</cite>
+              <cite>— office order No.&nbsp;6746, 22.07.2026</cite>
             </blockquote>
           </>
         ) : (
@@ -1628,6 +1626,14 @@ function AboutPage() {
               asset maintenance across the metro network — the open-source
               framework, adopted as a departmental system.
             </p>
+            {/* value proof-points — demo/showcase only; the office deployment
+                stays modest and institutional (no self-congratulatory savings) */}
+            <div className="about-kpis">
+              <span><b>3,050</b> assets</span>
+              <span><b>18,000+</b> maintenance records</span>
+              <span><b>₹0</b> software licence cost</span>
+              <span><b>~₹1–3 Cr</b> est. 5-year cost avoided</span>
+            </div>
           </>
         )}
       </div>

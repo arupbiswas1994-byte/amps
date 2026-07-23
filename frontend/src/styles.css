@@ -707,6 +707,12 @@ tbody tr:hover .edit-link { color: var(--accent); }
   font-size: 13px; line-height: 1.6; color: var(--ink-2); font-style: italic; }
 .about-extract cite { display: block; margin-top: 6px; font-style: normal;
   font-size: 11.5px; color: var(--ink-3); letter-spacing: .02em; }
+/* value proof-points on the demo/showcase About */
+.about-kpis { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-top: 14px;
+  padding-top: 12px; border-top: 1px solid #f0efee; }
+.about-kpis span { font-size: 13px; color: var(--ink-3); }
+.about-kpis b { font-size: 15px; color: var(--accent); font-weight: 750; margin-right: 4px;
+  font-variant-numeric: tabular-nums; }
 .about-credits a { color: var(--ink); text-decoration: underline dotted; text-underline-offset: 2px; }
 .about-credits a:hover { color: var(--accent); }
 .about-credits { margin-top: 16px; padding: 8px 12px; }
