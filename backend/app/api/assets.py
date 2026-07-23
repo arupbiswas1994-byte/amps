@@ -174,14 +174,61 @@ def create_asset(asset: AssetIn, db: Session = Depends(get_db), user=Depends(cur
 # Every line fills the same CSV (the Green Line format is the standard);
 # supervisors download the sample, fill it for their line, upload it back.
 
-SAMPLE_CSV = """code,name,asset_class,location,line,system,make_model,criticality
-B2HB11,VCB,33KV SWITCHGEAR,Baranagar,Blue Line,HT · 33kV,"SIEMENS LTD.,INDIA",A
-LP-C-01(BARA),Concourse Light Panel,DISTRIBUTION BOARD,Baranagar,Blue Line,LT · LT Panels,,B
-AHU-M1(BARA),AHU Unit 1,ECS- AXIAL FLOW FAN,Baranagar,Blue Line,LT · ECS (AC),M/S VOLTAS,B
+# The full register template. Required: code, name, asset_class, location.
+# Everything after is optional — leave a cell blank to skip it.
+#   criticality      A (vital) / B (important) / C (tolerable); default B
+#   status           in_service / under_maintenance / out_of_service / decommissioned
+#   commissioned_on  in service since — YYYY-MM-DD
+#   maintenance_cycles the PM cycles this asset needs, ';'-separated, from
+#                    Monthly / Quarterly / Half-Yearly / Yearly / 5-Yearly
+#                    (M / Q / HY / Y / 5Y abbreviations accepted). Blank ⇒ the
+#                    schedule is inferred from the logbook instead.
+#   last_maintenance last PM date (YYYY-MM-DD) — seeds the schedule for history
+#                    recorded before the logbook; the log takes over after.
+SAMPLE_CSV = """code,name,asset_class,location,line,system,make_model,criticality,status,commissioned_on,maintenance_cycles,last_maintenance
+B2HB11,VCB,33KV SWITCHGEAR,Baranagar,Blue Line,HT · 33kV,"SIEMENS LTD.,INDIA",A,in_service,2019-03-15,Yearly,2025-11-06
+LP-C-01(BARA),Concourse Light Panel,DISTRIBUTION BOARD,Baranagar,Blue Line,LT · LT Panels,,B,in_service,,Quarterly;Yearly,2026-01-10
+AHU-M1(BARA),AHU Unit 1,ECS- AXIAL FLOW FAN,Baranagar,Blue Line,LT · ECS (AC),M/S VOLTAS,B,in_service,,Monthly;Half-Yearly;Yearly,
 """
 
 REQUIRED_COLS = ("code", "name", "asset_class", "location")
-OPTIONAL_COLS = ("line", "system", "make_model", "criticality", "status")
+# columns fed straight to AssetIn
+OPTIONAL_COLS = ("line", "system", "make_model", "criticality", "status", "commissioned_on")
+# maintenance-plan columns, handled separately (they seed pm_plans, not the asset)
+PLAN_COLS = ("maintenance_cycles", "last_maintenance")
+
+# accept the master-sheet abbreviations as well as the full labels
+_CYCLE_ALIASES = {
+    "m": "Monthly", "monthly": "Monthly",
+    "q": "Quarterly", "quarterly": "Quarterly",
+    "hy": "Half-Yearly", "half-yearly": "Half-Yearly", "half yearly": "Half-Yearly", "halfyearly": "Half-Yearly",
+    "y": "Yearly", "yearly": "Yearly", "annual": "Yearly", "annually": "Yearly",
+    "5y": "5-Yearly", "5-yearly": "5-Yearly", "5 yearly": "5-Yearly", "5yearly": "5-Yearly",
+}
+
+
+def _parse_cycles(raw: str) -> list[str]:
+    """Parse a 'maintenance_cycles' cell into canonical frequency labels."""
+    out = []
+    for part in raw.replace(",", ";").replace("|", ";").split(";"):
+        key = part.strip().lower()
+        if not key:
+            continue
+        label = _CYCLE_ALIASES.get(key)
+        if label and label not in out:
+            out.append(label)
+    return out
+
+
+def _parse_date(raw: str):
+    """Parse a date cell — ISO or day-first (the sheets' DD/MM/YYYY)."""
+    raw = (raw or "").strip()
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(raw, fmt).date()
+        except ValueError:
+            pass
+    return None
 
 
 @router.get("/import/sample")
@@ -222,8 +269,24 @@ async def import_csv(request: Request, db: Session = Depends(get_db),
             if len(errors) < 20:
                 errors.append(f"line {n}: empty required field(s): {', '.join(empty)}")
             continue
+        # dates arrive as text and may be day-first (the sheets' DD/MM/YYYY)
+        if "commissioned_on" in fields:
+            d = _parse_date(fields["commissioned_on"])
+            if d:
+                fields["commissioned_on"] = d
+            else:
+                del fields["commissioned_on"]
         try:
-            _create_one(db, AssetIn(**fields), user)
+            obj = _create_one(db, AssetIn(**fields), user)
+            # optional maintenance plan — seed pm_plans from the cycle columns
+            cycles = _parse_cycles(raw.get("maintenance_cycles") or "")
+            if cycles:
+                cycles = sorted(cycles, key=lambda x: SCHEDULE_FREQ[x])
+                seed = _parse_date(raw.get("last_maintenance") or "")
+                for f in cycles:
+                    db.add(PMPlan(asset_id=obj.id, frequency=f, last_done_seed=seed))
+                audit(db, "asset", obj.id, "pm_plan",
+                      detail="imported: " + ", ".join(cycles), actor=user.username)
             db.commit()  # per row: one bad row can never sink the batch
             created += 1
         except HTTPException as e:
