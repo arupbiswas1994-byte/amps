@@ -592,25 +592,15 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
 
   return (
     <>
-      <div className="page-head">
-        <h1>Shift logbook</h1>
-        <LiveBadge ok={apiOk === true} />
-      </div>
-      <p className="dim page-sub">
-        The section's running log, digital: append-only entries per date and shift,
-        persisted by the AMPS backend (v0.3). Corrections are new entries — nothing
-        is ever edited or deleted, exactly like a bound paper logbook.
-      </p>
-
       {apiOk === false && (
         <div className="card offline-note">
           <p className="dim">The AMPS API is not reachable — the logbook will come back with it.</p>
         </div>
       )}
 
-      {/* one ribbon: calendar + search/filter + actions — unified like the asset page */}
+      {/* one ribbon, one row: calendar + search/filter + actions — unified like the asset page */}
       <div className="log-ribbon" ref={toolbarRef}>
-        <DateRuler value={allDates ? '' : logDate}
+        <DateRuler value={allDates ? '' : logDate} days={7}
                    onChange={(d) => { setLogDate(d); setAllDates(false); setNewOpen(false) }} />
         <div className="log-tools">
           <input className="asset-search" type="search" value={search} onChange={(e) => setSearch(e.target.value)}
