@@ -333,6 +333,7 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
   const [qParam, setQParam] = useState('')         // debounced -> ?q= server search
   const [impBusy, setImpBusy] = useState(false)
   const [impResult, setImpResult] = useState(null)
+  const [newOpen, setNewOpen] = useState(false)   // the add-entry form, toggled by ＋
   const fileRef = useRef(null)
   const toolbarRef = useRef(null)
   const [apiOk, setApiOk] = useState(null)
@@ -607,10 +608,67 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
         </div>
       )}
 
-      <DateRuler value={allDates ? '' : logDate}
-                 onChange={(d) => { setLogDate(d); setAllDates(false) }} />
+      {/* one ribbon: calendar + search/filter + actions — unified like the asset page */}
+      <div className="log-ribbon" ref={toolbarRef}>
+        <DateRuler value={allDates ? '' : logDate}
+                   onChange={(d) => { setLogDate(d); setAllDates(false); setNewOpen(false) }} />
+        <div className="log-tools">
+          <input className="asset-search" type="search" value={search} onChange={(e) => setSearch(e.target.value)}
+                 placeholder="Search the log — text, asset, crew, fault…" aria-label="Search the log" />
+          <div className="asset-filter" role="tablist" aria-label="Date scope">
+            <button type="button" className={`btn preset${allDates ? ' active' : ''}`}
+                    onClick={() => setAllDates(true)}>All dates</button>
+          </div>
+          <select value={fType} onChange={(e) => setFType(e.target.value)} aria-label="Filter by type">
+            <option value="">All types</option>
+            {ENTRY_TYPES.map((t) => <option key={t} value={t}>{t[0].toUpperCase() + t.slice(1)}</option>)}
+          </select>
+          <select value={fCat} onChange={(e) => setFCat(e.target.value)} aria-label="Filter by class">
+            <option value="">All classes</option>
+            {classes.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <select value={period} onChange={(e) => { setPeriod(e.target.value); setAllDates(true) }} aria-label="Period">
+            {PERIODS.map(([lbl, v]) => <option key={v} value={v}>{lbl}</option>)}
+          </select>
+          {(search || fCat || fType || !allDates) && (
+            <button type="button" className="btn ghost sm" onClick={() => {
+              setSearch(''); setFCat(''); setFType(''); setAllDates(true)
+            }}>Clear</button>
+          )}
+          <span className="asset-count">
+            {qParam.trim() || allDates ? `${total.toLocaleString()} entr${total === 1 ? 'y' : 'ies'}` : fmtDate(logDate)}
+          </span>
+          <div className="asset-actions">
+            {canWrite && (
+              <button type="button" className={`icon-btn${newOpen ? ' on' : ''}`} title="New log entry"
+                      aria-label="New log entry" onClick={() => setNewOpen((v) => !v)}>
+                <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                  <path d="M8 3.2v9.6M3.2 8h9.6" /></svg>
+              </button>
+            )}
+            <button type="button" className="icon-btn" title="Download the entries in view (CSV)"
+                    aria-label="Download entries" onClick={exportCsv} disabled={!entries.length}>
+              <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M8 2.4v7.2M4.8 6.6 8 9.8l3.2-3.2M3 12.8h10" /></svg>
+            </button>
+            <button type="button" className="icon-btn" title="Print the log in view"
+                    aria-label="Print log" onClick={() => window.print()}>
+              <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4.5 6V2.5h7V6M4.5 12H3.2V6.4h9.6V12H11.5M4.5 9.6h7V13.5h-7z" /></svg>
+            </button>
+            {canWrite && (
+              <button type="button" className={`icon-btn${impBusy ? ' disabled' : ''}`} title="Import history CSV"
+                      aria-label="Import history" onClick={() => fileRef.current?.click()} disabled={impBusy}>
+                <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M8 9.8V2.6M4.8 5.8 8 2.6l3.2 3.2M3 12.8h10" /></svg>
+              </button>
+            )}
+            <input ref={fileRef} type="file" accept=".csv,text/csv" hidden onChange={onImportFile} />
+          </div>
+        </div>
+      </div>
 
-      {canWrite ? (
+      {canWrite && newOpen && (
         <form className="entry-form card" onSubmit={add}>
           <div className="ef-head">
             <span className="ep-title">＋ New log entry</span>
@@ -743,59 +801,8 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
             {err && <span className="import-msg err">{err}</span>}
           </div>
         </form>
-      ) : (
-        <p className="dim">Viewing only — sign in with your line account to add entries.</p>
       )}
 
-      {/* unified toolbar — same language as the asset register: search · filters
-          · count · actions, frozen under the topbar as the log scrolls */}
-      <div className="asset-toolbar" ref={toolbarRef}>
-        <input className="asset-search" type="search" value={search} onChange={(e) => setSearch(e.target.value)}
-               placeholder="Search the log — text, asset, crew, fault…" aria-label="Search the log" />
-        <div className="asset-filter" role="tablist" aria-label="Date scope">
-          <button type="button" className={`btn preset${allDates ? ' active' : ''}`}
-                  onClick={() => setAllDates(true)}>All dates</button>
-        </div>
-        <select value={fType} onChange={(e) => setFType(e.target.value)} aria-label="Filter by type">
-          <option value="">All types</option>
-          {ENTRY_TYPES.map((t) => <option key={t} value={t}>{t[0].toUpperCase() + t.slice(1)}</option>)}
-        </select>
-        <select value={fCat} onChange={(e) => setFCat(e.target.value)} aria-label="Filter by class">
-          <option value="">All classes</option>
-          {classes.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <select value={period} onChange={(e) => { setPeriod(e.target.value); setAllDates(true) }} aria-label="Period">
-          {PERIODS.map(([lbl, v]) => <option key={v} value={v}>{lbl}</option>)}
-        </select>
-        {(search || fCat || fType || !allDates) && (
-          <button type="button" className="btn ghost sm" onClick={() => {
-            setSearch(''); setFCat(''); setFType(''); setAllDates(true)
-          }}>Clear</button>
-        )}
-        <span className="asset-count">
-          {qParam.trim() || allDates ? `${total.toLocaleString()} entr${total === 1 ? 'y' : 'ies'}` : fmtDate(logDate)}
-        </span>
-        <div className="asset-actions">
-          <button type="button" className="icon-btn" title="Download the entries in view (CSV)"
-                  aria-label="Download entries" onClick={exportCsv} disabled={!entries.length}>
-            <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M8 2.4v7.2M4.8 6.6 8 9.8l3.2-3.2M3 12.8h10" /></svg>
-          </button>
-          <button type="button" className="icon-btn" title="Print the log in view"
-                  aria-label="Print log" onClick={() => window.print()}>
-            <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M4.5 6V2.5h7V6M4.5 12H3.2V6.4h9.6V12H11.5M4.5 9.6h7V13.5h-7z" /></svg>
-          </button>
-          {canWrite && (
-            <button type="button" className={`icon-btn${impBusy ? ' disabled' : ''}`} title="Import history CSV"
-                    aria-label="Import history" onClick={() => fileRef.current?.click()} disabled={impBusy}>
-              <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M8 9.8V2.6M4.8 5.8 8 2.6l3.2 3.2M3 12.8h10" /></svg>
-            </button>
-          )}
-          <input ref={fileRef} type="file" accept=".csv,text/csv" hidden onChange={onImportFile} />
-        </div>
-      </div>
       <div className="print-caption">
         AMPS · {ORG} — shift logbook · {qParam.trim() ? `“${qParam.trim()}”` : allDates && from ? `${fmtDate(from)} — ${fmtDate(to)}` : fmtDate(logDate)}
         {fType ? ` · ${fType}` : ''}{fCat ? ` · ${fCat}` : ''} · {total.toLocaleString()} entries · {today()}
