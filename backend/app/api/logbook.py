@@ -233,7 +233,7 @@ def _create_entry(db: Session, entry: LogEntryIn, user, rectifies: LogEntry | No
 @router.get("", response_model=list[LogEntryOut])
 def list_entries(log_date: date | None = None, shift: str | None = None,
                  asset_code: str | None = None, entry_type: str | None = None,
-                 category: str | None = None,
+                 category: str | None = None, q: str | None = None,
                  date_from: date | None = None, date_to: date | None = None,
                  limit: int = 200, offset: int = 0, response: Response = None,
                  db: Session = Depends(get_db), user=Depends(optional_user)):
@@ -269,6 +269,14 @@ def list_entries(log_date: date | None = None, shift: str | None = None,
         filters.append(LogEntry.type == LogEntryType(entry_type))
     if category:
         filters.append(LogEntry.category == category)
+    if q and q.strip():
+        # free-text search across the record, crew, fault and system/class —
+        # case-insensitive; matches the register's search box behaviour
+        like = f"%{q.strip()}%"
+        filters.append(
+            LogEntry.text.ilike(like) | LogEntry.attended_by.ilike(like)
+            | LogEntry.entered_by.ilike(like) | LogEntry.fault_type.ilike(like)
+            | LogEntry.system.ilike(like) | LogEntry.category.ilike(like))
     if asset_code:
         asset = visible_asset(db, asset_code, user)
         filters.append(LogEntry.asset_id == asset.id)

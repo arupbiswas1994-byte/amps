@@ -10,7 +10,7 @@
 
    API base: same-origin by default; demo hosting builds with VITE_AMPS_API. */
 import { useEffect, useRef, useState } from 'react'
-import { LIVE, useMe } from './api.js'
+import { LIVE, ORG, useMe } from './api.js'
 
 /* Optional time — the plain native picker. Blank = no time. */
 function TimeInput({ value, onChange, className = '', label = 'Time (optional)' }) {
@@ -87,44 +87,6 @@ const HistoryIcon = () => (
   </svg>
 )
 
-/* bulk history import: the unified sheet-logbook CSV (Green Line standard) —
-   maintenance rows become log entries, failure rows become failure records */
-function HistoryImportBar() {
-  const [busy, setBusy] = useState(false)
-  const [result, setResult] = useState(null)
-  const onFile = async (e) => {
-    const file = e.target.files[0]
-    e.target.value = ''
-    if (!file) return
-    setBusy(true); setResult(null)
-    try {
-      const r = await fetch(`${API}/api/logbook/import`, {
-        method: 'POST', headers: { 'Content-Type': 'text/csv' },
-        body: await file.text(),
-      })
-      const body = await r.json().catch(() => null)
-      setResult(r.ok ? body : { error: body?.detail || `HTTP ${r.status}` })
-    } catch (err) {
-      setResult({ error: String(err) })
-    }
-    setBusy(false)
-  }
-  return (
-    <div className="import-bar">
-      <a className="btn ghost" href={`${API}/api/logbook/import/sample`} download>⬇ Sample CSV</a>
-      <label className={`btn ghost${busy ? ' disabled' : ''}`}>
-        {busy ? 'Importing…' : '⬆ Import history CSV'}
-        <input type="file" accept=".csv,text/csv" onChange={onFile} disabled={busy} hidden />
-      </label>
-      {result && (result.error
-        ? <span className="import-msg err">{result.error}</span>
-        : <span className="import-msg">
-            {result.log_entries} log entries · {result.failures} failures · {result.skipped} skipped · {result.failed} failed
-            {result.errors?.length ? ` — ${result.errors[0]}` : ''}
-          </span>)}
-    </div>
-  )
-}
 
 function LiveBadge({ ok }) {
   return (
@@ -367,6 +329,12 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
   const [total, setTotal] = useState(0)
   const [fCat, setFCat] = useState('')             // '' = all categories (classes)
   const [fType, setFType] = useState('')           // '' = all types
+  const [search, setSearch] = useState('')         // free-text box value
+  const [qParam, setQParam] = useState('')         // debounced -> ?q= server search
+  const [impBusy, setImpBusy] = useState(false)
+  const [impResult, setImpResult] = useState(null)
+  const fileRef = useRef(null)
+  const toolbarRef = useRef(null)
   const [apiOk, setApiOk] = useState(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -439,10 +407,13 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
   const load = async () => {
     try {
       const q = new URLSearchParams()
-      if (!allDates) q.set('log_date', logDate)
+      // a text search spans the whole book, so it ignores the single-day scope
+      const searching = qParam.trim().length > 0
+      if (!allDates && !searching) q.set('log_date', logDate)
       if (fCat) q.set('category', fCat)
       if (fType) q.set('entry_type', fType)
-      if (allDates) {
+      if (searching) q.set('q', qParam.trim())
+      if (allDates || searching) {
         if (from) q.set('date_from', from)
         if (to) q.set('date_to', to)
       }
@@ -459,9 +430,54 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
     }
   }
 
-  useEffect(() => { load() }, [logDate, allDates, fCat, fType, from, to, page])  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load() }, [logDate, allDates, fCat, fType, qParam, from, to, page])  // eslint-disable-line react-hooks/exhaustive-deps
   // any change of what we are looking at starts again at the first page
-  useEffect(() => { setPage(0) }, [logDate, allDates, fCat, fType, from, to])
+  useEffect(() => { setPage(0) }, [logDate, allDates, fCat, fType, qParam, from, to])
+  // debounce the search box so we don't hit the API on every keystroke
+  useEffect(() => { const t = setTimeout(() => setQParam(search), 300); return () => clearTimeout(t) }, [search])
+  // freeze the toolbar: measure the sticky topbar so it parks just beneath it
+  useEffect(() => {
+    const setVars = () => {
+      const tb = document.querySelector('.topbar')
+      if (tb) document.documentElement.style.setProperty('--topbar-h', `${tb.offsetHeight}px`)
+    }
+    setVars(); window.addEventListener('resize', setVars)
+    return () => window.removeEventListener('resize', setVars)
+  })
+
+  // download the entries currently in view as CSV
+  const exportCsv = () => {
+    const cell = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
+    const head = ['date', 'shift', 'time', 'type', 'subtype', 'system', 'class', 'asset', 'entry', 'attended_by']
+    const body = entries.map((e) => [
+      e.log_date, e.shift, hhmm(e.at), e.type, e.subtype || '', e.system || '', e.category || '',
+      e.asset_code || '', bodyText(e.text), e.attended_by || e.entered_by || '',
+    ].map(cell).join(','))
+    const csv = [head.join(','), ...body].join('\n')
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `amps-logbook-${allDates ? 'period' : logDate}-${today()}.csv`
+    a.click(); URL.revokeObjectURL(url)
+  }
+  // bulk-import scattered sheet history (the unified logbook CSV)
+  const onImportFile = async (e) => {
+    const file = e.target.files[0]
+    e.target.value = ''
+    if (!file) return
+    setImpBusy(true); setImpResult(null)
+    try {
+      const r = await fetch(`${API}/api/logbook/import`, {
+        method: 'POST', headers: { 'Content-Type': 'text/csv' }, body: await file.text(),
+      })
+      const body = await r.json().catch(() => null)
+      setImpResult(r.ok ? body : { error: body?.detail || `HTTP ${r.status}` })
+      if (r.ok) load()
+    } catch (err) {
+      setImpResult({ error: String(err) })
+    }
+    setImpBusy(false)
+  }
 
   // deep-link (#/log?d=…&edit=…): a failure or asset-page row jumps here to
   // edit an entry — open its day and put it straight into edit mode
@@ -731,27 +747,71 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
         <p className="dim">Viewing only — sign in with your line account to add entries.</p>
       )}
 
-      {canWrite && <HistoryImportBar />}
-
-      <div className="log-filters">
-        <button type="button" className={`btn preset${allDates ? ' active' : ''}`}
-                onClick={() => setAllDates(true)}>All dates</button>
-        <label className="dim">Class <select value={fCat} onChange={(e) => setFCat(e.target.value)}>
-          <option value="">All</option>
-          {classes.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select></label>
-        <label className="dim">Type <select value={fType} onChange={(e) => setFType(e.target.value)}>
-          <option value="">All</option>
+      {/* unified toolbar — same language as the asset register: search · filters
+          · count · actions, frozen under the topbar as the log scrolls */}
+      <div className="asset-toolbar" ref={toolbarRef}>
+        <input className="asset-search" type="search" value={search} onChange={(e) => setSearch(e.target.value)}
+               placeholder="Search the log — text, asset, crew, fault…" aria-label="Search the log" />
+        <div className="asset-filter" role="tablist" aria-label="Date scope">
+          <button type="button" className={`btn preset${allDates ? ' active' : ''}`}
+                  onClick={() => setAllDates(true)}>All dates</button>
+        </div>
+        <select value={fType} onChange={(e) => setFType(e.target.value)} aria-label="Filter by type">
+          <option value="">All types</option>
           {ENTRY_TYPES.map((t) => <option key={t} value={t}>{t[0].toUpperCase() + t.slice(1)}</option>)}
-        </select></label>
-        {/* every shift is always rendered per day now, so a shift filter would
-            only hide the "nothing logged" fact the sections exist to show */}
-        <label className="dim">Period <select value={period}
-                onChange={(e) => { setPeriod(e.target.value); setAllDates(true) }}>
+        </select>
+        <select value={fCat} onChange={(e) => setFCat(e.target.value)} aria-label="Filter by class">
+          <option value="">All classes</option>
+          {classes.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select value={period} onChange={(e) => { setPeriod(e.target.value); setAllDates(true) }} aria-label="Period">
           {PERIODS.map(([lbl, v]) => <option key={v} value={v}>{lbl}</option>)}
-        </select></label>
-        {allDates && from && <span className="dim">{fmtDate(from)} — {fmtDate(to)}</span>}
+        </select>
+        {(search || fCat || fType || !allDates) && (
+          <button type="button" className="btn ghost sm" onClick={() => {
+            setSearch(''); setFCat(''); setFType(''); setAllDates(true)
+          }}>Clear</button>
+        )}
+        <span className="asset-count">
+          {qParam.trim() || allDates ? `${total.toLocaleString()} entr${total === 1 ? 'y' : 'ies'}` : fmtDate(logDate)}
+        </span>
+        <div className="asset-actions">
+          <button type="button" className="icon-btn" title="Download the entries in view (CSV)"
+                  aria-label="Download entries" onClick={exportCsv} disabled={!entries.length}>
+            <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M8 2.4v7.2M4.8 6.6 8 9.8l3.2-3.2M3 12.8h10" /></svg>
+          </button>
+          <button type="button" className="icon-btn" title="Print the log in view"
+                  aria-label="Print log" onClick={() => window.print()}>
+            <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4.5 6V2.5h7V6M4.5 12H3.2V6.4h9.6V12H11.5M4.5 9.6h7V13.5h-7z" /></svg>
+          </button>
+          {canWrite && (
+            <button type="button" className={`icon-btn${impBusy ? ' disabled' : ''}`} title="Import history CSV"
+                    aria-label="Import history" onClick={() => fileRef.current?.click()} disabled={impBusy}>
+              <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M8 9.8V2.6M4.8 5.8 8 2.6l3.2 3.2M3 12.8h10" /></svg>
+            </button>
+          )}
+          <input ref={fileRef} type="file" accept=".csv,text/csv" hidden onChange={onImportFile} />
+        </div>
       </div>
+      <div className="print-caption">
+        AMPS · {ORG} — shift logbook · {qParam.trim() ? `“${qParam.trim()}”` : allDates && from ? `${fmtDate(from)} — ${fmtDate(to)}` : fmtDate(logDate)}
+        {fType ? ` · ${fType}` : ''}{fCat ? ` · ${fCat}` : ''} · {total.toLocaleString()} entries · {today()}
+      </div>
+      {(impBusy || impResult) && (
+        <div className="import-status">
+          {impBusy ? <span className="dim">Importing…</span>
+            : impResult.error ? <span className="import-msg err">{impResult.error}</span>
+            : <span className="import-msg">
+                {impResult.log_entries} log · {impResult.failures} failures · {impResult.skipped} skipped · {impResult.failed} failed
+                {impResult.errors?.length ? ` — ${impResult.errors[0]}` : ''}
+                {' '}<a className="mini-btn" href={`${API}/api/logbook/import/sample`} download>sample CSV</a>
+              </span>}
+        </div>
+      )}
+      {allDates && from && !qParam.trim() && <p className="dim log-range">{fmtDate(from)} — {fmtDate(to)}</p>}
 
       {Object.entries(byDay).map(([day, list]) => (
         <div key={day} className="log-day">
