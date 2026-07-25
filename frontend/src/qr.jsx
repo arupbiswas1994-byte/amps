@@ -34,4 +34,7 @@ export default function QR({ value, size = 128 }) {
   )
 }
 
-export const assetUrl = (code) => `${location.origin}/#/asset/${code}`
+// Encode the code so the QR/link is a valid URL — codes carry spaces and
+// parens (e.g. "AHU-01 (CPD DCOS)"). encodeURIComponent is the exact inverse of
+// the router's decode, so the page opens cleanly when scanned.
+export const assetUrl = (code) => `${location.origin}/#/asset/${encodeURIComponent(code)}`
