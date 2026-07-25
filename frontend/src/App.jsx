@@ -1317,8 +1317,14 @@ function LiveFailures() {
   const [rows, setRows] = useState([])
   const [error, setError] = useState(null)
   const [cls, setCls] = useState('')
+  const [q, setQ] = useState('')
   const [state, setState] = useState('open')   // tab: 'open' | 'resolved'
   const [period, setPeriod] = useState(0)
+  const toolbarRef = useRef(null)
+  useEffect(() => {
+    const setVars = () => { const tb = document.querySelector('.topbar'); if (tb) document.documentElement.style.setProperty('--topbar-h', `${tb.offsetHeight}px`) }
+    setVars(); window.addEventListener('resize', setVars); return () => window.removeEventListener('resize', setVars)
+  })
 
   const [periodLabel, days, months] = FAIL_PERIODS[period]
 
@@ -1348,22 +1354,51 @@ function LiveFailures() {
 
   // two tabs: still-open breakdowns vs restored ones. A row is open until a
   // recovery time exists (linked or not); unlinked-open rows are flagged.
-  const byClass = (r) => !cls || (r.category || 'Unclassified') === cls
-  const openRows = rows.filter((r) => !r.ended_at && byClass(r))
-  const resolvedRows = rows.filter((r) => r.ended_at && byClass(r))
+  const ql = q.trim().toLowerCase()
+  const match = (r) => (!cls || (r.category || 'Unclassified') === cls)
+    && (!ql || [r.asset_code, r.text, r.fault_type, r.attended_by, r.category].some((v) => (v || '').toLowerCase().includes(ql)))
+  const openRows = rows.filter((r) => !r.ended_at && match(r))
+  const resolvedRows = rows.filter((r) => r.ended_at && match(r))
   const shown = state === 'open' ? openRows : resolvedRows
+
+  const exportCsv = () => {
+    const cell = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
+    const head = ['asset', 'class', 'occurred', 'restored', 'down_hours', 'state', 'team', 'fault_type', 'what_happened']
+    const body = shown.map((f) => [f.asset_code || '', f.category || '', f.log_date,
+      f.ended_at ? (f.ended_at.slice(11, 16) === '00:00' ? f.ended_at.slice(0, 10) : f.ended_at.slice(0, 16).replace('T', ' ')) : '',
+      f.down_hours ?? '', !f.asset_code ? 'unlinked' : f.ended_at ? 'restored' : 'open',
+      f.attended_by || f.entered_by || '', f.fault_type || '', tidyLog(f.text)].map(cell).join(','))
+    const csv = [head.join(','), ...body].join('\n')
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+    const a = document.createElement('a'); a.href = url
+    a.download = `amps-failures-${state}-${new Date().toISOString().slice(0, 10)}.csv`; a.click(); URL.revokeObjectURL(url)
+  }
 
   return (
     <>
-      <div className="log-filters">
-        <label className="dim">Period <select value={period} onChange={(e) => setPeriod(Number(e.target.value))}>
+      <div className="asset-toolbar" ref={toolbarRef}>
+        <input className="asset-search" type="search" value={q} onChange={(e) => setQ(e.target.value)}
+               placeholder="Search failures — asset, fault, crew…" aria-label="Search failures" />
+        <select value={period} onChange={(e) => setPeriod(Number(e.target.value))} aria-label="Period">
           {FAIL_PERIODS.map(([lbl], i) => <option key={lbl} value={i}>{lbl}</option>)}
-        </select></label>
-        <label className="dim">Class <select value={cls} onChange={(e) => setCls(e.target.value)}>
-          <option value="">All</option>
+        </select>
+        <select value={cls} onChange={(e) => setCls(e.target.value)} aria-label="Filter by class">
+          <option value="">All classes</option>
           {stats.by_class.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
-        </select></label>
-        <span className="dim">Read-only — report a failure in the <a href="#/log">Log book</a>.</span>
+        </select>
+        {(q || cls) && <button type="button" className="btn ghost sm" onClick={() => { setQ(''); setCls('') }}>Clear</button>}
+        <span className="asset-count">{shown.length} shown</span>
+        <div className="asset-actions">
+          <button type="button" className="icon-btn" title="Download the failures in view (CSV)"
+                  aria-label="Download failures" onClick={exportCsv} disabled={!shown.length}>
+            <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M8 2.4v7.2M4.8 6.6 8 9.8l3.2-3.2M3 12.8h10" /></svg>
+          </button>
+          <button type="button" className="icon-btn" title="Print" aria-label="Print" onClick={() => window.print()}>
+            <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4.5 6V2.5h7V6M4.5 12H3.2V6.4h9.6V12H11.5M4.5 9.6h7V13.5h-7z" /></svg>
+          </button>
+        </div>
       </div>
 
       <div className="kpis">
