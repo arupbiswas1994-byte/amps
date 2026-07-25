@@ -2227,6 +2227,11 @@ export default function App() {
   const routePath = route.split('?')[0]
   const routeQuery = new URLSearchParams(route.split('?')[1] || '')
   const assetMatch = routePath.match(/^\/asset\/(.+)$/)
+  // codes carry spaces/parens — the hash percent-encodes them, so decode once
+  // here (encodeURIComponent is re-applied at fetch time). Guarded: a stray
+  // '%' in a code would otherwise throw.
+  const safeDecode = (s) => { try { return decodeURIComponent(s) } catch { return s } }
+  const assetCode = assetMatch ? safeDecode(assetMatch[1]) : null
   const lineMatch = routePath.match(/^\/line\/(.+)$/)
   const letterMatch = routePath.match(/^\/procurement\/([^/]+)\/letter$/)
   const csMatch = routePath.match(/^\/checksheet\/(wo|pm)\/([^/]+)(?:\/(.+))?$/)
@@ -2258,7 +2263,7 @@ export default function App() {
             <a href="#/login" className="btn login-btn">Sign in</a>
           </nav>
         </header>
-        {assetMatch ? <LiveAssetDetail code={assetMatch[1]} />
+        {assetMatch ? <LiveAssetDetail code={assetCode} />
           : <LineView name={decodeURIComponent(lineMatch[1])} />}
         <footer className="foot">{ORG} · maintenance records · <AmpsLink />, MIT © 2026 <FootSig /></footer>
       </div>
@@ -2287,7 +2292,7 @@ export default function App() {
         </nav>
       </header>
 
-      {assetMatch ? (LIVE ? <LiveAssetDetail code={assetMatch[1]} /> : <AssetDetail code={assetMatch[1]} />)
+      {assetMatch ? (LIVE ? <LiveAssetDetail code={assetCode} /> : <AssetDetail code={assetCode} />)
         : lineMatch ? (LIVE ? <LineView name={decodeURIComponent(lineMatch[1])} /> : <NotYet />)
         : letterMatch ? (LIVE ? <NotYet /> : <ProposalLetter prId={letterMatch[1]} />)
         : csMatch ? (LIVE ? <NotYet /> : <Checksheet kind={csMatch[1]} a1={csMatch[2]} a2={csMatch[3]} />)
