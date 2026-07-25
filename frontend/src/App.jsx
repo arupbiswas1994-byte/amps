@@ -508,6 +508,7 @@ function LogRow({ en, staff }) {
         {staff && <span className="wo-edit"><EditLink id={en.id} date={en.log_date} /></span>}
       </div>
       <div className="findings">{tidyLog(en.text)}</div>
+      {en.consumables && <div className="le-consumables"><span className="lc-tag">Consumed</span> {en.consumables}</div>}
       {(en.attended_by || en.entered_by) && (
         <div className="sub">by <b>{en.attended_by || en.entered_by}</b>
           {en.attended_by && en.attended_by !== en.entered_by && <> · recorded by {en.entered_by}</>}
@@ -730,7 +731,7 @@ function AssetForm({ initial, mode, onDone, onCancel }) {
   const empty = {
     code: '', name: '', asset_class: '', location: '', line: '',
     system: '', make_model: '', criticality: 'B', status: 'in_service',
-    commissioned_on: '',
+    commissioned_on: '', description: '', remarks: '', codal_life_years: '',
   }
   // edit maps the full asset view; create starts empty but honours a couple of
   // sensible defaults (the line the register is currently showing)
@@ -739,6 +740,8 @@ function AssetForm({ initial, mode, onDone, onCancel }) {
     location: initial.location, line: initial.line || '', system: initial.sys || '',
     make_model: initial.makeModel || '', criticality: initial.criticality,
     status: initial.status, commissioned_on: initial.commissionedOn || '',
+    description: initial.description || '', remarks: initial.remarks || '',
+    codal_life_years: initial.codalLifeYears ?? '',
   } : { ...empty, line: initial?.line || '' }
   const [f, setF] = useState(start)
   const [busy, setBusy] = useState(false)
@@ -793,12 +796,18 @@ function AssetForm({ initial, mode, onDone, onCancel }) {
         <label>System<input value={f.system} onChange={set('system')} placeholder="reporting rollup" /></label>
         <label>Make / model<input value={f.make_model} onChange={set('make_model')} /></label>
         <label>Commissioned on<input type="date" value={f.commissioned_on} onChange={set('commissioned_on')} /></label>
+        <label>Codal life (years)<input type="number" min="0" value={f.codal_life_years}
+                                        onChange={set('codal_life_years')} placeholder="e.g. 25" /></label>
         <label>Criticality<select value={f.criticality} onChange={set('criticality')}>
           {CRITICALITY.map((c) => <option key={c} value={c}>{c}</option>)}
         </select></label>
         <label>Status<select value={f.status} onChange={set('status')}>
           {STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
         </select></label>
+        <label className="af-full">Description<textarea value={f.description} rows={2}
+                                    onChange={set('description')} placeholder="a fuller description of the asset" /></label>
+        <label className="af-full">Remarks<textarea value={f.remarks} rows={2}
+                                    onChange={set('remarks')} placeholder="free-form remarks" /></label>
       </div>
       {codeChanged && (
         <p className="af-warn">Changing the code re-keys the asset — the printed QR tag will need reprinting. History is preserved.</p>
@@ -908,6 +917,7 @@ function LiveAssetDetail({ code }) {
             ['Asset class', a.cls],
             ['Make / model', a.makeModel || '—'],
             ['Commissioned', a.commissionedOn || '—'],
+            ['Codal life', a.codalLifeYears != null ? `${a.codalLifeYears} years` : '—'],
             ['Last serviced', lastServiced || '—'],
             ['Maintenance records', String(maint.length)],
           ].map(([k, v]) => (
@@ -916,6 +926,12 @@ function LiveAssetDetail({ code }) {
               <span className="fv">{v}</span>
             </div>
           ))}
+          {(a.description || a.remarks) && (
+            <div className="fact fact-wide">
+              {a.description && <><span className="fk">Description</span><span className="fv">{a.description}</span></>}
+              {a.remarks && <><span className="fk" style={{ marginTop: a.description ? 8 : 0 }}>Remarks</span><span className="fv">{a.remarks}</span></>}
+            </div>
+          )}
         </div>
 
         <div className="card"><MaintenanceSchedule schedule={schedule} /></div>

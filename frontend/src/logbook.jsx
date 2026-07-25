@@ -167,6 +167,7 @@ function EditEntryForm({ entry, assets, systems, classSystem, onCancel, onSaved 
   const [system, setSystem] = useState(entry.system || '')
   const [category, setCategory] = useState(entry.category || '')
   const [team, setTeam] = useState(entry.attended_by || '')
+  const [consumables, setConsumables] = useState(entry.consumables || '')
   const [tim, setTim] = useState(hhmm(entry.at))
   const [faultType, setFaultType] = useState(entry.fault_type || '')
   const [endDate, setEndDate] = useState(entry.ended_at ? entry.ended_at.slice(0, 10) : '')
@@ -194,6 +195,7 @@ function EditEntryForm({ entry, assets, systems, classSystem, onCancel, onSaved 
           system: system || null, category: category || null,
           asset_code: assetCode.trim() || null,
           time: tim || null, text: text.trim(), attended_by: team.trim() || null,
+          consumables: consumables.trim() || null,
           fault_type: isFail ? (faultType.trim() || null) : null,
           end_date: isFail ? (endDate || null) : null,
           end_time: isFail ? (endTim || null) : null,
@@ -263,6 +265,10 @@ function EditEntryForm({ entry, assets, systems, classSystem, onCancel, onSaved 
                 <input type="time" value={endTim} onChange={(e) => setEndTim(e.target.value)} />
               </label>
             </>}
+            <label className="fg-span">Consumables / consumed
+              <input value={consumables} onChange={(e) => setConsumables(e.target.value)}
+                     placeholder="spares / materials used — e.g. 2× PT fuse, 1L transformer oil" />
+            </label>
             <label className="fg-span">Entry
               <textarea ref={textRef} value={text} rows={2}
                         onChange={(e) => setText(e.target.value)} placeholder="What was done, readings, event…" />
@@ -341,6 +347,7 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
   const [err, setErr] = useState('')
   // add-entry form
   const [text, setText] = useState('')
+  const [consumables, setConsumables] = useState('')
   const [shift, setShift] = useState('M')
   const [type, setType] = useState('general')
   const [subtype, setSubtype] = useState('Monthly')
@@ -449,10 +456,10 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
   // download the entries currently in view as CSV
   const exportCsv = () => {
     const cell = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
-    const head = ['date', 'shift', 'time', 'type', 'subtype', 'system', 'class', 'asset', 'entry', 'attended_by']
+    const head = ['date', 'shift', 'time', 'type', 'subtype', 'system', 'class', 'asset', 'entry', 'consumables', 'attended_by']
     const body = entries.map((e) => [
       e.log_date, e.shift, hhmm(e.at), e.type, e.subtype || '', e.system || '', e.category || '',
-      e.asset_code || '', bodyText(e.text), e.attended_by || e.entered_by || '',
+      e.asset_code || '', bodyText(e.text), e.consumables || '', e.attended_by || e.entered_by || '',
     ].map(cell).join(','))
     const csv = [head.join(','), ...body].join('\n')
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
@@ -524,6 +531,7 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
           asset_code: assetCode.trim() || null,
           text: text.trim(), entered_by: author.trim() || 'demo.visitor',
           attended_by: team.trim() || null,
+          consumables: consumables.trim() || null,
           // one submit, two immutable entries — the backend commits them together
           rectification: type === 'failure' && rectified ? {
             log_date: rDate || logDate,
@@ -543,7 +551,7 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
         const body = await res.json().catch(() => null)
         throw new Error(body?.detail || `HTTP ${res.status}`)
       }
-      setText(''); setAssetCode(''); setTim(''); setFaultType(''); setSystem('')
+      setText(''); setConsumables(''); setAssetCode(''); setTim(''); setFaultType(''); setSystem('')
       setRectified(false); setRDate(''); setRTim(''); setRText(''); setRTeam('')
       setTeam('')
       setAllDates(false)  // show the day just written to
@@ -749,6 +757,10 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
                            placeholder="e.g. DC earth fault" maxLength={120} />
                   </label>
                 )}
+                <label className="fg-span">Consumables / consumed <span className="ef-opt">(optional)</span>
+                  <input value={consumables} onChange={(e) => setConsumables(e.target.value)}
+                         placeholder="spares / materials used — e.g. 2× PT fuse, 1L transformer oil" />
+                </label>
                 <label className="fg-span">Entry
                   <textarea value={text} rows={2} onChange={(e) => setText(e.target.value)}
                             placeholder={`Log entry for ${fmtDate(logDate)} — work done, readings, events…`} />
@@ -861,6 +873,7 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
                             )}
                           </div>
                           <div className="log-text">{bodyText(en.text)}</div>
+                          {en.consumables && <div className="le-consumables"><span className="lc-tag">Consumed</span> {en.consumables}</div>}
                           <div className="le-by">
                             <b>{en.attended_by || en.entered_by}</b>
                             {en.attended_by && en.attended_by !== en.entered_by && <> · rec. {en.entered_by}</>}

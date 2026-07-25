@@ -77,6 +77,11 @@ class Asset(Base):
     commissioned_on: Mapped[date | None]
     status: Mapped[AssetStatus] = mapped_column(default=AssetStatus.IN_SERVICE)
     criticality: Mapped[Criticality] = mapped_column(default=Criticality.B)
+    # narrative fields — a fuller description, free-form remarks, and the codal
+    # life (the prescribed service life in years, per the railway asset code)
+    description: Mapped[str | None] = mapped_column(Text)
+    remarks: Mapped[str | None] = mapped_column(Text)
+    codal_life_years: Mapped[int | None]
 
     asset_class: Mapped[AssetClass] = relationship()
     location: Mapped[Location] = relationship(back_populates="assets")
@@ -260,6 +265,8 @@ class LogEntry(Base):
     # table so the logbook stays the single source of truth.
     ended_at: Mapped[datetime | None]
     fault_type: Mapped[str | None] = mapped_column(String(120))
+    # spares / materials consumed during the work (free text, e.g. "2× PT fuse")
+    consumables: Mapped[str | None] = mapped_column(Text)
     asset_id: Mapped[int | None] = mapped_column(ForeignKey("assets.id"))
     text: Mapped[str] = mapped_column(Text)
     # Who WROTE the entry (the session on authenticated deployments) versus

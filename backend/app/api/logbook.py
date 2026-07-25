@@ -38,6 +38,7 @@ class LogEntryIn(BaseModel):
     text: str = Field(min_length=3)
     entered_by: str = ""                # ignored on authenticated deployments
     attended_by: str | None = None      # the crew that actually did the work
+    consumables: str | None = None      # spares/materials consumed (free text)
     asset_code: str | None = None
     corrects_id: int | None = None
     # failure rows only: when supply/equipment came back, and the fault class.
@@ -71,6 +72,7 @@ class LogEntryOut(BaseModel):
     rectifies_id: int | None
     ended_at: datetime | None
     fault_type: str | None
+    consumables: str | None
     down_hours: float | None
 
 
@@ -115,6 +117,7 @@ def _to_out(e: LogEntry, recovered: datetime | None = None) -> LogEntryOut:
         asset_name=e.asset.name if e.asset else None, corrects_id=e.corrects_id,
         rectifies_id=e.rectifies_id,
         ended_at=e.ended_at or recovered, fault_type=e.fault_type,
+        consumables=e.consumables,
         down_hours=_down_hours(e, recovered),
     )
 
@@ -216,6 +219,7 @@ def _create_entry(db: Session, entry: LogEntryIn, user, rectifies: LogEntry | No
                     if etype == LogEntryType.FAILURE else None),
         entered_by=author,
         attended_by=((entry.attended_by or "").strip()[:200] or None),
+        consumables=((entry.consumables or "").strip() or None),
         asset=asset, corrects_id=entry.corrects_id,
         line_id=user.line_id,  # NULL = department-wide entry (HQ/admin)
     )
@@ -429,11 +433,11 @@ import io as _io
 from fastapi import Request, Response
 from sqlalchemy.exc import SQLAlchemyError
 
-LOG_SAMPLE_CSV = """kind,type,group,asset_id,station,location,equipment,start,end,fault_type,details,action_taken,attended_by,reported_by,repercussion
-maintenance,YEARLY MAINTENANCE,HT,B2HB11,Baranagar,TSS/ASS,VCB,2026-01-05,2026-01-05,,Maintenance done,,PS Staff,,
-failure,FAILURE,HT,B2HB11,Baranagar,TSS/ASS,VCB,2026-02-10 14:30,2026-02-10 16:05,Communication fault,Failure of operation from SCADA,Card replaced and tested,PS Staff,TPC,Supply fed from standby
-rectification,RECTIFICATION,HT,B2HB11,Baranagar,TSS/ASS,VCB,2026-02-11 10:00,2026-02-11 12:30,Communication fault,Faulty comm card replaced with spare and re-tested,Card swapped; SCADA link verified,PS Staff,,
-general,NOTE,HT,B2HB11,Baranagar,TSS/ASS,VCB,2026-03-01,,,Panel cleaned and inspected during patrol,,PS Staff,,
+LOG_SAMPLE_CSV = """kind,type,group,asset_id,station,location,equipment,start,end,fault_type,details,action_taken,consumables,attended_by,reported_by,repercussion
+maintenance,YEARLY MAINTENANCE,HT,B2HB11,Baranagar,TSS/ASS,VCB,2026-01-05,2026-01-05,,Maintenance done,,,PS Staff,,
+failure,FAILURE,HT,B2HB11,Baranagar,TSS/ASS,VCB,2026-02-10 14:30,2026-02-10 16:05,Communication fault,Failure of operation from SCADA,Card replaced and tested,1× comm card,PS Staff,TPC,Supply fed from standby
+rectification,RECTIFICATION,HT,B2HB11,Baranagar,TSS/ASS,VCB,2026-02-11 10:00,2026-02-11 12:30,Communication fault,Faulty comm card replaced with spare and re-tested,Card swapped; SCADA link verified,1× spare card; 2× PT fuse,PS Staff,,
+general,NOTE,HT,B2HB11,Baranagar,TSS/ASS,VCB,2026-03-01,,,Panel cleaned and inspected during patrol,,,PS Staff,,
 """
 
 
@@ -553,6 +557,7 @@ async def import_history(request: Request, db: Session = Depends(get_db),
                 fault_type=(get("fault_type")[:120] or None) if has_recovery else None,
                 text=body_text, entered_by=(get("attended_by") or "imported record")[:120],
                 attended_by=(get("attended_by")[:200] or None),
+                consumables=(get("consumables") or None),
                 asset=asset, line_id=line_id))
             if is_failure:
                 n_fails += 1

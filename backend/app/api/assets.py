@@ -62,6 +62,9 @@ class AssetIn(BaseModel):
     status: str = "in_service"
     line: str | None = None  # parent site in the location tree, e.g. "Green Line"
     commissioned_on: date | None = None  # in service since — a technical detail
+    description: str | None = None       # a fuller description of the asset
+    remarks: str | None = None           # free-form remarks
+    codal_life_years: int | None = None  # prescribed service life, in years
 
 
 class AssetUpdate(BaseModel):
@@ -77,6 +80,9 @@ class AssetUpdate(BaseModel):
     status: str | None = None
     line: str | None = None
     commissioned_on: date | None = None
+    description: str | None = None
+    remarks: str | None = None
+    codal_life_years: int | None = None
 
 
 class AssetOut(AssetIn):
@@ -91,6 +97,8 @@ def _to_out(a: Asset) -> AssetOut:
         criticality=a.criticality.value, system=a.system,
         line=a.location.parent.name if a.location.parent else None,
         commissioned_on=a.commissioned_on,
+        description=a.description, remarks=a.remarks,
+        codal_life_years=a.codal_life_years,
     )
 
 
@@ -157,6 +165,8 @@ def _create_one(db: Session, asset: AssetIn, user) -> Asset:
         code=asset.code, name=asset.name, make_model=asset.make_model,
         criticality=crit, system=asset.system, status=status,
         commissioned_on=asset.commissioned_on,
+        description=asset.description, remarks=asset.remarks,
+        codal_life_years=asset.codal_life_years,
         asset_class=_get_or_create_class(db, asset.asset_class),
         location=_get_or_create_location(db, asset.location, asset.line),
     )
@@ -183,20 +193,24 @@ def create_asset(asset: AssetIn, db: Session = Depends(get_db), user=Depends(cur
 #   criticality      A (vital) / B (important) / C (tolerable); default B
 #   status           in_service / under_maintenance / out_of_service / decommissioned
 #   commissioned_on  in service since — YYYY-MM-DD
+#   description      a fuller description of the asset (free text)
+#   remarks          free-form remarks
+#   codal_life_years the prescribed service life in years (whole number)
 #   Monthly … 5-Yearly  the PM cycles this asset needs — one column per cycle;
 #                    put TRUE (or a tick) in each cycle that applies. All blank ⇒
 #                    the schedule is inferred from the logbook instead.
 #   last_maintenance last PM date (YYYY-MM-DD) — seeds the schedule for history
 #                    recorded before the logbook; the log takes over after.
-SAMPLE_CSV = """code,name,asset_class,location,line,system,make_model,criticality,status,commissioned_on,Monthly,Quarterly,Half-Yearly,Yearly,5-Yearly,last_maintenance
-B2HB11,VCB,33KV SWITCHGEAR,Baranagar,Blue Line,HT · 33kV,"SIEMENS LTD.,INDIA",A,in_service,2019-03-15,,,,TRUE,,2025-11-06
-LP-C-01(BARA),Concourse Light Panel,DISTRIBUTION BOARD,Baranagar,Blue Line,LT · LT Panels,,B,in_service,,,TRUE,,TRUE,,2026-01-10
-AHU-M1(BARA),AHU Unit 1,ECS- AXIAL FLOW FAN,Baranagar,Blue Line,LT · ECS (AC),M/S VOLTAS,B,in_service,,TRUE,,TRUE,TRUE,,
+SAMPLE_CSV = """code,name,asset_class,location,line,system,make_model,criticality,status,commissioned_on,description,remarks,codal_life_years,Monthly,Quarterly,Half-Yearly,Yearly,5-Yearly,last_maintenance
+B2HB11,VCB,33KV SWITCHGEAR,Baranagar,Blue Line,HT · 33kV,"SIEMENS LTD.,INDIA",A,in_service,2019-03-15,33kV vacuum circuit breaker — incomer feeder,Under AMC,25,,,,TRUE,,2025-11-06
+LP-C-01(BARA),Concourse Light Panel,DISTRIBUTION BOARD,Baranagar,Blue Line,LT · LT Panels,,B,in_service,,Concourse lighting distribution panel,,15,,TRUE,,TRUE,,2026-01-10
+AHU-M1(BARA),AHU Unit 1,ECS- AXIAL FLOW FAN,Baranagar,Blue Line,LT · ECS (AC),M/S VOLTAS,B,in_service,,Air handling unit for concourse,Belt due for review,20,TRUE,,TRUE,TRUE,,
 """
 
 REQUIRED_COLS = ("code", "name", "asset_class", "location")
 # columns fed straight to AssetIn
-OPTIONAL_COLS = ("line", "system", "make_model", "criticality", "status", "commissioned_on")
+OPTIONAL_COLS = ("line", "system", "make_model", "criticality", "status",
+                 "commissioned_on", "description", "remarks", "codal_life_years")
 
 # the five schedule cycles, each a checkbox column in the register sheet
 CYCLE_LABELS = ("Monthly", "Quarterly", "Half-Yearly", "Yearly", "5-Yearly")
@@ -371,6 +385,14 @@ def update_asset(code: str, patch: AssetUpdate, db: Session = Depends(get_db),
     if patch.commissioned_on is not None and patch.commissioned_on != a.commissioned_on:
         note("commissioned", a.commissioned_on, patch.commissioned_on)
         a.commissioned_on = patch.commissioned_on
+    if patch.description is not None and patch.description != (a.description or ""):
+        note("description", a.description, patch.description)
+        a.description = patch.description or None
+    if patch.remarks is not None and patch.remarks != (a.remarks or ""):
+        note("remarks", a.remarks, patch.remarks); a.remarks = patch.remarks or None
+    if patch.codal_life_years is not None and patch.codal_life_years != a.codal_life_years:
+        note("codal life", a.codal_life_years, patch.codal_life_years)
+        a.codal_life_years = patch.codal_life_years
     if patch.criticality is not None and patch.criticality != a.criticality.value:
         try:
             note("criticality", a.criticality.value, patch.criticality)

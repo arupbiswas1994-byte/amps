@@ -34,12 +34,13 @@ def _migrate(engine):
     from sqlalchemy import inspect, text
 
     wanted = {
-        "assets": {"system": "VARCHAR(80)"},
+        "assets": {"system": "VARCHAR(80)", "description": "TEXT", "remarks": "TEXT",
+                   "codal_life_years": "INTEGER"},
         "users": {"password_hash": "VARCHAR(200)", "line_id": "INTEGER"},
         "log_entries": {"line_id": "INTEGER", "subtype": "VARCHAR(40)", "category": "VARCHAR(80)",
                         "ended_at": "TIMESTAMP", "fault_type": "VARCHAR(120)",
                         "rectifies_id": "INTEGER", "attended_by": "VARCHAR(200)",
-                        "system": "VARCHAR(80)"},
+                        "system": "VARCHAR(80)", "consumables": "TEXT"},
     }
     # widen columns that real-world data outgrew (no-op where already wide;
     # SQLite ignores VARCHAR lengths so this only matters on Postgres).

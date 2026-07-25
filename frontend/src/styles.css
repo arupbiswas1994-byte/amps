@@ -333,6 +333,11 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 /* the PM-state chip sits inline in the table's PM-state cell */
 td .chip.d-none { color: var(--ink-3); }
 
+/* consumables / consumed line on a log entry */
+.le-consumables { font-size: 12.5px; color: var(--ink-2); margin-top: 3px; }
+.lc-tag { display: inline-block; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  color: #6b5121; background: #f7efdd; border: 1px solid #ecdfc7; border-radius: 99px; padding: 1px 7px; margin-right: 6px; }
+
 /* print caption — only on paper */
 .print-caption { display: none; }
 @media print {
@@ -601,9 +606,13 @@ td .chip.d-none { color: var(--ink-3); }
 .af-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
 .af-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px;
   color: var(--ink-2); font-weight: 600; }
-.af-grid input, .af-grid select { font: inherit; font-weight: 400; color: var(--ink);
+.af-grid input, .af-grid select, .af-grid textarea { font: inherit; font-weight: 400; color: var(--ink);
   padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; background: #fff; }
-.af-grid input:focus, .af-grid select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.af-grid textarea { resize: vertical; line-height: 1.4; }
+.af-grid input:focus, .af-grid select:focus, .af-grid textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.af-grid .af-full { grid-column: 1 / -1; }
+/* a full-width fact cell for the long-form description / remarks */
+.asset-facts .fact-wide { grid-column: 1 / -1; border-bottom: none; }
 .af-warn { margin-top: 12px; font-size: 13px; color: #8a6100;
   background: #fdf6e6; border: 1px solid #f0e0b8; border-radius: 7px; padding: 8px 12px; }
 .af-actions { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
