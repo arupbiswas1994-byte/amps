@@ -348,6 +348,8 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
   // add-entry form
   const [text, setText] = useState('')
   const [consumables, setConsumables] = useState('')
+  const [openFails, setOpenFails] = useState([])   // asset's open failures (for rectification)
+  const [rectifiesId, setRectifiesId] = useState('')  // the failure this rectification closes
   const [shift, setShift] = useState('M')
   const [type, setType] = useState('general')
   const [subtype, setSubtype] = useState('Monthly')
@@ -443,6 +445,18 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
   useEffect(() => { setPage(0) }, [logDate, allDates, fCat, fType, qParam, from, to])
   // debounce the search box so we don't hit the API on every keystroke
   useEffect(() => { const t = setTimeout(() => setQParam(search), 300); return () => clearTimeout(t) }, [search])
+  // logging a rectification against an asset → show that asset's OPEN failures so
+  // the fix can be linked to the exact breakdown it closes (sets rectifies_id).
+  useEffect(() => {
+    setRectifiesId('')
+    if (type !== 'rectification' || !assetCode.trim()) { setOpenFails([]); return }
+    let alive = true
+    fetch(`${API}/api/logbook?asset_code=${encodeURIComponent(assetCode.trim())}&entry_type=failure&limit=200`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows) => alive && setOpenFails(rows.filter((e) => !e.ended_at)))
+      .catch(() => alive && setOpenFails([]))
+    return () => { alive = false }
+  }, [type, assetCode])
   // freeze the toolbar: measure the sticky topbar so it parks just beneath it
   useEffect(() => {
     const setVars = () => {
@@ -532,6 +546,8 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
           text: text.trim(), entered_by: author.trim() || 'demo.visitor',
           attended_by: team.trim() || null,
           consumables: consumables.trim() || null,
+          // a rectification closes a specific open failure of the asset
+          rectifies_id: type === 'rectification' && rectifiesId ? Number(rectifiesId) : null,
           // one submit, two immutable entries — the backend commits them together
           rectification: type === 'failure' && rectified ? {
             log_date: rDate || logDate,
@@ -552,6 +568,7 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
         throw new Error(body?.detail || `HTTP ${res.status}`)
       }
       setText(''); setConsumables(''); setAssetCode(''); setTim(''); setFaultType(''); setSystem('')
+      setRectifiesId(''); setOpenFails([])
       setRectified(false); setRDate(''); setRTim(''); setRText(''); setRTeam('')
       setTeam('')
       setAllDates(false)  // show the day just written to
@@ -755,6 +772,20 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
                   <label>Fault type
                     <input value={faultType} onChange={(e) => setFaultType(e.target.value)}
                            placeholder="e.g. DC earth fault" maxLength={120} />
+                  </label>
+                )}
+                {type === 'rectification' && (
+                  <label className="fg-span">Closes open failure
+                    {!assetCode.trim()
+                      ? <input disabled placeholder="enter the Asset ID above to list its open failures" />
+                      : <select value={rectifiesId} onChange={(e) => setRectifiesId(e.target.value)}>
+                          <option value="">{openFails.length ? '— select the breakdown this fixes —' : 'no open failures on this asset'}</option>
+                          {openFails.map((f) => (
+                            <option key={f.id} value={f.id}>
+                              {f.log_date}{f.fault_type ? ` · ${f.fault_type}` : ''} — {bodyText(f.text).slice(0, 60)}
+                            </option>
+                          ))}
+                        </select>}
                   </label>
                 )}
                 <label className="fg-span">Consumables / consumed <span className="ef-opt">(optional)</span>
