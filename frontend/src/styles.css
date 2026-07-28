@@ -755,6 +755,7 @@ tbody tr:hover .edit-link { color: var(--accent); }
 .viz-compact .viz-cat { font-size: 10px; }
 .viz-compact .viz-val { font-size: 11px; }
 .fail-log-h { margin-top: 4px; }
+.line-subnav { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 
 /* ---- home dashboard ---- */
 .dash-kpis .dash-tile { text-decoration: none; color: inherit; transition: box-shadow .12s, transform .12s; display: block; }

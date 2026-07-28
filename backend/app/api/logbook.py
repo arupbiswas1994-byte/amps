@@ -282,6 +282,7 @@ def list_entries(log_date: date | None = None, shift: str | None = None,
                  asset_code: str | None = None, entry_type: str | None = None,
                  category: str | None = None, q: str | None = None,
                  date_from: date | None = None, date_to: date | None = None,
+                 line: str | None = None,
                  limit: int = 200, offset: int = 0, response: Response = None,
                  db: Session = Depends(get_db), user=Depends(optional_user)):
     """The day's log, a shift's log, or one asset's complete logged history.
@@ -304,6 +305,11 @@ def list_entries(log_date: date | None = None, shift: str | None = None,
     filters.append(LogEntry.id.not_in(superseded))
     if user.line_id is not None:
         filters.append((LogEntry.line_id == user.line_id) | (LogEntry.line_id.is_(None)))
+    if line and line.strip():
+        site = db.scalar(select(Location).where(Location.kind == LocationKind.SITE,
+                                                func.lower(Location.name) == line.strip().lower()))
+        if site:
+            filters.append(LogEntry.line_id == site.id)
     if log_date:
         filters.append(LogEntry.log_date == log_date)
     if date_from:
@@ -474,8 +480,8 @@ def logbook_bounds(db: Session = Depends(get_db), user=Depends(current_user)):
 
 
 @router.get("/failure-stats")
-def failure_stats(days: int = 90, months: int = 6, db: Session = Depends(get_db),
-                  user=Depends(optional_user)):
+def failure_stats(days: int = 90, months: int = 6, line: str | None = None,
+                  db: Session = Depends(get_db), user=Depends(optional_user)):
     """Breakdown KPIs off the one ledger — counts, downtime, MTTR, trend.
 
     Public (walk-up) surface: the aggregate figures and charts are open, but the
@@ -487,6 +493,14 @@ def failure_stats(days: int = 90, months: int = 6, db: Session = Depends(get_db)
     q = select(LogEntry).where(LogEntry.type == LogEntryType.FAILURE)
     if user.line_id is not None:
         q = q.where((LogEntry.line_id == user.line_id) | (LogEntry.line_id.is_(None)))
+    # optional public line filter: the walk-up failures board scopes to one line
+    # so each line shows its own KPIs instead of the network total. Ignored when
+    # it names a line the caller isn't already scoped to nothing.
+    if line and line.strip():
+        site = db.scalar(select(Location).where(Location.kind == LocationKind.SITE,
+                                                func.lower(Location.name) == line.strip().lower()))
+        if site:
+            q = q.where(LogEntry.line_id == site.id)
     rows = db.scalars(q).all()
     rec = _recovery_map(db, rows)
     recov_at = lambda e: (rec[e.id].at if e.id in rec else None)

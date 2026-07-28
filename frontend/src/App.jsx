@@ -285,13 +285,15 @@ function LiveDashboard({ go, initialLine = null }) {
         </div>
       )}
       {assets.length === 0 ? (
+        <>
         <div className="card"><p className="dim" style={{ margin: 0 }}>
           The register is empty.{' '}
-          {canWrite ? <>Download the <a href={`${import.meta.env.VITE_AMPS_API ?? ''}/api/assets/import/sample`} download>blank template</a>, fill one row per asset, then import it with the <b>↑</b> button — the register, QR tags and asset pages all fill in from here.</>
-            : <>A writer can import the standard register CSV to fill it.</>}
+          {canWrite ? <>Add assets one at a time with <b>+ New asset</b>, or bulk-load them from the <a href={`${import.meta.env.VITE_AMPS_API ?? ''}/api/assets/import/sample`} download>blank template</a> with <b>↑ Import CSV</b> — you can start now and import a sheet later. The register, QR tags and asset pages all fill in from here.</>
+            : <>A writer can add assets here or import the standard register CSV.</>}
         </p>
         {canWrite && (
           <div className="import-status" style={{ marginTop: 12 }}>
+            <button type="button" className={`btn sm ${newOpen ? 'ghost' : ''}`} onClick={() => setNewOpen((v) => !v)}>{newOpen ? 'Close' : '+ New asset'}</button>
             <button type="button" className="btn ghost sm" onClick={() => fileRef.current?.click()} disabled={impBusy}>{impBusy ? 'Importing…' : '↑ Import CSV'}</button>
             <input ref={fileRef} type="file" accept=".csv,text/csv" hidden onChange={onImportFile} />
             {impResult && (impResult.error
@@ -300,6 +302,15 @@ function LiveDashboard({ go, initialLine = null }) {
           </div>
         )}
         </div>
+        {newOpen && canWrite && (
+          <div className="card newasset-card">
+            <AssetForm mode="create"
+                       initial={effLine ? { line: effLine, criticality: 'B', status: 'in_service' } : null}
+                       onCancel={() => setNewOpen(false)}
+                       onDone={(code) => { setNewOpen(false); location.hash = `/asset/${code}` }} />
+          </div>
+        )}
+        </>
       ) : (
         <>
           <div className="asset-toolbar" ref={toolbarRef}>
@@ -1373,7 +1384,7 @@ const FAIL_PERIODS = [
   ['Last 30 days', 30, 3],
 ]
 
-function LiveFailures() {
+function LiveFailures({ line = '' }) {
   const { canWrite, me } = useMe()
   // anonymous (walk-up) sees the summary + charts only; the row-level table
   // (crew, fault text) stays behind sign-in.
@@ -1397,14 +1408,15 @@ function LiveFailures() {
   useEffect(() => {
     let alive = true
     setStats(null)
+    const lq = line ? `&line=${encodeURIComponent(line)}` : ''
     // stats are public; the row-level list is signed-in only
-    const jobs = [getJSON(`/api/logbook/failure-stats?days=${days}&months=${months}`)]
-    if (!anon) jobs.push(getJSON('/api/logbook?entry_type=failure&limit=1000'))
+    const jobs = [getJSON(`/api/logbook/failure-stats?days=${days}&months=${months}${lq}`)]
+    if (!anon) jobs.push(getJSON(`/api/logbook?entry_type=failure&limit=1000${lq}`))
     Promise.all(jobs)
       .then(([s, l]) => { if (alive) { setStats(s); setRows(l || []) } })
       .catch((e) => alive && setError(String(e)))
     return () => { alive = false }
-  }, [days, months, anon])
+  }, [days, months, anon, line])
 
   if (error) return <div className="card offline-note">Backend unreachable — {error}.</div>
   if (!stats) return <p className="dim">Loading failure record…</p>
@@ -1442,6 +1454,7 @@ function LiveFailures() {
 
   return (
     <>
+      {line && <div className="page-head"><h1 style={{ borderBottom: `3px solid ${lineColor(line)}`, paddingBottom: 4, display: 'inline-block' }}>{line} · failures</h1></div>}
       <div className="asset-toolbar" ref={toolbarRef}>
         {!anon && <input className="asset-search" type="search" value={q} onChange={(e) => setQ(e.target.value)}
                placeholder="Search failures — asset, fault, crew…" aria-label="Search failures" />}
@@ -2151,6 +2164,10 @@ function LineDashboard({ go }) {
   const stations = new Set(assets.map((a) => a.location)).size
   const trend = stats ? stats.per_month.map((m) => ({ label: new Date(`${m.month}-01T00:00:00`).toLocaleString(undefined, { month: 'short' }), count: m.count })) : []
   const line = me?.line || ORG
+  // failures now live per line: a coordinator lands on their own line's board;
+  // a line-less admin defaults to the first line and can switch from there.
+  const failLine = me?.line || (assets[0] && assets[0].line)
+  const failHref = failLine ? `#/line/${encodeURIComponent(failLine)}/failures` : '#/'
   const tile = (v, k, cls, to) => (
     <a className={`tile dash-tile${cls ? ' ' + cls : ''}`} href={to} role="button">
       <div className="v">{v}</div><div className="k">{k}</div>
@@ -2164,7 +2181,7 @@ function LineDashboard({ go }) {
         {tile(stations, 'Locations', '', '#/assets')}
         {tile(dueSoon, 'PM due soon', dueSoon ? 'warn' : '', '#/assets')}
         {tile(overdue, 'PM overdue', overdue ? 'alert' : '', '#/assets')}
-        {tile(stats ? stats.open : '—', 'Open failures', stats && stats.open ? 'alert' : '', '#/failures')}
+        {tile(stats ? stats.open : '—', 'Open failures', stats && stats.open ? 'alert' : '', failHref)}
         {tile(exceeded, 'Exceeded life', exceeded ? 'warn' : '', '#/assets')}
       </div>
 
@@ -2172,7 +2189,7 @@ function LineDashboard({ go }) {
         <section className="card viz-card">
           <h2 className="viz-h">Failures per month <span className="viz-note">last 6 months</span></h2>
           {trend.length ? <TrendChart data={trend} /> : <p className="dim">No failure data.</p>}
-          <p className="viz-insight"><a className="crumb" href="#/failures">Open the failures dashboard →</a></p>
+          <p className="viz-insight"><a className="crumb" href={failHref}>Open the failures dashboard →</a></p>
         </section>
         <section className="card viz-card">
           <h2 className="viz-h">Recent logbook <span className="viz-note">latest entries</span></h2>
@@ -2193,7 +2210,7 @@ function LineDashboard({ go }) {
 
       <div className="dash-links">
         {[['#/assets', 'Assets', 'register, QR & schedules'], ['#/log', 'Log book', 'daily shift log'],
-          ['#/failures', 'Failures', 'breakdowns & recovery'], ['#/tags', 'QR tags', 'print asset tags']].map(([to, t, s]) => (
+          [failHref, 'Failures', 'breakdowns & recovery'], ['#/tags', 'QR tags', 'print asset tags']].map(([to, t, s]) => (
           <a key={to} className="dash-link card" href={to}><b>{t}</b><span className="dim">{s}</span></a>
         ))}
       </div>
@@ -2211,7 +2228,6 @@ const NAV = LIVE ? [
   ['/', 'Home'],
   ['/assets', 'Assets'],
   ['/log', 'Log book'],
-  ['/failures', 'Failures'],
   ['/tags', 'QR tags'],
 ] : [
   ['/', 'Assets'],
@@ -2449,12 +2465,40 @@ function LoginPage() {
 /* ---------- one line, view-only (from a landing square) ---------- */
 
 function LineView({ name }) {
+  const { me } = useMe()
   return (
     <>
-      <a className="crumb" href="#/">← All lines</a>
+      <div className="line-subnav">
+        {!me?.line && <a className="crumb" href="#/">← All lines</a>}
+        <a className="btn ghost sm" href={`#/line/${encodeURIComponent(name)}/failures`}>Failures →</a>
+      </div>
       <LiveDashboard go={(r) => { location.hash = r }} initialLine={name} />
     </>
   )
+}
+
+/* one line's failures board — reached at /line/<name>/failures */
+function LineFailures({ name }) {
+  const { me } = useMe()
+  const back = me?.line ? '#/' : `#/line/${encodeURIComponent(name)}`
+  const backLabel = me?.line ? '← Home' : `← ${name}`
+  return (
+    <>
+      <a className="crumb" href={back}>{backLabel}</a>
+      <LiveFailures line={name} />
+    </>
+  )
+}
+
+/* legacy /failures — send the coordinator to their line's board, and anyone
+   line-less (admin) to the first line's board */
+function FailuresRedirect({ me }) {
+  const lines = useLines()
+  useEffect(() => {
+    const to = me?.line || (lines && lines[0] && lines[0].name)
+    if (to) location.replace(`#/line/${encodeURIComponent(to)}/failures`)
+  }, [me, lines])
+  return <p className="dim">Opening the failures board…</p>
 }
 
 export default function App() {
@@ -2480,7 +2524,11 @@ export default function App() {
   // '%' in a code would otherwise throw.
   const safeDecode = (s) => { try { return decodeURIComponent(s) } catch { return s } }
   const assetCode = assetMatch ? safeDecode(assetMatch[1]) : null
-  const lineMatch = routePath.match(/^\/line\/(.+)$/)
+  // a line's own failures board lives under the line: /line/<name>/failures.
+  // Match that first so the plain line route doesn't swallow the suffix.
+  const lineFailMatch = routePath.match(/^\/line\/(.+)\/failures$/)
+  const lineMatch = !lineFailMatch && routePath.match(/^\/line\/(.+)$/)
+  const failLine = lineFailMatch ? safeDecode(lineFailMatch[1]) : null
   const letterMatch = routePath.match(/^\/procurement\/([^/]+)\/letter$/)
   const csMatch = routePath.match(/^\/checksheet\/(wo|pm)\/([^/]+)(?:\/(.+))?$/)
   const jcMatch = routePath.match(/^\/jobcard\/(.+)$/)
@@ -2490,7 +2538,7 @@ export default function App() {
   // The train artwork is mounted once, outside the page switch — it never
   // reloads on navigation; only its opacity changes (full on the landing,
   // muted behind every other page).
-  const onLanding = anonymous && routePath !== '/login' && !assetMatch && !lineMatch && routePath !== '/failures'
+  const onLanding = anonymous && routePath !== '/login' && !assetMatch && !lineMatch && !lineFailMatch
   const siteArt = (
     <img className={`site-art${onLanding ? '' : ' muted'}`} alt="" aria-hidden="true"
          src={`${import.meta.env.BASE_URL}landing-art.webp`} />
@@ -2501,18 +2549,18 @@ export default function App() {
   if (anonymous) {
     if (routePath === '/login') return <>{siteArt}<LoginPage /></>
     if (onLanding) return <>{siteArt}<Landing /></> // full-screen, own chrome
-    const navLine = lineMatch ? decodeURIComponent(lineMatch[1]) : null
+    const navLine = failLine || (lineMatch ? decodeURIComponent(lineMatch[1]) : null)
     return (
       <>{siteArt}
       <div className="shell" style={navLine ? { '--nav-c': lineColor(navLine) } : undefined}>
         <header className="topbar">
   <Brand />
           <nav className="nav">
-            {LIVE && <a href="#/failures" className={routePath === '/failures' ? 'active' : ''}>Failures</a>}
+            {navLine && <a href="#/" className="crumb">← All lines</a>}
             <a href="#/login" className="btn login-btn">Sign in</a>
           </nav>
         </header>
-        {routePath === '/failures' ? <LiveFailures />
+        {failLine ? <LineFailures name={failLine} />
           : assetMatch ? <LiveAssetDetail code={assetCode} />
           : <LineView name={decodeURIComponent(lineMatch[1])} />}
         <footer className="foot">{ORG} · maintenance records · <AmpsLink />, MIT © 2026 <FootSig /></footer>
@@ -2543,6 +2591,7 @@ export default function App() {
       </header>
 
       {assetMatch ? (LIVE ? <LiveAssetDetail code={assetCode} /> : <AssetDetail code={assetCode} />)
+        : lineFailMatch ? (LIVE ? <LineFailures name={failLine} /> : <Failures />)
         : lineMatch ? (LIVE ? <LineView name={decodeURIComponent(lineMatch[1])} /> : <NotYet />)
         : letterMatch ? (LIVE ? <NotYet /> : <ProposalLetter prId={letterMatch[1]} />)
         : csMatch ? (LIVE ? <NotYet /> : <Checksheet kind={csMatch[1]} a1={csMatch[2]} a2={csMatch[3]} />)
@@ -2550,9 +2599,8 @@ export default function App() {
         : routePath === '/planner' ? (LIVE ? <NotYet /> : <Planner />)
         : routePath === '/roster' ? (LIVE ? <NotYet /> : <DutyRoster />)
         : routePath === '/log' ? <LogBook editId={routeQuery.get('edit')} focusDate={routeQuery.get('d')} />
-        /* one ledger still: this reads failure entries out of the logbook,
-           it is not a second record — reporting stays in the log book */
-        : routePath === '/failures' ? (LIVE ? <LiveFailures /> : <Failures />)
+        /* legacy top-level /failures now redirects to the signed-in line's board */
+        : routePath === '/failures' ? (LIVE ? <FailuresRedirect me={me} go={go} /> : <Failures />)
         : routePath === '/spares' ? (LIVE ? <NotYet /> : <Spares />)
         : routePath === '/procurement' ? (LIVE ? <NotYet /> : <Procurement />)
         : routePath === '/tags' ? <TagSheet />
