@@ -1991,18 +1991,69 @@ function AboutPage() {
 
 function TagSheet() {
   const live = useLiveAssets()
-  const assets = LIVE ? live.assets : ASSETS
+  const all = LIVE ? live.assets : ASSETS
+  // the system's top group (HT / LT / ECS …) — selective printing works by group
+  const groupOf = (a) => (a.sys || '').split('·')[0].trim() || 'Other'
+  const groups = [...new Set(all.map(groupOf).filter((g) => g && g !== 'Other'))].sort()
+  // default to HT so the page loads a manageable slice, not thousands of QRs
+  const [group, setGroup] = useState('HT')
+  const [q, setQ] = useState('')
+  const [fClass, setFClass] = useState('')
+  const [fLocation, setFLocation] = useState('')
+  const toolbarRef = useRef(null)
+  useEffect(() => {
+    const setVars = () => { const tb = document.querySelector('.topbar'); if (tb) document.documentElement.style.setProperty('--topbar-h', `${tb.offsetHeight}px`) }
+    setVars(); window.addEventListener('resize', setVars); return () => window.removeEventListener('resize', setVars)
+  })
+  // if HT isn't present in this register, fall back to the first group
+  useEffect(() => { if (groups.length && !groups.includes(group)) setGroup(groups[0]) }, [groups.join()]) // eslint-disable-line
+
+  const inGroup = group === '__all' ? all : all.filter((a) => groupOf(a) === group)
+  const uniq = (k) => [...new Set(inGroup.map((a) => a[k]).filter(Boolean))].sort()
+  const classes = uniq('cls'); const locations = uniq('location')
+  const ql = q.trim().toLowerCase()
+  const shown = inGroup.filter((a) =>
+    (!fClass || a.cls === fClass) && (!fLocation || a.location === fLocation)
+    && (!ql || [a.code, a.name, a.location, a.cls].some((v) => (v || '').toLowerCase().includes(ql))))
+
+  if (LIVE && live.loading) return <p className="dim">Loading the asset register…</p>
+  if (all.length === 0) return <div className="card"><p className="dim" style={{ margin: 0 }}>No assets in the register yet — tags appear as assets are added.</p></div>
   return (
     <>
-      <div className="sheet-bar">
-        <button className="btn" onClick={() => window.print()}>Print tag sheet</button>
-        <p>One tag per asset — print, laminate, stick on the equipment. Scanning opens the asset's live record.</p>
+      <div className="asset-toolbar" ref={toolbarRef}>
+        <input className="asset-search" type="search" value={q} onChange={(e) => setQ(e.target.value)}
+               placeholder="Search code, asset, class or location…" aria-label="Search assets" />
+        <div className="asset-filter" role="tablist" aria-label="Group">
+          {groups.map((g) => (
+            <button key={g} type="button" className={`btn preset ${group === g ? 'active' : ''}`} onClick={() => setGroup(g)}>{g}</button>
+          ))}
+          <button type="button" className={`btn preset ${group === '__all' ? 'active' : ''}`} onClick={() => setGroup('__all')}>All</button>
+        </div>
+        <select value={fClass} onChange={(e) => setFClass(e.target.value)} aria-label="Filter by class">
+          <option value="">All classes</option>
+          {classes.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select value={fLocation} onChange={(e) => setFLocation(e.target.value)} aria-label="Filter by location">
+          <option value="">All locations</option>
+          {locations.map((l) => <option key={l} value={l}>{l}</option>)}
+        </select>
+        {(q || fClass || fLocation) && <button type="button" className="btn ghost sm" onClick={() => { setQ(''); setFClass(''); setFLocation('') }}>Clear</button>}
+        <span className="asset-count">{shown.length} tag{shown.length === 1 ? '' : 's'}</span>
+        <div className="asset-actions">
+          <button type="button" className="icon-btn" title="Print these tags" aria-label="Print tags" onClick={() => window.print()}>
+            <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4.5 6V2.5h7V6M4.5 12H3.2V6.4h9.6V12H11.5M4.5 9.6h7V13.5h-7z" /></svg>
+          </button>
+        </div>
       </div>
-      {LIVE && live.loading ? <p className="dim">Loading the asset register…</p>
-        : assets.length === 0 ? <div className="card"><p className="dim" style={{ margin: 0 }}>No assets in the register yet — tags appear as assets are added.</p></div>
+      <p className="dim tags-note no-print" style={{ margin: '0 0 12px' }}>
+        Showing {group === '__all' ? 'all groups' : group} · {shown.length} tag{shown.length === 1 ? '' : 's'} — filter to the set you need, then print. One tag per asset; scanning opens the asset's live record.
+      </p>
+      {shown.length === 0
+        ? <div className="card"><p className="dim" style={{ margin: 0 }}>No assets match — adjust the filters.</p></div>
         : (
           <div className="tags">
-            {assets.map((a) => (
+            {shown.map((a) => (
               <div className="tag" key={a.code}>
                 <QR value={assetUrl(a.code)} size={140} />
                 <div className="scan-cap">Scan for history</div>
