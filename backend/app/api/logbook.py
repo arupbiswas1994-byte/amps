@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 from app.api.assets import visible_asset
 from app.api.auth import AUTH_ON, current_user, is_anonymous, optional_user
 from app.db import audit, get_db
-from app.models import Asset, LogEntry, LogEntryType, ShiftCode
+from app.models import Asset, LogEntry, LogEntryType, Location, LocationKind, ShiftCode
 
 router = APIRouter()
 
@@ -687,8 +687,19 @@ class LogImportOut(BaseModel):
 
 
 @router.post("/import", response_model=LogImportOut)
-async def import_history(request: Request, db: Session = Depends(get_db),
+async def import_history(request: Request, line: str | None = None,
+                         db: Session = Depends(get_db),
                          user=Depends(current_user)):
+    # `line` scopes the whole import to one site (e.g. ?line=Green Line): rows
+    # with no matching asset would otherwise land with a NULL line and leak
+    # into every coordinator's book, so an asset-less row falls back to this.
+    import_line_id = None
+    if line and line.strip():
+        site = db.scalar(select(Location).where(Location.kind == LocationKind.SITE,
+                                                func.lower(Location.name) == line.strip().lower()))
+        if not site:
+            raise HTTPException(422, f"unknown line '{line}' — no such site")
+        import_line_id = site.id
     text = (await request.body()).decode("utf-8-sig", errors="replace")
     rows = list(_csv.DictReader(_io.StringIO(text)))
     if not rows or "details" not in rows[0] or not ({"date", "start"} & set(rows[0])):
@@ -747,8 +758,10 @@ async def import_history(request: Request, db: Session = Depends(get_db),
                 skipped += 1
                 continue
             have_logs.add(key)
-            line_id = (asset.location.parent_id if asset and asset.location
-                       else None) or user.line_id
+            # asset's own line first, then the import-wide line, then the
+            # importer's line — never NULL for an asset-less row when ?line= is set
+            line_id = ((asset.location.parent_id if asset and asset.location else None)
+                       or import_line_id or user.line_id)
             # system + category = the asset's rollup + class; category falls
             # back to the CSV group cell when the asset is unmatched
             system = _system_of(asset)
