@@ -457,6 +457,8 @@ def failure_stats(days: int = 90, months: int = 6, db: Session = Depends(get_db)
 # kind is one of: maintenance | failure | rectification | general.
 #  - maintenance takes its cycle from the type word (advances the schedule).
 #  - failure: fill `resolved_on` once restored (blank = still open) + fault_type.
+#    A failure never self-resolves — if resolved_on is given, its `action_taken`
+#    is filed as a SEPARATE rectification that closes it (two-part everywhere).
 #  - rectification: `closes_failure_ref` links it to the failure it fixes
 #    ("ASSET@YYYY-MM-DD", "ASSET", "YYYY-MM-DD", or a failure id). If it matches
 #    no open failure (or is blank), the rectification stands on its own — a
@@ -604,9 +606,20 @@ async def import_history(request: Request, db: Session = Depends(get_db),
         etype = _KIND_TYPE.get(get("kind").lower(), LogEntryType.MAINTENANCE)
         is_failure = etype == LogEntryType.FAILURE
         try:
+            # a failure never self-resolves: if the row carries a recovery date,
+            # the fix (action_taken) is filed as a SEPARATE rectification that
+            # closes it, so the two-part model holds everywhere.
+            resolved = (_parse_dt(getfirst("resolved_on", "end"))
+                        if is_failure else None)
+            if resolved and resolved < start:
+                resolved = None
+            action = get("action_taken")
+
             bits = [details]
             if get("fault_type"): bits.append(f"fault: {get('fault_type')}")
-            if get("action_taken"): bits.append(f"action: {get('action_taken')}")
+            # the action belongs to the fix — only fold it into the entry text
+            # when there is no separate rectification to carry it
+            if action and not (is_failure and resolved): bits.append(f"action: {action}")
             if is_failure and get("reported_by"): bits.append(f"reported by: {get('reported_by')}")
             if is_failure and get("repercussion"): bits.append(f"repercussion: {get('repercussion')}")
             if get("equipment"): bits.append(f"equipment: {get('equipment')}")
@@ -625,38 +638,48 @@ async def import_history(request: Request, db: Session = Depends(get_db),
             # back to the CSV group cell when the asset is unmatched
             system = _system_of(asset)
             category = _category_of(asset) or (get("group")[:80] or None)
-            # maintenance runs on the night shift; failures keep the general marker
-            # failures carry their recovery moment so downtime stays derivable
-            # (a sheet end that predates the start is a day/month swap — drop it)
-            # failures & rectifications carry a recovery/completion time + fault
-            has_recovery = etype in (LogEntryType.FAILURE, LogEntryType.RECTIFICATION)
-            end = _parse_dt(getfirst("resolved_on", "end")) if has_recovery else None
-            if end and end < start:
-                end = None
-            # a rectification may name the failure it closes, via closes_failure_ref
-            # ("ASSET@YYYY-MM-DD", "ASSET", "YYYY-MM-DD", or a failure id). We
-            # resolve it to that asset's matching OPEN failure and link it, so the
-            # two-part failure→fix flow works from the sheet too.
+            # a rectification (kind=rectification) may name the failure it closes
+            # via closes_failure_ref ("ASSET@YYYY-MM-DD" / asset / date / id).
             rectifies = None
             if etype == LogEntryType.RECTIFICATION and get("closes_failure_ref"):
                 rectifies = _resolve_failure_ref(db, get("closes_failure_ref"), asset)
+            # a standalone rectification carries its own recovery time
+            end = _parse_dt(getfirst("resolved_on", "end")) if etype == LogEntryType.RECTIFICATION else None
+            if end and end < start:
+                end = None
+            fault = (get("fault_type")[:120] or None) if etype in (LogEntryType.FAILURE, LogEntryType.RECTIFICATION) else None
+            attended = (get("attended_by") or "imported record")[:120]
             new = LogEntry(
                 at=start, log_date=start.date(),
                 shift=ShiftCode.NIGHT if etype == LogEntryType.MAINTENANCE else ShiftCode.GENERAL,
                 type=etype,
                 subtype=_maint_subtype(get("type")) if etype == LogEntryType.MAINTENANCE else None,
                 system=system, category=category,
-                ended_at=end,
-                fault_type=(get("fault_type")[:120] or None) if has_recovery else None,
-                text=body_text, entered_by=(get("attended_by") or "imported record")[:120],
+                ended_at=end,   # failures never self-resolve (see below); rects carry it
+                fault_type=fault,
+                text=body_text, entered_by=attended,
                 attended_by=(get("attended_by")[:200] or None),
-                consumables=(get("consumables") or None),
+                # a failure consumes nothing — spares go on the fix (auto-rect below)
+                consumables=(None if is_failure else (get("consumables") or None)),
                 rectifies_id=rectifies.id if rectifies else None,
                 asset=asset, line_id=line_id)
             db.add(new)
             if is_failure:
                 n_fails += 1
             else:
+                n_logs += 1
+            # auto-pair: a resolved failure gets a rectification that closes it
+            if is_failure and resolved:
+                db.flush()   # need the failure's id to link the rectification
+                rect = LogEntry(
+                    at=resolved, log_date=resolved.date(), shift=ShiftCode.GENERAL,
+                    type=LogEntryType.RECTIFICATION, system=system, category=category,
+                    fault_type=fault,
+                    text="[RECTIFICATION] " + (action or "Rectified"),
+                    entered_by=attended, attended_by=(get("attended_by")[:200] or None),
+                    consumables=(get("consumables") or None),
+                    rectifies_id=new.id, asset=asset, line_id=line_id)
+                db.add(rect)
                 n_logs += 1
             batch += 1
             if batch >= 500:
