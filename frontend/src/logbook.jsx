@@ -162,7 +162,8 @@ function RectifyForm({ failure, busy, onCancel, onSubmit }) {
    code) and filling the resolve row (recovery date/time). */
 function EditEntryForm({ entry, assets, systems, classSystem, onCancel, onSaved }) {
   const isFail = entry.type === 'failure'
-  const rb = isFail ? entry.resolved_by : null    // the failure's rectification, if any
+  // the failure's current response, by dominance: rectification / job card / ack
+  const rb = isFail ? (entry.resolved_by || entry.job_card_by || entry.acknowledged_by) : null
   const [text, setText] = useState(entry.text)
   const [assetCode, setAssetCode] = useState(entry.asset_code || '')
   const [system, setSystem] = useState(entry.system || '')
@@ -173,16 +174,21 @@ function EditEntryForm({ entry, assets, systems, classSystem, onCancel, onSaved 
   const [faultType, setFaultType] = useState(entry.fault_type || '')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-  // failure resolution — a linked rectification. Editing a failure lets you
-  // edit BOTH the failure and its fix, toggle resolved/open, and (on re-open)
-  // delete the fix with a confirmation.
-  const [resolved, setResolved] = useState(!!rb)
+  // failure lifecycle — a linked response entry. Editing a failure lets you set
+  // its state (open · acknowledged · job card · resolved), edit the response,
+  // and (on re-open) delete the response with a confirmation.
+  const [fstate, setFstate] = useState(isFail ? (entry.state || 'open') : 'open')
   const [rDate, setRDate] = useState(rb ? rb.log_date : entry.log_date)
   const [rTime, setRTime] = useState(rb ? hhmm(rb.at) : '')
   const [rText, setRText] = useState(rb ? bodyText(rb.text) : '')
   const [rFault, setRFault] = useState(rb?.fault_type || entry.fault_type || '')
   const [rTeam, setRTeam] = useState(rb?.attended_by || '')
   const [rConsum, setRConsum] = useState(rb?.consumables || '')
+  const isOpen = fstate === 'open'
+  const isResolved = fstate === 'resolved'
+  // kind sent to the resolution endpoint for each non-open state
+  const STATE_KIND = { acknowledged: 'acknowledgement', job_card: 'job_card', resolved: 'rectification' }
+  const STATE_VERB = { acknowledged: 'acknowledgement', job_card: 'job card', resolved: 'rectification' }
 
   const textRef = useRef(null)
   useEffect(() => { textRef.current?.focus({ preventScroll: true }) }, [])
@@ -193,7 +199,9 @@ function EditEntryForm({ entry, assets, systems, classSystem, onCancel, onSaved 
 
   const save = async () => {
     if (!text.trim() || busy) return
-    if (isFail && resolved && !rText.trim()) { setErr('A resolved failure needs the rectification — what was done to fix it.'); return }
+    if (isFail && !isOpen && !rText.trim()) {
+      setErr(`This ${STATE_VERB[fstate]} needs a note — what was done or requested.`); return
+    }
     setBusy(true); setErr('')
     try {
       // 1) correct the entry's own fields (append-only correction)
@@ -206,23 +214,24 @@ function EditEntryForm({ entry, assets, systems, classSystem, onCancel, onSaved 
           system: system || null, category: category || null,
           asset_code: assetCode.trim() || null,
           time: tim || null, text: text.trim(), attended_by: team.trim() || null,
-          // failures consume nothing, and are resolved only via a rectification
+          // failures consume nothing — spares go on the rectification response
           consumables: isFail ? null : (consumables.trim() || null),
           fault_type: isFail ? (faultType.trim() || null) : null,
           end_date: null, end_time: null,
         }),
       })
       if (!res.ok) throw new Error((await res.json().catch(() => null))?.detail || `HTTP ${res.status}`)
-      // 2) a failure's resolution: file/update the fix, or (re-open) delete it
-      if (isFail && (resolved || rb)) {
-        const rectification = resolved ? {
+      // 2) a failure's response: file/update the chosen state, or (open) delete it
+      if (isFail && (!isOpen || rb)) {
+        const rectification = isOpen ? null : {
           date: rDate, time: rTime || null, text: rText.trim(),
           fault_type: rFault.trim() || null, attended_by: rTeam.trim() || null,
-          consumables: rConsum.trim() || null,
-        } : null
+          // only a rectification carries consumables
+          consumables: isResolved ? (rConsum.trim() || null) : null,
+        }
         const r2 = await fetch(`${API}/api/logbook/${entry.id}/resolution`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ rectification }),
+          body: JSON.stringify({ rectification, kind: isOpen ? 'rectification' : STATE_KIND[fstate] }),
         })
         if (!r2.ok) throw new Error((await r2.json().catch(() => null))?.detail || `HTTP ${r2.status}`)
       }
@@ -232,10 +241,10 @@ function EditEntryForm({ entry, assets, systems, classSystem, onCancel, onSaved 
     } finally { setBusy(false) }
   }
 
-  // toggling a resolved failure back to open will delete its fix — confirm first
-  const onToggleResolved = (want) => {
-    if (!want && rb && !window.confirm('Re-open this failure? Its rectification log will be deleted.')) return
-    setResolved(want)
+  // moving a responded failure back to open will delete its response — confirm
+  const onSetState = (want) => {
+    if (want === 'open' && rb && !window.confirm('Re-open this failure? Its logged response will be deleted.')) return
+    setFstate(want)
   }
 
   return (
@@ -246,7 +255,7 @@ function EditEntryForm({ entry, assets, systems, classSystem, onCancel, onSaved 
       </div>
 
       {/* a rectification always shows the failure it closes, as read-only context */}
-      {entry.type === 'rectification' && entry.rectifies && (
+      {['rectification', 'acknowledgement', 'job_card'].includes(entry.type) && entry.rectifies && (
         <div className="master-fail">
           <span className="mf-tag">Closes failure</span>
           <span className="mf-body">
@@ -318,38 +327,49 @@ function EditEntryForm({ entry, assets, systems, classSystem, onCancel, onSaved 
           </div>
         </section>
 
-        {/* a failure's resolution — its linked rectification, edited right here */}
+        {/* a failure's lifecycle — its linked response, edited right here.
+            open (red) → acknowledged (amber) → job card (yellow) → resolved */}
         {isFail && (
           <section className="fg fg-fail">
-            <span className="fg-lbl">Resolution</span>
+            <span className="fg-lbl">Status</span>
             <div className="fg-fields">
               <label className="fg-span">State
-                <select value={resolved ? 'resolved' : 'open'}
-                        onChange={(e) => onToggleResolved(e.target.value === 'resolved')}>
-                  <option value="open">Still open</option>
-                  <option value="resolved">Resolved (rectified)</option>
+                <select value={fstate} onChange={(e) => onSetState(e.target.value)}>
+                  <option value="open">Open — not yet actioned</option>
+                  <option value="acknowledged">Acknowledged — noted / demand raised</option>
+                  <option value="job_card">Job card issued — raised to OEM/dept</option>
+                  <option value="resolved">Resolved — rectified</option>
                 </select>
               </label>
-              {resolved && <>
-                <label>Rectified on
+              {!isOpen && <>
+                <label>{isResolved ? 'Rectified on' : 'Dated'}
                   <input type="date" value={rDate} min={entry.log_date} onChange={(e) => setRDate(e.target.value)} />
                 </label>
-                <label>Rectified at
-                  <TimeInput value={rTime} onChange={setRTime} label="Rectified at" />
+                <label>At
+                  <TimeInput value={rTime} onChange={setRTime} label="At" />
                 </label>
                 <label>Team
-                  <input value={rTeam} onChange={(e) => setRTeam(e.target.value)} placeholder="crew that fixed it" />
+                  <input value={rTeam} onChange={(e) => setRTeam(e.target.value)} placeholder={isResolved ? 'crew that fixed it' : 'who actioned it'} />
                 </label>
                 <label className="fg-span-2">Fault addressed
                   <input value={rFault} onChange={(e) => setRFault(e.target.value)} placeholder={faultType || 'e.g. DC earth fault'} />
                 </label>
-                <label className="fg-span">Consumables / consumed
-                  <input value={rConsum} onChange={(e) => setRConsum(e.target.value)}
-                         placeholder="spares used in the fix — e.g. 2× PT fuse" />
+                {isResolved && (
+                  <label className="fg-span">Consumables / consumed
+                    <input value={rConsum} onChange={(e) => setRConsum(e.target.value)}
+                           placeholder="spares used in the fix — e.g. 2× PT fuse" />
+                  </label>
+                )}
+                <label className="fg-span">
+                  {isResolved ? 'What was done (rectification)'
+                    : fstate === 'job_card' ? 'Job card detail (agency, card no., scope)'
+                    : 'Note (demand raised / mail sent / awaiting spare)'}
+                  <input value={rText} onChange={(e) => setRText(e.target.value)}
+                         placeholder={isResolved ? 'what was done to rectify it…'
+                           : fstate === 'job_card' ? 'e.g. Job card issued to M/s Siemens to replace WAGO'
+                           : 'e.g. Relay not available. Demand raised, mail sent 30-06'} />
                 </label>
-                <label className="fg-span">What was done <span className="ef-opt">(rectification)</span>
-                  <input value={rText} onChange={(e) => setRText(e.target.value)} placeholder="what was done to rectify it…" />
-                </label>
+                {fstate === 'job_card' && <p className="ef-hint fg-span-2">A job card keeps the failure open (yellow). Set it to <b>Resolved</b> once the card is closed by a rectification.</p>}
               </>}
             </div>
           </section>

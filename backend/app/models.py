@@ -227,7 +227,11 @@ class LogEntryType(str, Enum):
     # Current taxonomy (2026-07, per the section's practice)
     MAINTENANCE = "maintenance"      # PM work — subtype carries the frequency
     FAILURE = "failure"              # breakdown noted in the book
-    RECTIFICATION = "rectification"  # repair/fix work
+    RECTIFICATION = "rectification"  # repair/fix work — actually RESOLVES a failure
+    ACKNOWLEDGEMENT = "acknowledgement"  # noted/actioned (demand raised, mail sent)
+    #                                      but NOT yet fixed — failure stays amber
+    JOB_CARD = "job_card"            # a job card raised to OEM/dept — yellow; the
+    #                                  card is CLOSED by a later rectification
     GENERAL = "general"              # everything else
     # Legacy values — kept for rows written before the taxonomy change
     OPERATION = "operation"      # switching, isolations, normal ops events

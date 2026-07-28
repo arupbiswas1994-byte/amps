@@ -180,6 +180,23 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 .chip.d-due_soon .dot { background: var(--warning); }
 .chip.d-overdue { background: #fdf1f1; border-color: #f5d5d5; color: #a32e2e; }
 .chip.d-overdue .dot { background: var(--critical); }
+/* failure lifecycle chips: acknowledged (amber) · job card (yellow) · resolved (green) */
+.chip.d-ack { background: #fdf3d9; border-color: #f0dca8; color: #8a6100; }
+.chip.d-ack .dot { background: #e0a010; }
+.chip.d-job { background: #fbf7d0; border-color: #ece08a; color: #6b6000; }
+.chip.d-job .dot { background: #d4c000; }
+.chip.d-ok { background: color-mix(in srgb, var(--good) 10%, #fff); border-color: color-mix(in srgb, var(--good) 28%, transparent); color: #1a7a3a; }
+/* a failure's inline response (rectification / job card / acknowledgement) */
+.fail-resp { margin: 8px 0 2px; padding: 8px 10px; border-radius: 8px; border-left: 3px solid; }
+.fail-resp.resolved { background: color-mix(in srgb, var(--good) 7%, transparent); border-left-color: var(--good); }
+.fail-resp.ack { background: #fdf7ea; border-left-color: #e0a010; }
+.fail-resp.job { background: #fbf9dc; border-left-color: #d4c000; }
+.fr-tag { font-size: 11px; font-weight: 700; letter-spacing: .02em; }
+.fail-resp.resolved .fr-tag { color: #1a7a3a; }
+.fail-resp.ack .fr-tag { color: #8a6100; }
+.fail-resp.job .fr-tag { color: #6b6000; }
+.fr-date { font-size: 11.5px; color: var(--ink-3); margin-left: 8px; }
+.fr-text { font-size: 13px; margin-top: 3px; color: var(--ink); }
 .chip.w-open .dot { background: var(--warning); }
 .chip.w-assigned .dot { background: #2a78d6; }
 .chip.w-done .dot, .chip.w-verified .dot { background: var(--good); }
@@ -756,6 +773,7 @@ tbody tr:hover .edit-link { color: var(--accent); }
 .viz-compact .viz-val { font-size: 11px; }
 .fail-log-h { margin-top: 4px; }
 .line-subnav { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.ef-hint { font-size: 12px; color: #6b6000; margin: 2px 0 0; }
 
 /* faulty assets — an open failure on the asset; flagged and floated to the top
    of the register (like the fibre console floats blocked lines) */
@@ -766,9 +784,21 @@ tbody tr:hover .edit-link { color: var(--accent); }
   border: 1px solid color-mix(in srgb, var(--critical) 32%, transparent);
   vertical-align: middle;
 }
+.fault-badge.amber {
+  color: #8a6100; background: #fdf3d9; border-color: #f0dca8;
+}
+.fault-badge.yellow {
+  color: #6b6000; background: #fbf7d0; border-color: #ece08a;
+}
 .row-faulty { background: color-mix(in srgb, var(--critical) 5%, transparent); }
 .row-faulty td.code { box-shadow: inset 3px 0 0 var(--critical); }
 .row-faulty:hover { background: color-mix(in srgb, var(--critical) 9%, transparent); }
+.row-ack { background: color-mix(in srgb, #fab219 8%, transparent); }
+.row-ack td.code { box-shadow: inset 3px 0 0 #e0a010; }
+.row-ack:hover { background: color-mix(in srgb, #fab219 14%, transparent); }
+.row-job { background: color-mix(in srgb, #ecd400 7%, transparent); }
+.row-job td.code { box-shadow: inset 3px 0 0 #d4c000; }
+.row-job:hover { background: color-mix(in srgb, #ecd400 13%, transparent); }
 
 /* ---- home dashboard ---- */
 .dash-kpis .dash-tile { text-decoration: none; color: inherit; transition: box-shadow .12s, transform .12s; display: block; }

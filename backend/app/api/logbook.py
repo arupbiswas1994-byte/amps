@@ -75,6 +75,14 @@ class LogEntryOut(BaseModel):
     # both drive the read-only "linked entry" sub-form on the edit screen.
     rectifies: "EntryRef | None" = None
     resolved_by: "EntryRef | None" = None
+    # a failure that has been acknowledged (demand raised / mail sent) but not
+    # yet fixed — carries the acknowledgement entry; the failure stays "amber"
+    acknowledged_by: "EntryRef | None" = None
+    # a failure with a job card raised to the OEM/dept — carries it; "yellow".
+    # The job card is closed by a later rectification (then state -> resolved).
+    job_card_by: "EntryRef | None" = None
+    # failure lifecycle: open | acknowledged | job_card | resolved (None for non-failures)
+    state: str | None = None
     ended_at: datetime | None
     fault_type: str | None
     consumables: str | None
@@ -92,14 +100,19 @@ class EntryRef(BaseModel):
     consumables: str | None
 
 
-def _recovery_map(db: Session, entries: list[LogEntry]) -> dict[int, LogEntry]:
-    """failure HEAD id -> its LATEST rectification entry (carries the recovery).
+def _response_map(db: Session, entries: list[LogEntry],
+                  etype: "LogEntryType") -> dict[int, LogEntry]:
+    """failure HEAD id -> its LATEST linked response of `etype`.
 
-    A rectification points at the failure it was logged against; editing that
-    failure appends a correction (a new head), so the rectification's target may
-    be a superseded entry. We follow the correction chain: the head failure
-    inherits the rectification pointed at any entry in its own history. Latest
-    rectification dominates. Read-time only — the book stays append-only."""
+    A response (rectification OR acknowledgement) points at the failure it was
+    logged against via rectifies_id; editing that failure appends a correction
+    (a new head), so the response's target may be a superseded entry. We follow
+    the correction chain: the head failure inherits the response pointed at any
+    entry in its own history. Latest response dominates. Read-time only — the
+    book stays append-only.
+
+    A RECTIFICATION resolves the failure; an ACKNOWLEDGEMENT only notes it
+    (demand raised, mail sent) and leaves it amber/open."""
     heads = [e for e in entries if e.type == LogEntryType.FAILURE]
     if not heads:
         return {}
@@ -114,13 +127,29 @@ def _recovery_map(db: Session, entries: list[LogEntry]) -> dict[int, LogEntry]:
             seen.add(cur.id)
             cur = db.get(LogEntry, cur.corrects_id) if cur.corrects_id else None
     rows = db.scalars(
-        select(LogEntry).where(LogEntry.rectifies_id.in_(id_to_head.keys()))
+        select(LogEntry).where(LogEntry.rectifies_id.in_(id_to_head.keys()),
+                               LogEntry.type == etype)
         .order_by(LogEntry.at, LogEntry.id)
     ).all()
     out = {}
     for r in rows:                 # later rows overwrite earlier (latest dominates)
         out[id_to_head[r.rectifies_id]] = r
     return out
+
+
+def _recovery_map(db: Session, entries: list[LogEntry]) -> dict[int, LogEntry]:
+    """failure HEAD id -> its latest RECTIFICATION (the entry that resolves it)."""
+    return _response_map(db, entries, LogEntryType.RECTIFICATION)
+
+
+def _ack_map(db: Session, entries: list[LogEntry]) -> dict[int, LogEntry]:
+    """failure HEAD id -> its latest ACKNOWLEDGEMENT (noted, not yet resolved)."""
+    return _response_map(db, entries, LogEntryType.ACKNOWLEDGEMENT)
+
+
+def _jobcard_map(db: Session, entries: list[LogEntry]) -> dict[int, LogEntry]:
+    """failure HEAD id -> its latest JOB_CARD (raised to OEM, not yet closed)."""
+    return _response_map(db, entries, LogEntryType.JOB_CARD)
 
 
 def _down_hours(e: LogEntry, recovered: datetime | None = None) -> float | None:
@@ -148,8 +177,16 @@ def _ref(x: LogEntry | None) -> "EntryRef | None":
 
 
 def _to_out(e: LogEntry, resolver: LogEntry | None = None,
-            master: LogEntry | None = None) -> LogEntryOut:
+            master: LogEntry | None = None,
+            acker: LogEntry | None = None,
+            jobcard: LogEntry | None = None) -> LogEntryOut:
     recovered = resolver.at if resolver else None
+    # lifecycle only applies to a failure head, by dominance of the response:
+    # rectification (resolved) > job card (job_card) > acknowledgement > open
+    state = None
+    if e.type == LogEntryType.FAILURE:
+        state = ("resolved" if resolver else "job_card" if jobcard
+                 else "acknowledged" if acker else "open")
     return LogEntryOut(
         id=e.id, at=e.at, log_date=e.log_date, shift=e.shift.value,
         type=e.type.value, subtype=e.subtype, system=e.system, category=e.category, text=e.text,
@@ -157,8 +194,12 @@ def _to_out(e: LogEntry, resolver: LogEntry | None = None,
         asset_code=e.asset.code if e.asset else None,
         asset_name=e.asset.name if e.asset else None, corrects_id=e.corrects_id,
         rectifies_id=e.rectifies_id,
-        rectifies=_ref(master),        # rectification → its master failure
+        rectifies=_ref(master),        # response → its master failure
         resolved_by=_ref(resolver),    # failure → the rectification that closed it
+        acknowledged_by=_ref(acker),   # failure → the acknowledgement noting it
+        job_card_by=_ref(jobcard),     # failure → the job card raised for it
+        state=state,
+        # ONLY a rectification ends a failure; ack/job-card leave it open
         ended_at=e.ended_at or recovered, fault_type=e.fault_type,
         consumables=e.consumables,
         down_hours=_down_hours(e, recovered),
@@ -344,13 +385,16 @@ def list_entries(log_date: date | None = None, shift: str | None = None,
          .offset(max(offset, 0)).limit(min(limit, 1000)))
     rows = db.scalars(q).all()
     rec = _recovery_map(db, rows)
-    # the master failure each rectification closes — for the edit sub-form
+    ack = _ack_map(db, rows)
+    jc = _jobcard_map(db, rows)
+    # the master failure each response (rectification/ack/job-card) responds to —
+    # for the edit sub-form and for grouping a response under its failure
     master_ids = {e.rectifies_id for e in rows if e.rectifies_id}
     masters = {}
     if master_ids:
         masters = {m.id: m for m in db.scalars(
             select(LogEntry).where(LogEntry.id.in_(master_ids))).all()}
-    return [_to_out(e, rec.get(e.id), masters.get(e.rectifies_id)) for e in rows]
+    return [_to_out(e, rec.get(e.id), masters.get(e.rectifies_id), ack.get(e.id), jc.get(e.id)) for e in rows]
 
 
 @router.get("/{entry_id}/versions", response_model=list[LogEntryOut])
@@ -377,7 +421,9 @@ def entry_versions(entry_id: int, db: Session = Depends(get_db), user=Depends(cu
             break
         chain.append(nxt); cur = nxt
     rec = _recovery_map(db, chain)
-    return [_to_out(x, rec.get(x.id)) for x in chain]
+    ack = _ack_map(db, chain)
+    jc = _jobcard_map(db, chain)
+    return [_to_out(x, rec.get(x.id), None, ack.get(x.id), jc.get(x.id)) for x in chain]
 
 
 class RectificationIn(BaseModel):
@@ -390,8 +436,22 @@ class RectificationIn(BaseModel):
 
 
 class ResolutionIn(BaseModel):
-    # a rectification to file/update = resolve; null = re-open (delete the fix)
+    # a response to file/update; null = re-open (delete the linked response).
+    # kind = rectification (resolves) | acknowledgement (notes) | job_card (raised)
     rectification: RectificationIn | None = None
+    kind: str = "rectification"
+
+
+_RESP_TYPE = {
+    "rectification": LogEntryType.RECTIFICATION,
+    "acknowledgement": LogEntryType.ACKNOWLEDGEMENT,
+    "job_card": LogEntryType.JOB_CARD,
+}
+_RESP_PREFIX = {
+    LogEntryType.RECTIFICATION: ("[RECTIFICATION] ", "Rectified", "resolved"),
+    LogEntryType.ACKNOWLEDGEMENT: ("[ACKNOWLEDGEMENT] ", "Acknowledged", "acknowledged"),
+    LogEntryType.JOB_CARD: ("[JOB CARD] ", "Job card issued", "job-card-issued"),
+}
 
 
 def _scope_ok(user, e: LogEntry) -> bool:
@@ -401,26 +461,34 @@ def _scope_ok(user, e: LogEntry) -> bool:
 @router.put("/{failure_id}/resolution", response_model=LogEntryOut)
 def set_resolution(failure_id: int, body: ResolutionIn,
                    db: Session = Depends(get_db), user=Depends(current_user)):
-    """Manage a failure's resolution as a linked rectification entry.
+    """Manage a failure's response as a linked entry.
 
-    - rectification given  → file it (or update the existing one) that closes
-      this failure. The failure itself never carries an ended_at.
-    - rectification null    → re-open: delete the failure's rectification(s).
-    A failure is only ever resolved by a rectification, so this is the one place
-    that resolution is created, edited or removed."""
+    - kind=rectification → file/update the fix that RESOLVES this failure (this
+      also closes any job card, since a rectification dominates).
+    - kind=acknowledgement → a note (demand raised, mail sent): amber.
+    - kind=job_card → a job card raised to the OEM/dept: yellow.
+    - rectification null  → re-open: delete every linked response.
+    The failure head never carries an ended_at — resolution lives on the linked
+    rectification, so this is the one place a response is made or removed. Each
+    kind is stored once (latest replaces), so the states can coexist as history
+    while dominance (rectification > job_card > acknowledgement) sets the state."""
     fail = db.get(LogEntry, failure_id)
     if not fail or fail.type != LogEntryType.FAILURE or not _scope_ok(user, fail):
         raise HTTPException(404, "failure not found")
-    existing = db.scalars(
+    resp_type = _RESP_TYPE.get(body.kind)
+    if resp_type is None:
+        raise HTTPException(422, f"unknown kind '{body.kind}'")
+    is_rect = resp_type == LogEntryType.RECTIFICATION
+    all_linked = db.scalars(
         select(LogEntry).where(LogEntry.rectifies_id == fail.id)
         .order_by(LogEntry.at.desc(), LogEntry.id.desc())).all()
 
     if body.rectification is None:
-        # re-open — remove every rectification that closed this failure
-        for r in existing:
+        # re-open — remove every response (rectification, ack AND job card)
+        for r in all_linked:
             db.delete(r)
         audit(db, "log_entry", fail.id, "reopened",
-              detail=f"deleted {len(existing)} rectification(s)", actor=user.username)
+              detail=f"deleted {len(all_linked)} response(s)", actor=user.username)
         db.commit(); db.refresh(fail)
         return _to_out(fail)
 
@@ -433,34 +501,39 @@ def set_resolution(failure_id: int, body: ResolutionIn,
             raise HTTPException(422, "time must be HH:MM")
     at = datetime.combine(r.date, when or datetime.min.time())
     if at < fail.at:
-        raise HTTPException(422, "the fix cannot precede the failure")
-    text = "[RECTIFICATION] " + (r.text.strip() or "Rectified")
+        raise HTTPException(422, "the response cannot precede the failure")
+    prefix, default_text, action_new = _RESP_PREFIX[resp_type]
+    text = prefix + (r.text.strip() or default_text)
+    existing = [e for e in all_linked if e.type == resp_type]
     if existing:
-        # update the current fix in place (it's the operator's own resolution)
-        rect = existing[0]
-        rect.at, rect.log_date = at, r.date
-        rect.text = text
-        rect.fault_type = (r.fault_type or fail.fault_type)
-        rect.attended_by = r.attended_by or None
-        rect.consumables = r.consumables or None
-        # drop any older duplicates so "latest dominates" stays clean
+        # update the current response of this kind in place
+        resp = existing[0]
+        resp.at, resp.log_date = at, r.date
+        resp.text = text
+        resp.fault_type = (r.fault_type or fail.fault_type)
+        resp.attended_by = r.attended_by or None
+        # only a rectification consumes spares; a note / job card does not
+        resp.consumables = (r.consumables or None) if is_rect else None
         for extra in existing[1:]:
             db.delete(extra)
         action = "updated"
     else:
-        rect = LogEntry(
+        resp = LogEntry(
             at=at, log_date=r.date, shift=ShiftCode.GENERAL,
-            type=LogEntryType.RECTIFICATION, system=fail.system, category=fail.category,
+            type=resp_type, system=fail.system, category=fail.category,
             fault_type=(r.fault_type or fail.fault_type), text=text,
             entered_by=user.username, attended_by=r.attended_by or None,
-            consumables=r.consumables or None,
+            consumables=(r.consumables or None) if is_rect else None,
             rectifies_id=fail.id, asset_id=fail.asset_id, line_id=fail.line_id)
-        db.add(rect)
-        action = "resolved"
+        db.add(resp)
+        action = action_new
     db.flush()
-    audit(db, "log_entry", fail.id, action, detail=f"rectification={rect.id}", actor=user.username)
+    audit(db, "log_entry", fail.id, action,
+          detail=f"{resp_type.value}={resp.id}", actor=user.username)
     db.commit(); db.refresh(fail)
-    return _to_out(fail, rect)
+    # return the failure with its current response state reflected
+    rec = _recovery_map(db, [fail]); ack = _ack_map(db, [fail]); jc = _jobcard_map(db, [fail])
+    return _to_out(fail, rec.get(fail.id), None, ack.get(fail.id), jc.get(fail.id))
 
 
 @router.get("/bounds")
@@ -503,6 +576,8 @@ def failure_stats(days: int = 90, months: int = 6, line: str | None = None,
             q = q.where(LogEntry.line_id == site.id)
     rows = db.scalars(q).all()
     rec = _recovery_map(db, rows)
+    ack = _ack_map(db, rows)
+    jc = _jobcard_map(db, rows)
     recov_at = lambda e: (rec[e.id].at if e.id in rec else None)
     def _end(e):
         return e.ended_at or recov_at(e)
@@ -514,11 +589,15 @@ def failure_stats(days: int = 90, months: int = 6, line: str | None = None,
     # only entries with real clock times can contribute to a duration figure
     measured = [e for e in recent if _down_hours(e, recov_at(e)) is not None]
     down = [_down_hours(e, recov_at(e)) for e in measured]
-    # A breakdown is only genuinely OPEN if it names an asset and has no
-    # recovery. Imported rows whose asset code never matched the register are
-    # a data-quality problem, not outstanding work — counting them as open
-    # put a permanent red number on the board that no one could ever clear.
-    open_now = [e for e in rows if _end(e) is None and e.asset_id is not None]
+    # A breakdown still NEEDS ATTENTION when it names an asset and has no
+    # rectification. Imported rows whose asset code never matched the register
+    # are a data-quality problem, not outstanding work, so they are excluded.
+    # Among the outstanding, by dominance: job card (yellow) > acknowledged
+    # (amber) > open (red).
+    outstanding = [e for e in rows if _end(e) is None and e.asset_id is not None]
+    job_carded = [e for e in outstanding if e.id in jc]
+    acknowledged = [e for e in outstanding if e.id not in jc and e.id in ack]
+    open_now = [e for e in outstanding if e.id not in jc and e.id not in ack]
     unlinked = [e for e in rows if e.asset_id is None]
 
     # trend: failures per calendar month, oldest first, `months` buckets
@@ -544,13 +623,17 @@ def failure_stats(days: int = 90, months: int = 6, line: str | None = None,
     def _line_of(e):
         loc = e.asset.location if e.asset else None
         return (loc.parent.name if loc and loc.parent else None)
-    by_line_open = Counter(ln for ln in (_line_of(e) for e in open_now) if ln)
+    # per-line breakdown counts both still-needs-attention states (open + ack)
+    by_line_open = Counter(ln for ln in (_line_of(e) for e in outstanding) if ln)
 
     return {
         "days": days,
         "total": len(recent),
         "all_time": len(rows),
         "open": len(open_now),
+        "acknowledged": len(acknowledged),
+        "job_card": len(job_carded),
+        "outstanding": len(outstanding),
         "unlinked": len(unlinked),
         "downtime_hours": round(sum(down), 1) if down else 0.0,
         "mttr_hours": round(sum(down) / len(down), 2) if down else None,
@@ -580,20 +663,25 @@ def failure_stats(days: int = 90, months: int = 6, line: str | None = None,
 
 @router.get("/open-failures-by-asset")
 def open_failures_by_asset(db: Session = Depends(get_db), user=Depends(optional_user)):
-    """{asset_code: open_failure_count} — a public aggregate (counts only, no
-    fault text/crew) so the register can flag and pin faulty assets to the top.
-    Open = a failure entry with no recovery (no ended_at, no linked
-    rectification). Line-scoped like the rest of the failures surface."""
-    from collections import Counter
+    """{asset_code: {open, ack, jobcard}} — a public aggregate (counts only, no
+    fault text/crew) so the register can flag and float faulty assets to the top.
+    A failure still needs attention when it has no RECTIFICATION; by dominance it
+    counts as jobcard (yellow) > ack (amber) > open (red).
+    Line-scoped like the rest of the failures surface."""
     q = select(LogEntry).where(LogEntry.type == LogEntryType.FAILURE)
     if user.line_id is not None:
         q = q.where((LogEntry.line_id == user.line_id) | (LogEntry.line_id.is_(None)))
     rows = db.scalars(q).all()
     rec = _recovery_map(db, rows)
-    counts = Counter(
-        e.asset.code for e in rows
-        if e.asset is not None and e.ended_at is None and e.id not in rec)
-    return dict(counts)
+    ack = _ack_map(db, rows)
+    jc = _jobcard_map(db, rows)
+    out: dict[str, dict[str, int]] = {}
+    for e in rows:
+        if e.asset is None or e.ended_at is not None or e.id in rec:
+            continue  # no asset, or resolved -> not outstanding
+        slot = out.setdefault(e.asset.code, {"open": 0, "ack": 0, "jobcard": 0})
+        slot["jobcard" if e.id in jc else "ack" if e.id in ack else "open"] += 1
+    return out
 
 
 # ---- bulk history import: scattered sheet logbooks -> one digital book ----
@@ -640,6 +728,11 @@ _KIND_TYPE = {
     "maintenance": LogEntryType.MAINTENANCE,
     "failure": LogEntryType.FAILURE,
     "rectification": LogEntryType.RECTIFICATION,
+    "acknowledgement": LogEntryType.ACKNOWLEDGEMENT,
+    "acknowledgment": LogEntryType.ACKNOWLEDGEMENT,
+    "job_card": LogEntryType.JOB_CARD,
+    "job card": LogEntryType.JOB_CARD,
+    "jobcard": LogEntryType.JOB_CARD,
     "general": LogEntryType.GENERAL,
 }
 

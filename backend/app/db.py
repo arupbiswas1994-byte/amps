@@ -53,7 +53,8 @@ def _migrate(engine):
                 conn.execute(text(f"ALTER TABLE {table} ALTER COLUMN {col} TYPE {ddl}"))
         # the 2026-07 logbook taxonomy: native enum needs the new labels
         # (each in its own autocommitting statement; IF NOT EXISTS = rerun-safe)
-        for val in ("MAINTENANCE", "FAILURE", "RECTIFICATION", "GENERAL"):
+        for val in ("MAINTENANCE", "FAILURE", "RECTIFICATION", "ACKNOWLEDGEMENT",
+                    "JOB_CARD", "GENERAL"):
             with engine.begin() as conn:
                 conn.execute(text(
                     f"ALTER TYPE logentrytype ADD VALUE IF NOT EXISTS '{val}'"))

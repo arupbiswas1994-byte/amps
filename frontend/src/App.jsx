@@ -194,7 +194,13 @@ function LiveDashboard({ go, initialLine = null }) {
   const effLine = line ?? me?.line ?? lines[0] ?? null
   const assets = effLine ? all.filter((a) => a.line === effLine) : all
   const stateOf = (a) => sched[a.code]?.state || null
-  const faultsOf = (a) => openFail[a.code] || 0   // open failures on this asset
+  // outstanding failures on this asset by state: open (red) · ack (amber) · job
+  // card (yellow) — all need attention, none is resolved
+  const openN = (a) => openFail[a.code]?.open || 0
+  const ackN = (a) => openFail[a.code]?.ack || 0
+  const jobN = (a) => openFail[a.code]?.jobcard || 0
+  const attnOf = (a) => openN(a) + ackN(a) + jobN(a)   // total outstanding
+  const attnRank = (a) => (openN(a) ? 3 : ackN(a) ? 2 : jobN(a) ? 1 : 0)  // red>amber>yellow
   const uniq = (k) => [...new Set(assets.map((a) => a[k]).filter(Boolean))].sort()
   const systemsList = uniq('sys'); const classesList = uniq('cls')
   const locationsList = uniq('location'); const statusesList = uniq('status')
@@ -213,9 +219,9 @@ function LiveDashboard({ go, initialLine = null }) {
   if (fStatus) base = base.filter((a) => a.status === fStatus)
   const overdue = base.filter((a) => stateOf(a) === 'overdue')
   const dueSoon = base.filter((a) => stateOf(a) === 'due_soon')
-  const faulty = base.filter((a) => faultsOf(a) > 0)
+  const faulty = base.filter((a) => attnOf(a) > 0)   // open OR acknowledged
   let shown = filter === 'all' ? base
-    : filter === 'faulty' ? base.filter((a) => faultsOf(a) > 0)
+    : filter === 'faulty' ? base.filter((a) => attnOf(a) > 0)
     : base.filter((a) => stateOf(a) === filter)
   if (sortKey) {
     const dir = sortDir === 'asc' ? 1 : -1
@@ -224,9 +230,10 @@ function LiveDashboard({ go, initialLine = null }) {
       return (a < b ? -1 : a > b ? 1 : x.code.localeCompare(y.code)) * dir
     })
   } else if (faulty.length) {
-    // no manual sort: pin assets with open failures to the top (register order
-    // preserved within each group), like the Fiber console floats blocked lines
-    shown = [...shown].sort((x, y) => (faultsOf(y) > 0) - (faultsOf(x) > 0))
+    // no manual sort: float assets that need attention to the top — genuinely
+    // open (red) above acknowledged (amber) above the rest, register order kept
+    // within each band (like the fibre console floats blocked lines)
+    shown = [...shown].sort((x, y) => attnRank(y) - attnRank(x))
   }
   // page the (already filtered + sorted) rows — rendering all 3000+ at once is
   // ~38k DOM nodes and janky; a page is ~1.5k and snappy. Reset on any change.
@@ -247,11 +254,11 @@ function LiveDashboard({ go, initialLine = null }) {
   // download the table exactly as filtered & sorted, as CSV
   const exportCsv = () => {
     const cell = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
-    const head = [...COLS.map(([, l]) => l), 'Open failures']
+    const head = [...COLS.map(([, l]) => l), 'Open failures', 'Acknowledged', 'Job card']
     const body = shown.map((a) => {
       const s = sched[a.code]
       return [a.code, a.name, a.cls, a.location, a.sys || '', STATUS_LABEL[a.status] || a.status,
-        s?.next_due || '', s ? SCHED_LABEL[s.state] : '', faultsOf(a) || ''].map(cell).join(',')
+        s?.next_due || '', s ? SCHED_LABEL[s.state] : '', openN(a) || '', ackN(a) || '', jobN(a) || ''].map(cell).join(',')
     })
     const csv = [head.map(cell).join(','), ...body].join('\n')
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
@@ -423,14 +430,17 @@ function LiveDashboard({ go, initialLine = null }) {
                 <tbody>
                   {pageRows.map((a) => {
                     const s = sched[a.code]
-                    const nf = faultsOf(a)
+                    const nOpen = openN(a), nAck = ackN(a), nJob = jobN(a)
                     return (
-                      <tr key={a.code} tabIndex={0} className={nf ? 'row-faulty' : ''}
+                      <tr key={a.code} tabIndex={0}
+                          className={nOpen ? 'row-faulty' : nAck ? 'row-ack' : nJob ? 'row-job' : ''}
                           onClick={() => go(`/asset/${a.code}`)}
                           onKeyDown={(e) => e.key === 'Enter' && go(`/asset/${a.code}`)}>
                         <td className="code" data-l="Code">{a.code}</td>
                         <td data-l="Asset">{a.name}
-                          {nf > 0 && <span className="fault-badge" title={`${nf} open failure${nf > 1 ? 's' : ''} on this asset`}>⚠ {nf} open</span>}</td>
+                          {nOpen > 0 && <span className="fault-badge" title={`${nOpen} open breakdown${nOpen > 1 ? 's' : ''} — not yet actioned`}>⚠ {nOpen} open</span>}
+                          {nAck > 0 && <span className="fault-badge amber" title={`${nAck} acknowledged — noted (demand/mail) but not yet fixed`}>{nAck} acknowledged</span>}
+                          {nJob > 0 && <span className="fault-badge yellow" title={`${nJob} job card${nJob > 1 ? 's' : ''} raised — awaiting close-out by rectification`}>{nJob} job card</span>}</td>
                         <td className="dim" data-l="Class">{a.cls}</td>
                         <td className="dim" data-l="Location">{a.location}</td>
                         <td className="dim" data-l="System">{a.sys ?? '—'}</td>
@@ -557,7 +567,21 @@ const tidyLog = (t = '') => t
 
 /* One entry row, shared by both history sections. The asset class is constant
    for this asset (it's in the facts grid), so it's not repeated on every row. */
+// failure lifecycle chip: open (red) · acknowledged (amber) · job card (yellow) · resolved (green)
+const FAIL_STATE_CHIP = { open: 'd-overdue', acknowledged: 'd-ack', job_card: 'd-job', resolved: 'd-ok' }
+const FAIL_STATE_LABEL = { open: 'open', acknowledged: 'acknowledged', job_card: 'job card issued', resolved: 'resolved' }
+
 function LogRow({ en, staff }) {
+  // a failure carries its response inline, by dominance: the rectification that
+  // resolved it, else the job card raised, else the acknowledgement noting it
+  const resp = en.type === 'failure' ? (en.resolved_by || en.job_card_by || en.acknowledged_by) : null
+  const respKind = en.resolved_by ? 'rectification' : en.job_card_by ? 'job_card' : en.acknowledged_by ? 'acknowledgement' : null
+  const RESP_META = {
+    rectification: { cls: 'resolved', tag: '✓ Rectification' },
+    job_card: { cls: 'job', tag: '▤ Job card issued' },
+    acknowledgement: { cls: 'ack', tag: '◐ Acknowledged' },
+  }
+  const rm = respKind ? RESP_META[respKind] : null
   return (
     <div className="wo">
       <div className="row1">
@@ -567,7 +591,7 @@ function LogRow({ en, staff }) {
         {en.fault_type && <span className="chip"><span className="dot" />{en.fault_type}</span>}
         <span className="sub dt">{en.log_date}</span>
         {en.down_hours != null && <span className="sub">down <b>{en.down_hours}h</b></span>}
-        {en.type === 'failure' && !en.ended_at && <span className="chip d-overdue">still open</span>}
+        {en.state && <span className={`chip ${FAIL_STATE_CHIP[en.state]}`}>{FAIL_STATE_LABEL[en.state]}</span>}
         {staff && <span className="wo-edit"><EditLink id={en.id} date={en.log_date} /></span>}
       </div>
       <div className="findings">{tidyLog(en.text)}</div>
@@ -575,6 +599,15 @@ function LogRow({ en, staff }) {
       {(en.attended_by || en.entered_by) && (
         <div className="sub">by <b>{en.attended_by || en.entered_by}</b>
           {en.attended_by && en.attended_by !== en.entered_by && <> · recorded by {en.entered_by}</>}
+        </div>
+      )}
+      {resp && rm && (
+        <div className={`fail-resp ${rm.cls}`}>
+          <span className="fr-tag">{rm.tag}</span>
+          <span className="fr-date dt">{resp.log_date}</span>
+          <div className="fr-text">{tidyLog(resp.text)}</div>
+          {resp.consumables && <div className="le-consumables"><span className="lc-tag">Consumed</span> {resp.consumables}</div>}
+          {resp.attended_by && <div className="sub">by <b>{resp.attended_by}</b></div>}
         </div>
       )}
     </div>
@@ -608,21 +641,30 @@ function LogList({ rows, staff }) {
 function AssetLogSections({ log, staff }) {
   const maint = log.filter((e) => e.type === 'maintenance')
   const allFails = log.filter((e) => e.type === 'failure')
-  const other = log.filter((e) => e.type !== 'maintenance' && e.type !== 'failure')
-  // A public walk-up (QR scan) sees only settled history — open breakdowns are
-  // operational and stay behind sign-in. Staff see them, pulled to the top and
-  // marked. The maintenance record is public either way.
-  const openFail = allFails.filter((e) => !e.ended_at)
-  const resolvedFail = allFails.filter((e) => e.ended_at)
-  // only timed entries carry a duration — see _down_hours on the API side
+  // a failure's rectification/acknowledgement is shown INLINE with the failure
+  // (LogRow), so it is not repeated in the loose "other" stream
+  const other = log.filter((e) => !['maintenance', 'failure', 'rectification', 'acknowledgement', 'job_card'].includes(e.type))
+  // A public walk-up (QR scan) sees only settled history — outstanding
+  // breakdowns are operational and stay behind sign-in. Staff see them, pulled
+  // to the top and marked. The maintenance record is public either way.
+  const openFail = allFails.filter((e) => e.state === 'open')
+  const ackFail = allFails.filter((e) => e.state === 'acknowledged')
+  const jobFail = allFails.filter((e) => e.state === 'job_card')
+  const resolvedFail = allFails.filter((e) => e.state === 'resolved')
   const timed = resolvedFail.filter((e) => e.down_hours != null)
   const downtime = timed.reduce((s, e) => s + e.down_hours, 0)
+  const attnRows = [...openFail, ...ackFail, ...jobFail]
+  const attnBits = [openFail.length && `${openFail.length} open`,
+    ackFail.length && `${ackFail.length} acknowledged`,
+    jobFail.length && `${jobFail.length} job card`].filter(Boolean).join(' · ')
   return (
     <>
-      {staff && openFail.length > 0 && (
+      {staff && attnRows.length > 0 && (
         <div className="sect open-fail-banner">
-          <h3>⚠ Open breakdown{openFail.length > 1 ? 's' : ''} — {openFail.length} awaiting recovery</h3>
-          <LogList rows={openFail} staff={staff} />
+          <h3>⚠ Needs attention — {attnBits}</h3>
+          {openFail.length > 0 && <LogList rows={openFail} staff={staff} />}
+          {ackFail.length > 0 && <LogList rows={ackFail} staff={staff} />}
+          {jobFail.length > 0 && <LogList rows={jobFail} staff={staff} />}
         </div>
       )}
 
@@ -640,7 +682,7 @@ function AssetLogSections({ log, staff }) {
           Failure history — {resolvedFail.length
             ? <>{resolvedFail.length} resolved{timed.length > 0 && <> · {downtime.toFixed(1)}h downtime</>}</>
             : 'none recorded'}
-          {!staff && openFail.length > 0 && <span className="dim"> · sign in for open breakdowns</span>}
+          {!staff && attnRows.length > 0 && <span className="dim"> · sign in for open breakdowns</span>}
         </h3>
         {resolvedFail.length === 0
           ? <p className="dim">No resolved failures recorded against this asset.</p>
@@ -649,7 +691,7 @@ function AssetLogSections({ log, staff }) {
 
       {other.length > 0 && (
         <div className="sect">
-          <h3>Other log entries — notes & rectifications, newest first</h3>
+          <h3>Other log entries — notes, newest first</h3>
           <LogList rows={other} staff={staff} />
         </div>
       )}
@@ -1446,14 +1488,17 @@ function LiveFailures({ line = '' }) {
   const dir = last3 < prev3 ? 'down' : last3 > prev3 ? 'up' : 'flat'
   const asRows = (a) => a.map((c) => [c.name, c.count])
 
-  // two tabs: still-open breakdowns vs restored ones. A row is open until a
-  // recovery time exists (linked or not); unlinked-open rows are flagged.
+  // three tabs by lifecycle: open (nothing done) · acknowledged (noted, not
+  // fixed) · resolved (rectified). The row's `state` comes from the API.
   const ql = q.trim().toLowerCase()
   const match = (r) => (!cls || (r.category || 'Unclassified') === cls)
     && (!ql || [r.asset_code, r.text, r.fault_type, r.attended_by, r.category].some((v) => (v || '').toLowerCase().includes(ql)))
-  const openRows = rows.filter((r) => !r.ended_at && match(r))
-  const resolvedRows = rows.filter((r) => r.ended_at && match(r))
-  const shown = state === 'open' ? openRows : resolvedRows
+  const openRows = rows.filter((r) => r.state === 'open' && match(r))
+  const ackRows = rows.filter((r) => r.state === 'acknowledged' && match(r))
+  const jobRows = rows.filter((r) => r.state === 'job_card' && match(r))
+  const resolvedRows = rows.filter((r) => r.state === 'resolved' && match(r))
+  const shown = state === 'open' ? openRows : state === 'acknowledged' ? ackRows
+    : state === 'job_card' ? jobRows : resolvedRows
 
   const exportCsv = () => {
     const cell = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
@@ -1477,6 +1522,10 @@ function LiveFailures({ line = '' }) {
           <div className="asset-filter" role="tablist" aria-label="Failure state">
             <button type="button" className={`btn preset ${state === 'open' ? 'active' : ''}${openRows.length ? ' has-od' : ''}`}
                     onClick={() => setState('open')}>Open {openRows.length}</button>
+            <button type="button" className={`btn preset ${state === 'acknowledged' ? 'active' : ''}${ackRows.length ? ' has-ack' : ''}`}
+                    onClick={() => setState('acknowledged')}>Acknowledged {ackRows.length}</button>
+            <button type="button" className={`btn preset ${state === 'job_card' ? 'active' : ''}${jobRows.length ? ' has-job' : ''}`}
+                    onClick={() => setState('job_card')}>Job card {jobRows.length}</button>
             <button type="button" className={`btn preset ${state === 'resolved' ? 'active' : ''}`}
                     onClick={() => setState('resolved')}>Resolved {resolvedRows.length}</button>
           </div>
@@ -1569,7 +1618,7 @@ function LiveFailures({ line = '' }) {
         </p></div>
       ) : (
       <>
-      <h2 className="fail-log-h">{state === 'open' ? 'Open failures' : 'Resolved failures'} <span className="dim" style={{ fontWeight: 400, fontSize: 15 }}>· {shown.length}</span></h2>
+      <h2 className="fail-log-h">{{ open: 'Open failures', acknowledged: 'Acknowledged failures', job_card: 'Job card issued', resolved: 'Resolved failures' }[state]} <span className="dim" style={{ fontWeight: 400, fontSize: 15 }}>· {shown.length}</span></h2>
       <div className="card tbl-wrap">
         <table>
           <thead><tr><th>Asset</th><th>Class</th><th>Occurred</th><th>Restored</th><th>Down</th><th>State</th><th>Team</th><th>Fault → what happened</th>{canWrite && <th aria-label="Edit"></th>}</tr></thead>
@@ -1591,9 +1640,7 @@ function LiveFailures({ line = '' }) {
                 <td className="dt" data-l="Down">{f.down_hours != null ? `${f.down_hours} h` : '—'}</td>
                 <td data-l="State">{!f.asset_code
                   ? <span className="chip"><span className="dot" />Unlinked</span>
-                  : f.ended_at
-                    ? <span className="chip w-done"><span className="dot" />Restored</span>
-                    : <span className="chip d-overdue"><span className="dot" />Open</span>}</td>
+                  : <span className={`chip ${FAIL_STATE_CHIP[f.state] || 'd-overdue'}`}><span className="dot" />{FAIL_STATE_LABEL[f.state] || 'open'}</span>}</td>
                 <td className="dim" data-l="Team">{f.attended_by || f.entered_by || '—'}</td>
                 <td className="wrap-cell" data-l="Fault">
                   {f.fault_type && <b>{f.fault_type} </b>}{f.text}
