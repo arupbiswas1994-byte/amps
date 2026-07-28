@@ -1336,6 +1336,7 @@ function LiveFailures() {
   const [q, setQ] = useState('')
   const [state, setState] = useState('open')   // tab: 'open' | 'resolved'
   const [period, setPeriod] = useState(0)
+  const [showViz, setShowViz] = useState(true)  // analytics charts, collapsible
   const toolbarRef = useRef(null)
   useEffect(() => {
     const setVars = () => { const tb = document.querySelector('.topbar'); if (tb) document.documentElement.style.setProperty('--topbar-h', `${tb.offsetHeight}px`) }
@@ -1423,7 +1424,7 @@ function LiveFailures() {
         </div>
       </div>
 
-      <div className="kpis">
+      <div className="kpis kpis-slim">
         <div className="tile"><div className="v">{stats.total}</div>
           <div className="k">Failures — {periodLabel.toLowerCase()}</div></div>
         <div className={stats.open ? 'tile alert' : 'tile'}><div className="v">{stats.open}</div>
@@ -1436,53 +1437,51 @@ function LiveFailures() {
           <div className="k">Unlinked records</div></div>
       </div>
 
-      {(stats.unmeasured > 0 || stats.unlinked > 0) && (
-        <p className="viz-insight">
-          {stats.unmeasured > 0 && <>Downtime and MTTR come from the {stats.measured} failure{stats.measured === 1 ? '' : 's'} logged
-            with clock times; {stats.unmeasured} imported record{stats.unmeasured === 1 ? '' : 's'} carry a date only and sit outside the averages. </>}
-          {stats.unlinked > 0 && <>{stats.unlinked} record{stats.unlinked === 1 ? '' : 's'} never matched an asset code in the register —
-            they are a data-quality backlog, not open work.</>}
-        </p>
+      <button type="button" className="viz-toggle" onClick={() => setShowViz((v) => !v)} aria-expanded={showViz}>
+        <span className={`chev${showViz ? ' open' : ''}`}>▸</span> Analytics
+        <span className="dim">· trend, by class, fault types, repeat offenders</span>
+      </button>
+
+      {showViz && (
+        <div className="viz-grid2 viz-compact">
+          <section className="card viz-card">
+            <h2 className="viz-h">Failures per month <span className="viz-note">last {months} months</span></h2>
+            <TrendChart data={trend} />
+            <p className="viz-insight">
+              {dir === 'down' && <>Improving — {last3} in the last 3 months vs {prev3} in the previous 3.</>}
+              {dir === 'up' && <>Worsening — {last3} in the last 3 months vs {prev3} in the previous 3.</>}
+              {dir === 'flat' && <>Steady — {last3} in each of the last two quarters.</>}
+            </p>
+          </section>
+
+          <section className="card viz-card">
+            <h2 className="viz-h">By asset class <span className="viz-note">{periodLabel.toLowerCase()}</span></h2>
+            {stats.by_class.length === 0 ? <p className="dim">Nothing in this window.</p> : <>
+              <HBar rows={asRows(stats.by_class)} unit="" />
+              <p className="viz-insight">{stats.by_class[0].name} leads with {stats.by_class[0].count} — focus for the next PM review.</p>
+            </>}
+          </section>
+
+          <section className="card viz-card">
+            <h2 className="viz-h">Fault types <span className="viz-note">{periodLabel.toLowerCase()}</span></h2>
+            {stats.by_fault.length === 0
+              ? <p className="dim">No fault types classified in this window.</p>
+              : <HBar rows={asRows(stats.by_fault)} unit="" seq />}
+          </section>
+
+          <section className="card viz-card">
+            <h2 className="viz-h">Repeat offenders <span className="viz-note">most failures</span></h2>
+            {stats.by_asset.length === 0
+              ? <p className="dim">Nothing in this window.</p>
+              : <>
+                  <HBar rows={asRows(stats.by_asset)} unit="" seq />
+                  <p className="viz-insight">{stats.by_asset[0].name} has failed {stats.by_asset[0].count} times — worth a condition review.</p>
+                </>}
+          </section>
+        </div>
       )}
 
-      <div className="viz-grid2">
-        <section className="card viz-card">
-          <h2 className="viz-h">Failures per month <span className="viz-note">last {months} months</span></h2>
-          <TrendChart data={trend} />
-          <p className="viz-insight">
-            {dir === 'down' && <>Improving — {last3} in the last 3 months vs {prev3} in the previous 3.</>}
-            {dir === 'up' && <>Worsening — {last3} in the last 3 months vs {prev3} in the previous 3.</>}
-            {dir === 'flat' && <>Steady — {last3} in each of the last two quarters.</>}
-          </p>
-        </section>
-
-        <section className="card viz-card">
-          <h2 className="viz-h">By asset class <span className="viz-note">{periodLabel.toLowerCase()}</span></h2>
-          {stats.by_class.length === 0 ? <p className="dim">Nothing in this window.</p> : <>
-            <HBar rows={asRows(stats.by_class)} unit="" />
-            <p className="viz-insight">{stats.by_class[0].name} leads with {stats.by_class[0].count} — focus for the next PM review.</p>
-          </>}
-        </section>
-
-        <section className="card viz-card">
-          <h2 className="viz-h">Fault types <span className="viz-note">{periodLabel.toLowerCase()}</span></h2>
-          {stats.by_fault.length === 0
-            ? <p className="dim">No fault types classified in this window.</p>
-            : <HBar rows={asRows(stats.by_fault)} unit="" seq />}
-        </section>
-
-        <section className="card viz-card">
-          <h2 className="viz-h">Repeat offenders <span className="viz-note">most failures</span></h2>
-          {stats.by_asset.length === 0
-            ? <p className="dim">Nothing in this window.</p>
-            : <>
-                <HBar rows={asRows(stats.by_asset)} unit="" seq />
-                <p className="viz-insight">{stats.by_asset[0].name} has failed {stats.by_asset[0].count} times — worth a condition review.</p>
-              </>}
-        </section>
-      </div>
-
-      <h2>{state === 'open' ? 'Open failures' : 'Resolved failures'} <span className="dim" style={{ fontWeight: 400, fontSize: 15 }}>· {shown.length}</span></h2>
+      <h2 className="fail-log-h">{state === 'open' ? 'Open failures' : 'Resolved failures'} <span className="dim" style={{ fontWeight: 400, fontSize: 15 }}>· {shown.length}</span></h2>
       <div className="card tbl-wrap">
         <table>
           <thead><tr><th>Asset</th><th>Class</th><th>Occurred</th><th>Restored</th><th>Down</th><th>State</th><th>Team</th><th>Fault → what happened</th>{canWrite && <th aria-label="Edit"></th>}</tr></thead>

@@ -724,6 +724,25 @@ tbody tr:hover .edit-link { color: var(--accent); }
 .viz-cat { font-size: 11px; fill: var(--ink-3); }
 .viz-insight { font-size: 12px; color: var(--ink-2); margin-top: 10px; line-height: 1.5; border-top: 1px solid #f0efee; padding-top: 9px; }
 
+/* ---- compact analytics (Failures page): slim KPIs + collapsible tighter charts,
+   so the failure log peeks into the viewport below ---- */
+.kpis.kpis-slim { gap: 8px; margin-bottom: 12px; }
+.kpis-slim .tile { padding: 8px 12px; border-radius: 8px; }
+.kpis-slim .tile .v { font-size: 21px; line-height: 1.1; }
+.kpis-slim .tile .k { font-size: 11px; margin-top: 1px; }
+.viz-toggle { display: flex; align-items: center; gap: 8px; width: 100%; margin: 0 0 12px;
+  padding: 7px 10px; font: inherit; font-size: 13px; font-weight: 600; text-align: left;
+  background: #f6fafc; border: 1px solid var(--border); border-radius: 8px; color: var(--ink-2); cursor: pointer; }
+.viz-toggle:hover { background: #eef5fb; }
+.viz-toggle .dim { font-weight: 400; }
+.viz-toggle .chev { display: inline-block; transition: transform .15s; color: var(--ink-3); }
+.viz-toggle .chev.open { transform: rotate(90deg); }
+.viz-grid2.viz-compact { gap: 10px; margin-bottom: 14px; }
+.viz-compact .viz-card { padding: 11px 13px 10px; }
+.viz-compact .viz-h { margin-bottom: 7px; font-size: 13px; }
+.viz-compact .viz-insight { margin-top: 7px; padding-top: 7px; font-size: 11.5px; line-height: 1.4; }
+.fail-log-h { margin-top: 4px; }
+
 .hbars { padding: 2px 0; }
 .bar-row { display: grid; grid-template-columns: 108px 1fr 44px; align-items: center; gap: 10px; padding: 5.5px 0; }
 .bar-label { font-size: 12px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
