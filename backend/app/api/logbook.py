@@ -504,6 +504,13 @@ def set_resolution(failure_id: int, body: ResolutionIn,
         raise HTTPException(422, "the response cannot precede the failure")
     prefix, default_text, action_new = _RESP_PREFIX[resp_type]
     text = prefix + (r.text.strip() or default_text)
+    # RECTIFICATION is terminal: it RESOLVES the failure, so any acknowledgement
+    # or job card becomes moot — drop them so the failure reads simply "resolved"
+    # (an acknowledged-then-fixed failure must not still show as acknowledged).
+    if is_rect:
+        for e in all_linked:
+            if e.type in (LogEntryType.ACKNOWLEDGEMENT, LogEntryType.JOB_CARD):
+                db.delete(e)
     existing = [e for e in all_linked if e.type == resp_type]
     if existing:
         # update the current response of this kind in place

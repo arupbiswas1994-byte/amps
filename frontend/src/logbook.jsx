@@ -166,8 +166,7 @@ function RectifyForm({ failure, busy, onCancel, onSubmit }) {
    code) and filling the resolve row (recovery date/time). */
 function EditEntryForm({ entry, assets, systems, classSystem, initialResp = null, onCancel, onSaved }) {
   const isFail = entry.type === 'failure'
-  // a deep-link (register quick action) may ask to jump straight to a state
-  const RESP_STATE = { acknowledgement: 'acknowledged', job_card: 'job_card', rectification: 'resolved' }
+  // a deep-link (register quick action) may ask to jump straight to a response
   const RESP_REF = { acknowledgement: 'acknowledged_by', job_card: 'job_card_by', rectification: 'resolved_by' }
   // the response to pre-fill: if a deep-link named a kind, use ONLY that kind's
   // own entry (so "Rectify" on an acknowledged failure starts a fresh fix rather
@@ -185,26 +184,48 @@ function EditEntryForm({ entry, assets, systems, classSystem, initialResp = null
   const [faultType, setFaultType] = useState(entry.fault_type || '')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-  // failure lifecycle — a linked response entry. Editing a failure lets you set
-  // its state (open · acknowledged · job card · resolved), edit the response,
-  // and (on re-open) delete the response with a confirmation.
-  // start on the state the deep-link asked for (but never downgrade a resolved
-  // failure); otherwise the failure's current state
-  const [fstate, setFstate] = useState(() => {
-    if (isFail && initialResp && RESP_STATE[initialResp] && entry.state !== 'resolved') return RESP_STATE[initialResp]
-    return isFail ? (entry.state || 'open') : 'open'
+  // TWO INDEPENDENT FLAGS. Acknowledge (none · acknowledged · job card) records
+  // that the failure has been noted / escalated but NOT fixed. Rectified records
+  // the actual fix. Rectification is TERMINAL — once rectified, acknowledgement
+  // is moot, so it is muted here and dropped on the server.
+  const initAck = entry.job_card_by ? 'job_card' : entry.acknowledged_by ? 'acknowledged' : 'none'
+  const [ackState, setAckState] = useState(() => {
+    if (!isFail) return 'none'
+    if (initialResp === 'acknowledgement') return 'acknowledged'
+    if (initialResp === 'job_card') return 'job_card'
+    return initAck
   })
+  const [rectified, setRectified] = useState(() =>
+    isFail && (!!entry.resolved_by || initialResp === 'rectification'))
+  // response-detail fields — they describe whichever response is active
+  // (rectification when rectified, else the acknowledgement/job-card note)
   const [rDate, setRDate] = useState(rb ? rb.log_date : entry.log_date)
   const [rTime, setRTime] = useState(rb ? hhmm(rb.at) : '')
   const [rText, setRText] = useState(rb ? bodyText(rb.text) : '')
   const [rFault, setRFault] = useState(rb?.fault_type || entry.fault_type || '')
   const [rTeam, setRTeam] = useState(rb?.attended_by || '')
   const [rConsum, setRConsum] = useState(rb?.consumables || '')
+  // the effective lifecycle state, by dominance of the two flags
+  const fstate = rectified ? 'resolved' : ackState === 'job_card' ? 'job_card'
+    : ackState === 'acknowledged' ? 'acknowledged' : 'open'
+  const isResolved = rectified
   const isOpen = fstate === 'open'
-  const isResolved = fstate === 'resolved'
-  // kind sent to the resolution endpoint for each non-open state
-  const STATE_KIND = { acknowledged: 'acknowledgement', job_card: 'job_card', resolved: 'rectification' }
-  const STATE_VERB = { acknowledged: 'acknowledgement', job_card: 'job card', resolved: 'rectification' }
+  // which response the detail fields describe (and the label to use)
+  const activeKind = rectified ? 'rectification' : ackState === 'job_card' ? 'job_card'
+    : ackState === 'acknowledged' ? 'acknowledgement' : null
+  const KIND_LABEL = { rectification: 'rectification', job_card: 'job card', acknowledgement: 'acknowledgement' }
+  // when a flag changes, repopulate the detail fields from that response's own
+  // stored entry (so switching acknowledge↔rectify doesn't carry over the wrong note)
+  const REF_OF = { rectification: 'resolved_by', job_card: 'job_card_by', acknowledgement: 'acknowledged_by' }
+  const loadResp = (kind) => {
+    const src = kind ? entry[REF_OF[kind]] : null
+    setRDate(src ? src.log_date : entry.log_date)
+    setRTime(src ? hhmm(src.at) : '')
+    setRText(src ? bodyText(src.text) : '')
+    setRFault(src?.fault_type || entry.fault_type || '')
+    setRTeam(src?.attended_by || '')
+    setRConsum(src?.consumables || '')
+  }
 
   const textRef = useRef(null)
   useEffect(() => { textRef.current?.focus({ preventScroll: true }) }, [])
@@ -213,10 +234,12 @@ function EditEntryForm({ entry, assets, systems, classSystem, initialResp = null
     ? [...new Set(assets.filter((a) => a.system === system).map((a) => a.asset_class).filter(Boolean))].sort()
     : [...new Set(assets.map((a) => a.asset_class).filter(Boolean))].sort()
 
+  const KIND_OF = { resolved: 'rectification', job_card: 'job_card', acknowledged: 'acknowledgement' }
+
   const save = async () => {
     if (!text.trim() || busy) return
-    if (isFail && !isOpen && !rText.trim()) {
-      setErr(`This ${STATE_VERB[fstate]} needs a note — what was done or requested.`); return
+    if (isFail && activeKind && !rText.trim()) {
+      setErr(`This ${KIND_LABEL[activeKind]} needs a note — what was done or requested.`); return
     }
     setBusy(true); setErr('')
     try {
@@ -237,17 +260,21 @@ function EditEntryForm({ entry, assets, systems, classSystem, initialResp = null
         }),
       })
       if (!res.ok) throw new Error((await res.json().catch(() => null))?.detail || `HTTP ${res.status}`)
-      // 2) a failure's response: file/update the chosen state, or (open) delete it
+      // 2) the failure's response — one active response reflects the two flags.
+      //    open → clear it; else file/update the rectification / job-card / ack.
+      //    A rectification is terminal: the server drops any acknowledgement.
       if (isFail && (!isOpen || rb)) {
-        const rectification = isOpen ? null : {
-          date: rDate, time: rTime || null, text: rText.trim(),
-          fault_type: rFault.trim() || null, attended_by: rTeam.trim() || null,
-          // only a rectification carries consumables
-          consumables: isResolved ? (rConsum.trim() || null) : null,
+        const body = isOpen ? { rectification: null, kind: 'rectification' } : {
+          kind: KIND_OF[fstate],
+          rectification: {
+            date: rDate, time: rTime || null, text: rText.trim(),
+            fault_type: rFault.trim() || null, attended_by: rTeam.trim() || null,
+            consumables: isResolved ? (rConsum.trim() || null) : null,  // only a fix consumes
+          },
         }
         const r2 = await fetch(`${API}/api/logbook/${entry.id}/resolution`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ rectification, kind: isOpen ? 'rectification' : STATE_KIND[fstate] }),
+          body: JSON.stringify(body),
         })
         if (!r2.ok) throw new Error((await r2.json().catch(() => null))?.detail || `HTTP ${r2.status}`)
       }
@@ -257,10 +284,19 @@ function EditEntryForm({ entry, assets, systems, classSystem, initialResp = null
     } finally { setBusy(false) }
   }
 
-  // moving a responded failure back to open will delete its response — confirm
-  const onSetState = (want) => {
-    if (want === 'open' && rb && !window.confirm('Re-open this failure? Its logged response will be deleted.')) return
-    setFstate(want)
+  // change the acknowledge flag (muted while rectified)
+  const onSetAck = (want) => {
+    if (want === 'none' && rb && !rectified &&
+        !window.confirm('Clear the acknowledgement? Its logged note will be deleted.')) return
+    setAckState(want)
+    if (!rectified) loadResp(want === 'none' ? null : want === 'job_card' ? 'job_card' : 'acknowledgement')
+  }
+  // toggle the rectified flag — on: switch detail fields to the fix; off: back
+  // to the acknowledge note (or nothing)
+  const onSetRectified = (want) => {
+    if (!want && entry.resolved_by && !window.confirm('Mark as NOT rectified? The rectification log will be deleted.')) return
+    setRectified(want)
+    loadResp(want ? 'rectification' : ackState === 'job_card' ? 'job_card' : ackState === 'acknowledged' ? 'acknowledgement' : null)
   }
 
   return (
@@ -343,21 +379,34 @@ function EditEntryForm({ entry, assets, systems, classSystem, initialResp = null
           </div>
         </section>
 
-        {/* a failure's lifecycle — its linked response, edited right here.
-            open (red) → acknowledged (amber) → job card (yellow) → resolved */}
+        {/* a failure has TWO independent flags — acknowledge and rectify, each a
+            checkbox. Rectify is terminal: once rectified, acknowledge is moot
+            and its checkbox is muted. */}
         {isFail && (
           <section className="fg fg-fail">
             <span className="fg-lbl">Status</span>
             <div className="fg-fields">
-              <label className="fg-span">State
-                <select value={fstate} onChange={(e) => onSetState(e.target.value)}>
-                  <option value="open">Open — not yet actioned</option>
-                  <option value="acknowledged">Acknowledged — noted / demand raised</option>
-                  <option value="job_card">Job card issued — raised to OEM/dept</option>
-                  <option value="resolved">Resolved — rectified</option>
-                </select>
-              </label>
-              {!isOpen && <>
+              <div className="fg-span fail-flags">
+                <label className={`flag-check${rectified ? ' muted' : ''}`}
+                       title={rectified ? 'A rectified failure needs no acknowledgement' : undefined}>
+                  <input type="checkbox" checked={ackState !== 'none'} disabled={rectified}
+                         onChange={(e) => onSetAck(e.target.checked ? 'acknowledged' : 'none')} />
+                  Acknowledged <span className="ef-opt">— noted, but still to be rectified</span>
+                </label>
+                {ackState !== 'none' && !rectified && (
+                  <label className="flag-sub">
+                    <input type="checkbox" checked={ackState === 'job_card'}
+                           onChange={(e) => onSetAck(e.target.checked ? 'job_card' : 'acknowledged')} />
+                    Job card issued to OEM/dept
+                  </label>
+                )}
+                <label className="flag-check flag-rect">
+                  <input type="checkbox" checked={rectified}
+                         onChange={(e) => onSetRectified(e.target.checked)} />
+                  Rectified <span className="ef-opt">— actually fixed (resolves the failure)</span>
+                </label>
+              </div>
+              {activeKind && <>
                 <label>{isResolved ? 'Rectified on' : 'Dated'}
                   <input type="date" value={rDate} min={entry.log_date} onChange={(e) => setRDate(e.target.value)} />
                 </label>
@@ -378,14 +427,14 @@ function EditEntryForm({ entry, assets, systems, classSystem, initialResp = null
                 )}
                 <label className="fg-span">
                   {isResolved ? 'What was done (rectification)'
-                    : fstate === 'job_card' ? 'Job card detail (agency, card no., scope)'
+                    : activeKind === 'job_card' ? 'Job card detail (agency, card no., scope)'
                     : 'Note (demand raised / mail sent / awaiting spare)'}
                   <input value={rText} onChange={(e) => setRText(e.target.value)}
                          placeholder={isResolved ? 'what was done to rectify it…'
-                           : fstate === 'job_card' ? 'e.g. Job card issued to M/s Siemens to replace WAGO'
+                           : activeKind === 'job_card' ? 'e.g. Job card issued to M/s Siemens to replace WAGO'
                            : 'e.g. Relay not available. Demand raised, mail sent 30-06'} />
                 </label>
-                {fstate === 'job_card' && <p className="ef-hint fg-span-2">A job card keeps the failure open (yellow). Set it to <b>Resolved</b> once the card is closed by a rectification.</p>}
+                {activeKind === 'job_card' && !rectified && <p className="ef-hint fg-span-2">A job card keeps the failure open (yellow). Mark it <b>Rectified</b> once the card is closed by a fix.</p>}
               </>}
             </div>
           </section>
