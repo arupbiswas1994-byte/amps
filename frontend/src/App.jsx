@@ -1385,7 +1385,7 @@ const FAIL_PERIODS = [
 ]
 
 function LiveFailures({ line = '' }) {
-  const { canWrite, me } = useMe()
+  const { canWrite, me, loading: meLoading } = useMe()
   // anonymous (walk-up) sees the summary + charts only; the row-level table
   // (crew, fault text) stays behind sign-in.
   const anon = LIVE && me?.auth_enabled && me?.username === 'viewer'
@@ -1406,8 +1406,11 @@ function LiveFailures({ line = '' }) {
   const [periodLabel, days, months] = FAIL_PERIODS[period]
 
   useEffect(() => {
+    // wait for the session to resolve — firing while `me` is still loading
+    // would read anon=false and hit the signed-in-only list, 401-ing a walk-up
+    if (meLoading) return undefined
     let alive = true
-    setStats(null)
+    setStats(null); setError(null)
     const lq = line ? `&line=${encodeURIComponent(line)}` : ''
     // stats are public; the row-level list is signed-in only
     const jobs = [getJSON(`/api/logbook/failure-stats?days=${days}&months=${months}${lq}`)]
@@ -1416,7 +1419,7 @@ function LiveFailures({ line = '' }) {
       .then(([s, l]) => { if (alive) { setStats(s); setRows(l || []) } })
       .catch((e) => alive && setError(String(e)))
     return () => { alive = false }
-  }, [days, months, anon, line])
+  }, [days, months, anon, line, meLoading])
 
   if (error) return <div className="card offline-note">Backend unreachable — {error}.</div>
   if (!stats) return <p className="dim">Loading failure record…</p>
@@ -2228,6 +2231,7 @@ const NAV = LIVE ? [
   ['/', 'Home'],
   ['/assets', 'Assets'],
   ['/log', 'Log book'],
+  ['/failures', 'Failures'],
   ['/tags', 'QR tags'],
 ] : [
   ['/', 'Assets'],
@@ -2466,12 +2470,17 @@ function LoginPage() {
 
 function LineView({ name }) {
   const { me } = useMe()
+  // anon has the topbar tabs (Lines · Assets · Failures); only the signed-in
+  // admin, whose global nav has no per-line failures, needs the in-view link
+  const anon = LIVE && me?.auth_enabled && me?.username === 'viewer'
   return (
     <>
-      <div className="line-subnav">
-        {!me?.line && <a className="crumb" href="#/">← All lines</a>}
-        <a className="btn ghost sm" href={`#/line/${encodeURIComponent(name)}/failures`}>Failures →</a>
-      </div>
+      {!anon && (
+        <div className="line-subnav">
+          {!me?.line && <a className="crumb" href="#/">← All lines</a>}
+          <a className="btn ghost sm" href={`#/line/${encodeURIComponent(name)}/failures`}>Failures →</a>
+        </div>
+      )}
       <LiveDashboard go={(r) => { location.hash = r }} initialLine={name} />
     </>
   )
@@ -2556,7 +2565,13 @@ export default function App() {
         <header className="topbar">
   <Brand />
           <nav className="nav">
-            {navLine && <a href="#/" className="crumb">← All lines</a>}
+            <a href="#/" className={!navLine ? 'active' : ''}>Lines</a>
+            {navLine && !assetMatch && (
+              <>
+                <a href={`#/line/${encodeURIComponent(navLine)}`} className={lineMatch ? 'active' : ''}>Assets</a>
+                <a href={`#/line/${encodeURIComponent(navLine)}/failures`} className={failLine ? 'active' : ''}>Failures</a>
+              </>
+            )}
             <a href="#/login" className="btn login-btn">Sign in</a>
           </nav>
         </header>
@@ -2576,9 +2591,16 @@ export default function App() {
       <header className="topbar">
 <Brand />
         <nav className="nav">
-          {NAV.map(([path, label]) => (
-            <a key={path} href={`#${path}`} className={routePath === path ? 'active' : ''}>{label}</a>
-          ))}
+          {NAV.map(([path, label]) => {
+            // Failures is per-line now: send a coordinator to their own line's
+            // board, an admin to the line in view (or the redirect picker).
+            if (LIVE && path === '/failures') {
+              const fl = me?.line || navLine
+              const href = fl ? `#/line/${encodeURIComponent(fl)}/failures` : '#/failures'
+              return <a key={path} href={href} className={lineFailMatch ? 'active' : ''}>{label}</a>
+            }
+            return <a key={path} href={`#${path}`} className={routePath === path ? 'active' : ''}>{label}</a>
+          })}
           {!LIVE && <ShowcaseDropdown />}
           {signedIn && (
             <span className="who">
