@@ -215,6 +215,19 @@ function EditEntryForm({ entry, assets, systems, classSystem, onCancel, onSaved 
         <span className="ep-ctx">{fmtDate(entry.log_date)} · {SHIFT_LABEL[entry.shift] || entry.shift} · {entry.type}{entry.subtype ? ` · ${entry.subtype}` : ''}</span>
       </div>
 
+      {/* a rectification always shows the failure it closes, as read-only context */}
+      {entry.type === 'rectification' && entry.rectifies && (
+        <div className="master-fail">
+          <span className="mf-tag">Closes failure</span>
+          <span className="mf-body">
+            <b className="dt">{entry.rectifies.log_date}</b>
+            {entry.rectifies.fault_type && <> · <b>{entry.rectifies.fault_type}</b></>}
+            {entry.rectifies.asset_code && <> · {entry.rectifies.asset_code}</>}
+            <div className="mf-text">{bodyText(entry.rectifies.text)}</div>
+          </span>
+        </div>
+      )}
+
       <div className="fg-set">
         {/* row 1 — system › class › asset id (type & shift are fixed context, shown in the header) */}
         <section className="fg">

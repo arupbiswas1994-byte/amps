@@ -70,10 +70,20 @@ class LogEntryOut(BaseModel):
     asset_name: str | None
     corrects_id: int | None
     rectifies_id: int | None
+    # the master failure this rectification closes (summary, for the edit sub-form)
+    rectifies: "FailureRef | None" = None
     ended_at: datetime | None
     fault_type: str | None
     consumables: str | None
     down_hours: float | None
+
+
+class FailureRef(BaseModel):
+    id: int
+    log_date: date
+    fault_type: str | None
+    text: str
+    asset_code: str | None
 
 
 def _recovery_map(db: Session, entries: list[LogEntry]) -> dict[int, datetime]:
@@ -108,7 +118,8 @@ def _down_hours(e: LogEntry, recovered: datetime | None = None) -> float | None:
     return round(hrs, 2) if hrs > 0 else None
 
 
-def _to_out(e: LogEntry, recovered: datetime | None = None) -> LogEntryOut:
+def _to_out(e: LogEntry, recovered: datetime | None = None,
+            master: LogEntry | None = None) -> LogEntryOut:
     return LogEntryOut(
         id=e.id, at=e.at, log_date=e.log_date, shift=e.shift.value,
         type=e.type.value, subtype=e.subtype, system=e.system, category=e.category, text=e.text,
@@ -116,6 +127,10 @@ def _to_out(e: LogEntry, recovered: datetime | None = None) -> LogEntryOut:
         asset_code=e.asset.code if e.asset else None,
         asset_name=e.asset.name if e.asset else None, corrects_id=e.corrects_id,
         rectifies_id=e.rectifies_id,
+        rectifies=(FailureRef(id=master.id, log_date=master.log_date,
+                              fault_type=master.fault_type, text=master.text,
+                              asset_code=master.asset.code if master.asset else None)
+                   if master else None),
         ended_at=e.ended_at or recovered, fault_type=e.fault_type,
         consumables=e.consumables,
         down_hours=_down_hours(e, recovered),
@@ -295,7 +310,13 @@ def list_entries(log_date: date | None = None, shift: str | None = None,
          .offset(max(offset, 0)).limit(min(limit, 1000)))
     rows = db.scalars(q).all()
     rec = _recovery_map(db, rows)
-    return [_to_out(e, rec.get(e.id)) for e in rows]
+    # the master failure each rectification closes — for the edit sub-form
+    master_ids = {e.rectifies_id for e in rows if e.rectifies_id}
+    masters = {}
+    if master_ids:
+        masters = {m.id: m for m in db.scalars(
+            select(LogEntry).where(LogEntry.id.in_(master_ids))).all()}
+    return [_to_out(e, rec.get(e.id), masters.get(e.rectifies_id)) for e in rows]
 
 
 @router.get("/{entry_id}/versions", response_model=list[LogEntryOut])

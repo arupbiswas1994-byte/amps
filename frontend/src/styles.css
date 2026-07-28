@@ -333,6 +333,14 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 /* the PM-state chip sits inline in the table's PM-state cell */
 td .chip.d-none { color: var(--ink-3); }
 
+/* the master failure a rectification closes — read-only context in its edit form */
+.master-fail { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 12px; padding: 9px 12px;
+  background: #fdf1f1; border: 1px solid #f3d6d6; border-radius: 9px; }
+.mf-tag { flex: 0 0 auto; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em;
+  color: #a32e2e; background: #fff; border: 1px solid #f0c9c9; border-radius: 99px; padding: 2px 8px; margin-top: 1px; }
+.mf-body { font-size: 12.5px; color: var(--ink-2); }
+.mf-text { color: var(--ink); margin-top: 3px; }
+
 /* consumables / consumed line on a log entry */
 .le-consumables { font-size: 12.5px; color: var(--ink-2); margin-top: 3px; }
 .lc-tag { display: inline-block; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
