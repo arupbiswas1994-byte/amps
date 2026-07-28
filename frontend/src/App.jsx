@@ -2318,8 +2318,46 @@ const Ribbon = ({ lines }) => {
               style={{ background: `linear-gradient(90deg, ${stops})` }} />
 }
 
+/* Walk-up network glance: per-line health rolled up from the public reads
+   (assets + maintenance schedule) plus the public per-line open-failure count.
+   Everything here is an aggregate figure — no fault text, no crew — so it needs
+   no sign-in. */
+function useNetworkGlance() {
+  const { assets, sched, loading } = useLiveAssets()
+  const [fail, setFail] = useState(null)
+  useEffect(() => {
+    getJSON('/api/logbook/failure-stats?days=180&months=6').then(setFail).catch(() => setFail({}))
+  }, [])
+  const stateOf = (a) => sched[a.code]?.state
+  const perLine = {}
+  for (const a of assets) {
+    const ln = a.line || '—'
+    const p = (perLine[ln] ||= { assets: 0, overdue: 0, dueSoon: 0, exceeded: 0 })
+    p.assets += 1
+    const s = stateOf(a)
+    if (s === 'overdue') p.overdue += 1
+    else if (s === 'due_soon') p.dueSoon += 1
+    if (codalExceeded(a)) p.exceeded += 1
+  }
+  const openByLine = (fail && fail.by_line_open) || {}
+  const net = {
+    assets: assets.length,
+    overdue: assets.filter((a) => stateOf(a) === 'overdue').length,
+    dueSoon: assets.filter((a) => stateOf(a) === 'due_soon').length,
+    exceeded: assets.filter(codalExceeded).length,
+    open: fail ? (fail.open ?? 0) : null,
+  }
+  return { perLine, openByLine, net, loading, failReady: fail !== null }
+}
+
 function Landing() {
   const lines = useLines()
+  const { perLine, openByLine, net, loading, failReady } = useNetworkGlance()
+  const locations = lines ? lines.reduce((a, l) => a + l.stations, 0) : 0
+  const nf = (v) => (v == null ? '—' : v.toLocaleString())
+  const kpi = (v, k, cls) => (
+    <div className={`land-kpi${cls ? ' ' + cls : ''}`}><div className="v">{v}</div><div className="k">{k}</div></div>
+  )
   return (
     <div className="gate land">
       <div className="land-wrap">
@@ -2330,27 +2368,50 @@ function Landing() {
           <div>
             <div className="gate-badge">⚡ AMPS <span className="gate-live">● LIVE</span></div>
             <h1 className="gate-title">{ORG}</h1>
-            <p className="gate-sub">Asset Maintenance &amp; Preventive Scheduling</p>
+            <p className="gate-sub">Asset Maintenance &amp; Preventive Scheduling — every line at a glance</p>
           </div>
           <a className="btn gate-signin-btn" href="#/login">Sign in</a>
         </header>
         <Ribbon lines={lines} />
+
+        <div className="land-kpis">
+          {kpi(lines ? lines.length : '—', 'Lines')}
+          {kpi(loading ? '—' : nf(net.assets), 'Assets')}
+          {kpi(nf(locations), 'Locations')}
+          {kpi(net.open == null ? '—' : nf(net.open), 'Open failures', net.open ? 'alert' : '')}
+          {kpi(loading ? '—' : nf(net.overdue), 'PM overdue', net.overdue ? 'warn' : '')}
+          {kpi(loading ? '—' : nf(net.exceeded), 'Exceeded life', net.exceeded ? 'warn' : '')}
+        </div>
+
         <div className="land-tiles">
           {lines === null ? <p className="gate-dim">Loading…</p> : lines.length === 0 ? (
             <p className="gate-dim">No lines registered yet — the administrator adds them with the first assets.</p>
-          ) : lines.map((l) => (
-            <a key={l.name} className={`land-tile${l.initiator ? ' initiator' : ''}`}
-               href={`#/line/${encodeURIComponent(l.name)}`}
-               style={{ '--line-c': lineColor(l.name) }}>
-              {l.initiator && <Alpona />}
-              <span className="gate-line-dot" />
-              <span className="land-tile-name">{l.name}
-                {l.initiator && <span className="gate-initiator-chip">সূচনা · initiator</span>}
-              </span>
-              <span className="land-tile-sub">{l.assets} assets · {l.stations} locations</span>
-              <span className="land-tile-go">View →</span>
-            </a>
-          ))}
+          ) : lines.map((l) => {
+            const p = perLine[l.name] || {}
+            const open = openByLine[l.name] || 0
+            const chips = []
+            if (open) chips.push(['alert', `${open} open`])
+            if (p.overdue) chips.push(['warn', `${p.overdue} overdue`])
+            if (p.exceeded) chips.push(['warn', `${p.exceeded} past life`])
+            const clear = failReady && !loading && chips.length === 0
+            return (
+              <a key={l.name} className={`land-tile${l.initiator ? ' initiator' : ''}`}
+                 href={`#/line/${encodeURIComponent(l.name)}`}
+                 style={{ '--line-c': lineColor(l.name) }}>
+                {l.initiator && <Alpona />}
+                <span className="gate-line-dot" />
+                <span className="land-tile-name">{l.name}
+                  {l.initiator && <span className="gate-initiator-chip">সূচনা · initiator</span>}
+                </span>
+                <span className="land-tile-sub">{l.assets} assets · {l.stations} locations</span>
+                <span className="land-tile-health">
+                  {chips.map(([c, t]) => <span key={t} className={`land-hchip ${c}`}>{t}</span>)}
+                  {clear && <span className="land-hchip ok">All clear</span>}
+                </span>
+                <span className="land-tile-go">View →</span>
+              </a>
+            )
+          })}
         </div>
         <div className="gate-foot"><AmpsLink /> · MIT © 2026 <SignatureMark /></div>
       </div>

@@ -524,6 +524,13 @@ def failure_stats(days: int = 90, months: int = 6, db: Session = Depends(get_db)
     by_fault = Counter(e.fault_type for e in recent if e.fault_type)
     # repeat offenders: which equipment actually keeps failing
     by_asset = Counter(e.asset.code for e in recent if e.asset)
+    # open breakdowns per line — the walk-up "all lines at a glance" board needs
+    # a per-line open count; it is an aggregate number (no fault text/crew), so
+    # it stays public. Line = the asset's parent site in the location tree.
+    def _line_of(e):
+        loc = e.asset.location if e.asset else None
+        return (loc.parent.name if loc and loc.parent else None)
+    by_line_open = Counter(ln for ln in (_line_of(e) for e in open_now) if ln)
 
     return {
         "days": days,
@@ -545,6 +552,8 @@ def failure_stats(days: int = 90, months: int = 6, db: Session = Depends(get_db)
         "by_class": [{"name": k, "count": v} for k, v in by_class.most_common(6)],
         "by_fault": [{"name": k, "count": v} for k, v in by_fault.most_common(6)],
         "by_asset": [{"name": k, "count": v} for k, v in by_asset.most_common(6)],
+        # public per-line open count for the all-lines landing board
+        "by_line_open": {k: v for k, v in by_line_open.items()},
         # the detailed open list (fault text, crew) is signed-in only; a public
         # walk-up sees the aggregate figures and charts, not the row detail.
         "open_items": ([] if is_anonymous(user) else [

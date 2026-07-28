@@ -1302,6 +1302,30 @@ body:has(.gate) {
   width: 12px; height: 12px; border-radius: 50%;
   background: var(--line-c, #a8a29e); margin-bottom: 5px;
 }
+/* network glance: aggregate KPI strip above the line tiles (shares the tiles'
+   right-margin reservation so it never runs under the train artwork) */
+.land-kpis {
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px;
+  margin: 0 clamp(280px, 32vw, 470px) clamp(10px, 1.8vh, 18px) 0;
+}
+@media screen and (max-width: 1100px) { .land-kpis { grid-template-columns: repeat(3, 1fr); } }
+.land-kpi {
+  background: color-mix(in srgb, #fffdf8 82%, transparent); border: 1px solid #ece6da;
+  border-radius: 11px; padding: 9px 12px 8px; text-align: left;
+}
+.land-kpi .v { font-size: clamp(20px, 2.6vh, 27px); font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.1; color: #26221d; }
+.land-kpi .k { font-size: 11.5px; color: #6b6459; margin-top: 1px; }
+.land-kpi.alert .v { color: var(--critical); }
+.land-kpi.warn .v { color: #8a6100; }
+/* per-line health chips on each tile */
+.land-tile-health { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+.land-hchip {
+  font-size: 11px; font-weight: 650; padding: 2px 9px; border-radius: 99px;
+  letter-spacing: .01em; font-variant-numeric: tabular-nums;
+}
+.land-hchip.alert { background: color-mix(in srgb, var(--critical) 15%, #fffdf8); color: var(--critical); border: 1px solid color-mix(in srgb, var(--critical) 30%, transparent); }
+.land-hchip.warn { background: #fdf3d9; color: #8a6100; border: 1px solid #f0dca8; }
+.land-hchip.ok { background: color-mix(in srgb, #0f7a3d 12%, #fffdf8); color: #0f7a3d; border: 1px solid color-mix(in srgb, #0f7a3d 26%, transparent); }
 .land-tile-name { font-size: 20px; font-weight: 750; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; letter-spacing: -0.01em; color: color-mix(in srgb, var(--line-c, #26221d) 55%, #1c1917); }
 .land-tile-sub { font-size: 13px; color: color-mix(in srgb, var(--line-c, #5a544c) 28%, #57524a); font-variant-numeric: tabular-nums; }
 .land-tile-go { font-size: 13px; font-weight: 650; margin-top: 8px; color: color-mix(in srgb, var(--line-c, #5a544c) 78%, #1c1917); }
