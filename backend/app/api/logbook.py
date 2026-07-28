@@ -98,6 +98,7 @@ class EntryRef(BaseModel):
     asset_code: str | None
     attended_by: str | None
     consumables: str | None
+    via_job_card: bool = False
 
 
 def _response_map(db: Session, entries: list[LogEntry],
@@ -173,7 +174,8 @@ def _ref(x: LogEntry | None) -> "EntryRef | None":
         return None
     return EntryRef(id=x.id, log_date=x.log_date, at=x.at, fault_type=x.fault_type,
                     text=x.text, asset_code=x.asset.code if x.asset else None,
-                    attended_by=x.attended_by, consumables=x.consumables)
+                    attended_by=x.attended_by, consumables=x.consumables,
+                    via_job_card=bool(x.via_job_card))
 
 
 def _to_out(e: LogEntry, resolver: LogEntry | None = None,
@@ -433,24 +435,27 @@ class RectificationIn(BaseModel):
     fault_type: str | None = None
     attended_by: str | None = None
     consumables: str | None = None
+    via_job_card: bool = False   # the fix was carried out by the agency under a job card
 
 
 class ResolutionIn(BaseModel):
-    # a response to file/update; null = re-open (delete the linked response).
-    # kind = rectification (resolves) | acknowledgement (notes) | job_card (raised)
-    rectification: RectificationIn | None = None
-    kind: str = "rectification"
+    """The FULL desired response state of a failure, reconciled in one call.
+
+    Two independent axes:
+    - `acknowledged` (a checkbox flag) + its `ack` note — noted / demand raised.
+    - `progress`: open | job_card | rectified — how far the FIX has got, with its
+      `detail`. RECTIFIED is terminal: it resolves the failure and clears the
+      acknowledgement (a fixed failure needs no ack)."""
+    acknowledged: bool = False
+    ack: RectificationIn | None = None
+    progress: str = "open"                 # open | job_card | rectified
+    detail: RectificationIn | None = None
 
 
-_RESP_TYPE = {
-    "rectification": LogEntryType.RECTIFICATION,
-    "acknowledgement": LogEntryType.ACKNOWLEDGEMENT,
-    "job_card": LogEntryType.JOB_CARD,
-}
 _RESP_PREFIX = {
-    LogEntryType.RECTIFICATION: ("[RECTIFICATION] ", "Rectified", "resolved"),
-    LogEntryType.ACKNOWLEDGEMENT: ("[ACKNOWLEDGEMENT] ", "Acknowledged", "acknowledged"),
-    LogEntryType.JOB_CARD: ("[JOB CARD] ", "Job card issued", "job-card-issued"),
+    LogEntryType.RECTIFICATION: ("[RECTIFICATION] ", "Rectified"),
+    LogEntryType.ACKNOWLEDGEMENT: ("[ACKNOWLEDGEMENT] ", "Acknowledged"),
+    LogEntryType.JOB_CARD: ("[JOB CARD] ", "Job card issued"),
 }
 
 
@@ -458,41 +463,7 @@ def _scope_ok(user, e: LogEntry) -> bool:
     return user.line_id is None or e.line_id in (user.line_id, None)
 
 
-@router.put("/{failure_id}/resolution", response_model=LogEntryOut)
-def set_resolution(failure_id: int, body: ResolutionIn,
-                   db: Session = Depends(get_db), user=Depends(current_user)):
-    """Manage a failure's response as a linked entry.
-
-    - kind=rectification → file/update the fix that RESOLVES this failure (this
-      also closes any job card, since a rectification dominates).
-    - kind=acknowledgement → a note (demand raised, mail sent): amber.
-    - kind=job_card → a job card raised to the OEM/dept: yellow.
-    - rectification null  → re-open: delete every linked response.
-    The failure head never carries an ended_at — resolution lives on the linked
-    rectification, so this is the one place a response is made or removed. Each
-    kind is stored once (latest replaces), so the states can coexist as history
-    while dominance (rectification > job_card > acknowledgement) sets the state."""
-    fail = db.get(LogEntry, failure_id)
-    if not fail or fail.type != LogEntryType.FAILURE or not _scope_ok(user, fail):
-        raise HTTPException(404, "failure not found")
-    resp_type = _RESP_TYPE.get(body.kind)
-    if resp_type is None:
-        raise HTTPException(422, f"unknown kind '{body.kind}'")
-    is_rect = resp_type == LogEntryType.RECTIFICATION
-    all_linked = db.scalars(
-        select(LogEntry).where(LogEntry.rectifies_id == fail.id)
-        .order_by(LogEntry.at.desc(), LogEntry.id.desc())).all()
-
-    if body.rectification is None:
-        # re-open — remove every response (rectification, ack AND job card)
-        for r in all_linked:
-            db.delete(r)
-        audit(db, "log_entry", fail.id, "reopened",
-              detail=f"deleted {len(all_linked)} response(s)", actor=user.username)
-        db.commit(); db.refresh(fail)
-        return _to_out(fail)
-
-    r = body.rectification
+def _at_of(fail: LogEntry, r: "RectificationIn") -> datetime:
     when = None
     if r.time:
         try:
@@ -502,43 +473,85 @@ def set_resolution(failure_id: int, body: ResolutionIn,
     at = datetime.combine(r.date, when or datetime.min.time())
     if at < fail.at:
         raise HTTPException(422, "the response cannot precede the failure")
-    prefix, default_text, action_new = _RESP_PREFIX[resp_type]
-    text = prefix + (r.text.strip() or default_text)
-    # RECTIFICATION is terminal: it RESOLVES the failure, so any acknowledgement
-    # or job card becomes moot — drop them so the failure reads simply "resolved"
-    # (an acknowledged-then-fixed failure must not still show as acknowledged).
-    if is_rect:
-        for e in all_linked:
-            if e.type in (LogEntryType.ACKNOWLEDGEMENT, LogEntryType.JOB_CARD):
-                db.delete(e)
-    existing = [e for e in all_linked if e.type == resp_type]
-    if existing:
-        # update the current response of this kind in place
-        resp = existing[0]
-        resp.at, resp.log_date = at, r.date
-        resp.text = text
-        resp.fault_type = (r.fault_type or fail.fault_type)
-        resp.attended_by = r.attended_by or None
-        # only a rectification consumes spares; a note / job card does not
-        resp.consumables = (r.consumables or None) if is_rect else None
-        for extra in existing[1:]:
-            db.delete(extra)
-        action = "updated"
+    return at
+
+
+@router.put("/{failure_id}/resolution", response_model=LogEntryOut)
+def set_resolution(failure_id: int, body: ResolutionIn,
+                   db: Session = Depends(get_db), user=Depends(current_user)):
+    """Reconcile a failure's whole response state from the two-axis edit form.
+
+    Acknowledged is an independent flag; progress (open/job_card/rectified) is the
+    fix axis. The failure head never carries ended_at — resolution lives on the
+    linked rectification. Dominance rectification > job_card > acknowledgement >
+    open still derives the displayed state."""
+    fail = db.get(LogEntry, failure_id)
+    if not fail or fail.type != LogEntryType.FAILURE or not _scope_ok(user, fail):
+        raise HTTPException(404, "failure not found")
+    if body.progress not in ("open", "job_card", "rectified"):
+        raise HTTPException(422, f"unknown progress '{body.progress}'")
+    linked = db.scalars(
+        select(LogEntry).where(LogEntry.rectifies_id == fail.id)
+        .order_by(LogEntry.at.desc(), LogEntry.id.desc())).all()
+    by_type = {t: [e for e in linked if e.type == t] for t in (
+        LogEntryType.RECTIFICATION, LogEntryType.JOB_CARD, LogEntryType.ACKNOWLEDGEMENT)}
+
+    def _clear(t):
+        for e in by_type[t]:
+            db.delete(e)
+        by_type[t] = []
+
+    def _upsert(t, r: "RectificationIn"):
+        is_rect = t == LogEntryType.RECTIFICATION
+        prefix, default_text = _RESP_PREFIX[t]
+        at = _at_of(fail, r)
+        text = prefix + (r.text.strip() or default_text)
+        existing = by_type[t]
+        if existing:
+            resp = existing[0]
+            resp.at, resp.log_date, resp.text = at, r.date, text
+            resp.fault_type = (r.fault_type or fail.fault_type)
+            resp.attended_by = r.attended_by or None
+            resp.consumables = (r.consumables or None) if is_rect else None
+            resp.via_job_card = bool(r.via_job_card) if is_rect else None
+            for extra in existing[1:]:
+                db.delete(extra)
+        else:
+            db.add(LogEntry(
+                at=at, log_date=r.date, shift=ShiftCode.GENERAL, type=t,
+                system=fail.system, category=fail.category,
+                fault_type=(r.fault_type or fail.fault_type), text=text,
+                entered_by=user.username, attended_by=r.attended_by or None,
+                consumables=(r.consumables or None) if is_rect else None,
+                via_job_card=bool(r.via_job_card) if is_rect else None,
+                rectifies_id=fail.id, asset_id=fail.asset_id, line_id=fail.line_id))
+
+    if body.progress == "rectified":
+        if not body.detail:
+            raise HTTPException(422, "a rectified failure needs the fix detail")
+        _upsert(LogEntryType.RECTIFICATION, body.detail)
+        # terminal — the fix moots any acknowledgement / job card
+        _clear(LogEntryType.JOB_CARD)
+        _clear(LogEntryType.ACKNOWLEDGEMENT)
     else:
-        resp = LogEntry(
-            at=at, log_date=r.date, shift=ShiftCode.GENERAL,
-            type=resp_type, system=fail.system, category=fail.category,
-            fault_type=(r.fault_type or fail.fault_type), text=text,
-            entered_by=user.username, attended_by=r.attended_by or None,
-            consumables=(r.consumables or None) if is_rect else None,
-            rectifies_id=fail.id, asset_id=fail.asset_id, line_id=fail.line_id)
-        db.add(resp)
-        action = action_new
+        _clear(LogEntryType.RECTIFICATION)
+        if body.progress == "job_card":
+            if not body.detail:
+                raise HTTPException(422, "a job card needs its detail")
+            _upsert(LogEntryType.JOB_CARD, body.detail)
+        else:
+            _clear(LogEntryType.JOB_CARD)
+        if body.acknowledged:
+            if not body.ack:
+                raise HTTPException(422, "an acknowledgement needs its note")
+            _upsert(LogEntryType.ACKNOWLEDGEMENT, body.ack)
+        else:
+            _clear(LogEntryType.ACKNOWLEDGEMENT)
+
     db.flush()
-    audit(db, "log_entry", fail.id, action,
-          detail=f"{resp_type.value}={resp.id}", actor=user.username)
+    audit(db, "log_entry", fail.id, "response-set",
+          detail=f"ack={body.acknowledged} progress={body.progress}", actor=user.username)
     db.commit(); db.refresh(fail)
-    # return the failure with its current response state reflected
     rec = _recovery_map(db, [fail]); ack = _ack_map(db, [fail]); jc = _jobcard_map(db, [fail])
     return _to_out(fail, rec.get(fail.id), None, ack.get(fail.id), jc.get(fail.id))
 

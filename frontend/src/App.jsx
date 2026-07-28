@@ -625,6 +625,7 @@ function LogRow({ en, staff }) {
       {resp && rm && (
         <div className={`fail-resp ${rm.cls}`}>
           <span className="fr-tag">{rm.tag}</span>
+          {resp.via_job_card && <span className="fr-via">▤ via job card</span>}
           <span className="fr-date dt">{resp.log_date}</span>
           <div className="fr-text">{tidyLog(resp.text)}</div>
           {resp.consumables && <div className="le-consumables"><span className="lc-tag">Consumed</span> {resp.consumables}</div>}
@@ -678,17 +679,16 @@ function AssetLogSections({ log, staff }) {
   const attnBits = [openFail.length && `${openFail.length} open`,
     ackFail.length && `${ackFail.length} acknowledged`,
     jobFail.length && `${jobFail.length} job card`].filter(Boolean).join(' · ')
+  // unified sub-group: a coloured heading + its entries, shown only when non-empty
+  const SubGroup = ({ tone, label, rows }) => rows.length === 0 ? null : (
+    <div className={`logsub logsub-${tone}`}>
+      <h4 className="logsub-h"><span className="logsub-dot" />{label} <span className="dim">· {rows.length}</span></h4>
+      <LogList rows={rows} staff={staff} />
+    </div>
+  )
+  const totalFail = allFails.length
   return (
     <>
-      {staff && attnRows.length > 0 && (
-        <div className="sect open-fail-banner">
-          <h3>⚠ Needs attention — {attnBits}</h3>
-          {openFail.length > 0 && <LogList rows={openFail} staff={staff} />}
-          {ackFail.length > 0 && <LogList rows={ackFail} staff={staff} />}
-          {jobFail.length > 0 && <LogList rows={jobFail} staff={staff} />}
-        </div>
-      )}
-
       <div className="sect">
         <h3>
           Maintenance history — {maint.length ? `${maint.length} entr${maint.length === 1 ? 'y' : 'ies'}, newest first` : 'none recorded'}
@@ -698,16 +698,24 @@ function AssetLogSections({ log, staff }) {
           : <LogList rows={maint} staff={staff} />}
       </div>
 
+      {/* one Failure section, organised into state sub-groups. Outstanding
+          breakdowns (open / acknowledged / job card) are operational, so a public
+          walk-up sees only the resolved history and is invited to sign in. */}
       <div className="sect">
         <h3>
-          Failure history — {resolvedFail.length
-            ? <>{resolvedFail.length} resolved{timed.length > 0 && <> · {downtime.toFixed(1)}h downtime</>}</>
+          Failure history — {totalFail
+            ? <>{totalFail} total{attnRows.length > 0 && <> · <b className="attn-count">{attnRows.length} outstanding</b></>}{timed.length > 0 && <> · {downtime.toFixed(1)}h downtime</>}</>
             : 'none recorded'}
-          {!staff && attnRows.length > 0 && <span className="dim"> · sign in for open breakdowns</span>}
+          {!staff && attnRows.length > 0 && <span className="dim"> · sign in for outstanding breakdowns</span>}
         </h3>
-        {resolvedFail.length === 0
-          ? <p className="dim">No resolved failures recorded against this asset.</p>
-          : <LogList rows={resolvedFail} staff={staff} />}
+        {totalFail === 0 && <p className="dim">No failures recorded against this asset.</p>}
+        {staff && <SubGroup tone="open" label="Open — not yet actioned" rows={openFail} />}
+        {staff && <SubGroup tone="ack" label="Acknowledged — noted, still to rectify" rows={ackFail} />}
+        {staff && <SubGroup tone="job" label="Job card issued — awaiting close-out" rows={jobFail} />}
+        <SubGroup tone="ok" label="Resolved" rows={resolvedFail} />
+        {!staff && resolvedFail.length === 0 && totalFail > 0 && (
+          <p className="dim">No resolved failures — the outstanding ones are visible after sign-in.</p>
+        )}
       </div>
 
       {other.length > 0 && (

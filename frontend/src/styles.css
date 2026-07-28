@@ -194,6 +194,20 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 .fail-resp.job .fr-tag { color: #6b6000; }
 .fr-date { font-size: 11.5px; color: var(--ink-3); margin-left: 8px; }
 .fr-text { font-size: 13px; margin-top: 3px; color: var(--ink); }
+.fr-via { font-size: 10.5px; font-weight: 700; color: #6b6000; background: #fbf7d0;
+  border: 1px solid #ece08a; border-radius: 99px; padding: 0 7px; margin-left: 8px; }
+
+/* unified failure sub-groups (open / acknowledged / job card / resolved) */
+.logsub { margin: 10px 0 4px; padding-left: 12px; border-left: 3px solid var(--sg, #d9d2c2); }
+.logsub-open { --sg: var(--critical); }
+.logsub-ack { --sg: #e0a010; }
+.logsub-job { --sg: #d4c000; }
+.logsub-ok { --sg: var(--good); }
+.logsub-h { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700;
+  margin: 0 0 6px; color: var(--ink); }
+.logsub-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--sg, #d9d2c2); flex: none; }
+.logsub-h .dim { font-weight: 400; }
+.attn-count { color: var(--critical); }
 .chip.w-open .dot { background: var(--warning); }
 .chip.w-assigned .dot { background: #2a78d6; }
 .chip.w-done .dot, .chip.w-verified .dot { background: var(--good); }
