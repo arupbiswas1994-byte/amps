@@ -162,6 +162,9 @@ function RectifyForm({ failure, busy, onCancel, onSubmit }) {
    code) and filling the resolve row (recovery date/time). */
 function EditEntryForm({ entry, assets, systems, classSystem, onCancel, onSaved }) {
   const isFail = entry.type === 'failure'
+  // a failure whose recovery lives in a linked rectification — the rectification
+  // OWNS the resolution, so this form must not offer (or resend) an ended_at.
+  const resolvedByRect = isFail && entry.resolved_by
   const [text, setText] = useState(entry.text)
   const [assetCode, setAssetCode] = useState(entry.asset_code || '')
   const [system, setSystem] = useState(entry.system || '')
@@ -170,8 +173,6 @@ function EditEntryForm({ entry, assets, systems, classSystem, onCancel, onSaved 
   const [consumables, setConsumables] = useState(entry.consumables || '')
   const [tim, setTim] = useState(hhmm(entry.at))
   const [faultType, setFaultType] = useState(entry.fault_type || '')
-  const [endDate, setEndDate] = useState(entry.ended_at ? entry.ended_at.slice(0, 10) : '')
-  const [endTim, setEndTim] = useState(hhmm(entry.ended_at))
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
@@ -195,10 +196,10 @@ function EditEntryForm({ entry, assets, systems, classSystem, onCancel, onSaved 
           system: system || null, category: category || null,
           asset_code: assetCode.trim() || null,
           time: tim || null, text: text.trim(), attended_by: team.trim() || null,
-          consumables: consumables.trim() || null,
+          // failures consume nothing, and are resolved only via a rectification
+          consumables: isFail ? null : (consumables.trim() || null),
           fault_type: isFail ? (faultType.trim() || null) : null,
-          end_date: isFail ? (endDate || null) : null,
-          end_time: isFail ? (endTim || null) : null,
+          end_date: null, end_time: null,
         }),
       })
       if (!res.ok) throw new Error((await res.json().catch(() => null))?.detail || `HTTP ${res.status}`)
@@ -224,6 +225,18 @@ function EditEntryForm({ entry, assets, systems, classSystem, onCancel, onSaved 
             {entry.rectifies.fault_type && <> · <b>{entry.rectifies.fault_type}</b></>}
             {entry.rectifies.asset_code && <> · {entry.rectifies.asset_code}</>}
             <div className="mf-text">{bodyText(entry.rectifies.text)}</div>
+          </span>
+        </div>
+      )}
+      {/* a failure resolved by a rectification shows that fix — the resolution is
+          managed there, so this form does not carry a Resolved-on/at field */}
+      {resolvedByRect && (
+        <div className="master-fail mf-resolved">
+          <span className="mf-tag">Resolved by</span>
+          <span className="mf-body">
+            <b className="dt">{entry.resolved_by.log_date}</b> · rectification #{entry.resolved_by.id}
+            <div className="mf-text">{bodyText(entry.resolved_by.text)}</div>
+            <span className="dim" style={{ fontSize: 11 }}>Edit the rectification to change the recovery details.</span>
           </span>
         </div>
       )}
@@ -266,18 +279,14 @@ function EditEntryForm({ entry, assets, systems, classSystem, onCancel, onSaved 
             <label className={isFail ? '' : 'fg-span-2'}>Team / attended by
               <input value={team} onChange={(e) => setTeam(e.target.value)} placeholder="crew that did the work" />
             </label>
-            {isFail && <>
-              <label>Fault type
+            {isFail && (
+              <label className="fg-span-2">Fault type
                 <input value={faultType} onChange={(e) => setFaultType(e.target.value)} placeholder="e.g. DC earth fault" />
               </label>
-              <label>Resolved on
-                <input type="date" value={endDate} min={entry.log_date}
-                       onChange={(e) => setEndDate(e.target.value)} />
-              </label>
-              <label>Resolved at
-                <input type="time" value={endTim} onChange={(e) => setEndTim(e.target.value)} />
-              </label>
-            </>}
+            )}
+            {/* No Resolved-on/at here by design: a failure is closed only by a
+                rectification entry (Rectify it, or log a rectification). If it is
+                already resolved, the linked fix shows in the green banner above. */}
             {/* a failure logs no consumables — the spares belong to its fix */}
             {!isFail && (
               <label className="fg-span">Consumables / consumed

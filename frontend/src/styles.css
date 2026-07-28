@@ -340,6 +340,9 @@ td .chip.d-none { color: var(--ink-3); }
   color: #a32e2e; background: #fff; border: 1px solid #f0c9c9; border-radius: 99px; padding: 2px 8px; margin-top: 1px; }
 .mf-body { font-size: 12.5px; color: var(--ink-2); }
 .mf-text { color: var(--ink); margin-top: 3px; }
+/* the reverse: a failure resolved by a rectification — green, not red */
+.master-fail.mf-resolved { background: #eefaf0; border-color: #cdeccf; }
+.master-fail.mf-resolved .mf-tag { color: #1a6b1a; border-color: #c6ecc6; }
 
 /* consumables / consumed line on a log entry */
 .le-consumables { font-size: 12.5px; color: var(--ink-2); margin-top: 3px; }

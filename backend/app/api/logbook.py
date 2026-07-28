@@ -70,15 +70,18 @@ class LogEntryOut(BaseModel):
     asset_name: str | None
     corrects_id: int | None
     rectifies_id: int | None
-    # the master failure this rectification closes (summary, for the edit sub-form)
-    rectifies: "FailureRef | None" = None
+    # for a RECTIFICATION: the master failure it closes.
+    # for a FAILURE resolved by one: the rectification that closed it.
+    # both drive the read-only "linked entry" sub-form on the edit screen.
+    rectifies: "EntryRef | None" = None
+    resolved_by: "EntryRef | None" = None
     ended_at: datetime | None
     fault_type: str | None
     consumables: str | None
     down_hours: float | None
 
 
-class FailureRef(BaseModel):
+class EntryRef(BaseModel):
     id: int
     log_date: date
     fault_type: str | None
@@ -86,8 +89,8 @@ class FailureRef(BaseModel):
     asset_code: str | None
 
 
-def _recovery_map(db: Session, entries: list[LogEntry]) -> dict[int, datetime]:
-    """failure id -> recovery moment, taken from its LATEST rectification.
+def _recovery_map(db: Session, entries: list[LogEntry]) -> dict[int, LogEntry]:
+    """failure id -> its LATEST rectification entry (which carries the recovery).
 
     The latest entry dominates: a temporary fix followed by a permanent one
     resolves to the permanent one. Derived at read time so the failure entry
@@ -99,7 +102,7 @@ def _recovery_map(db: Session, entries: list[LogEntry]) -> dict[int, datetime]:
         select(LogEntry).where(LogEntry.rectifies_id.in_(ids))
         .order_by(LogEntry.at, LogEntry.id)
     ).all()
-    return {r.rectifies_id: r.at for r in rows}   # later rows overwrite earlier
+    return {r.rectifies_id: r for r in rows}   # later rows overwrite earlier
 
 
 def _down_hours(e: LogEntry, recovered: datetime | None = None) -> float | None:
@@ -118,8 +121,16 @@ def _down_hours(e: LogEntry, recovered: datetime | None = None) -> float | None:
     return round(hrs, 2) if hrs > 0 else None
 
 
-def _to_out(e: LogEntry, recovered: datetime | None = None,
+def _ref(x: LogEntry | None) -> "EntryRef | None":
+    if x is None:
+        return None
+    return EntryRef(id=x.id, log_date=x.log_date, fault_type=x.fault_type,
+                    text=x.text, asset_code=x.asset.code if x.asset else None)
+
+
+def _to_out(e: LogEntry, resolver: LogEntry | None = None,
             master: LogEntry | None = None) -> LogEntryOut:
+    recovered = resolver.at if resolver else None
     return LogEntryOut(
         id=e.id, at=e.at, log_date=e.log_date, shift=e.shift.value,
         type=e.type.value, subtype=e.subtype, system=e.system, category=e.category, text=e.text,
@@ -127,10 +138,8 @@ def _to_out(e: LogEntry, recovered: datetime | None = None,
         asset_code=e.asset.code if e.asset else None,
         asset_name=e.asset.name if e.asset else None, corrects_id=e.corrects_id,
         rectifies_id=e.rectifies_id,
-        rectifies=(FailureRef(id=master.id, log_date=master.log_date,
-                              fault_type=master.fault_type, text=master.text,
-                              asset_code=master.asset.code if master.asset else None)
-                   if master else None),
+        rectifies=_ref(master),        # rectification → its master failure
+        resolved_by=_ref(resolver),    # failure → the rectification that closed it
         ended_at=e.ended_at or recovered, fault_type=e.fault_type,
         consumables=e.consumables,
         down_hours=_down_hours(e, recovered),
@@ -171,7 +180,7 @@ def add_entry(entry: LogEntryIn, db: Session = Depends(get_db), user=Depends(cur
             raise HTTPException(422, "rectification cannot precede the failure")
     db.commit()
     db.refresh(obj)
-    return _to_out(obj, rect.at if rect else None)
+    return _to_out(obj, rect if rect else None)
 
 
 def _create_entry(db: Session, entry: LogEntryIn, user, rectifies: LogEntry | None = None) -> LogEntry:
@@ -376,16 +385,17 @@ def failure_stats(days: int = 90, months: int = 6, db: Session = Depends(get_db)
         q = q.where((LogEntry.line_id == user.line_id) | (LogEntry.line_id.is_(None)))
     rows = db.scalars(q).all()
     rec = _recovery_map(db, rows)
+    recov_at = lambda e: (rec[e.id].at if e.id in rec else None)
     def _end(e):
-        return e.ended_at or rec.get(e.id)
+        return e.ended_at or recov_at(e)
 
     today = date.today()
     window = today - timedelta(days=days)
     recent = [e for e in rows if e.log_date >= window]
     closed = [e for e in recent if _end(e) is not None]
     # only entries with real clock times can contribute to a duration figure
-    measured = [e for e in recent if _down_hours(e, rec.get(e.id)) is not None]
-    down = [_down_hours(e, rec.get(e.id)) for e in measured]
+    measured = [e for e in recent if _down_hours(e, recov_at(e)) is not None]
+    down = [_down_hours(e, recov_at(e)) for e in measured]
     # A breakdown is only genuinely OPEN if it names an asset and has no
     # recovery. Imported rows whose asset code never matched the register are
     # a data-quality problem, not outstanding work — counting them as open
