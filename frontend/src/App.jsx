@@ -2374,44 +2374,51 @@ function Landing() {
         </header>
         <Ribbon lines={lines} />
 
-        <div className="land-kpis">
-          {kpi(lines ? lines.length : '—', 'Lines')}
-          {kpi(loading ? '—' : nf(net.assets), 'Assets')}
-          {kpi(nf(locations), 'Locations')}
-          {kpi(net.open == null ? '—' : nf(net.open), 'Open failures', net.open ? 'alert' : '')}
-          {kpi(loading ? '—' : nf(net.overdue), 'PM overdue', net.overdue ? 'warn' : '')}
-          {kpi(loading ? '—' : nf(net.exceeded), 'Exceeded life', net.exceeded ? 'warn' : '')}
-        </div>
+        <div className="land-body">
+          <div className="land-tiles">
+            {lines === null ? <p className="gate-dim">Loading…</p> : lines.length === 0 ? (
+              <p className="gate-dim">No lines registered yet — the administrator adds them with the first assets.</p>
+            ) : lines.map((l) => {
+              const p = perLine[l.name] || {}
+              const open = openByLine[l.name] || 0
+              const chips = []
+              if (open) chips.push(['alert', `${open} open`])
+              if (p.overdue) chips.push(['warn', `${p.overdue} overdue`])
+              if (p.exceeded) chips.push(['warn', `${p.exceeded} past life`])
+              const clear = failReady && !loading && chips.length === 0
+              return (
+                <a key={l.name} className={`land-tile${l.initiator ? ' initiator' : ''}`}
+                   href={`#/line/${encodeURIComponent(l.name)}`}
+                   style={{ '--line-c': lineColor(l.name) }}>
+                  {l.initiator && <Alpona />}
+                  <span className="gate-line-dot" />
+                  <span className="land-tile-name">{l.name}
+                    {l.initiator && <span className="gate-initiator-chip">সূচনা · initiator</span>}
+                  </span>
+                  <span className="land-tile-sub">{l.assets} assets · {l.stations} locations</span>
+                  <span className="land-tile-health">
+                    {chips.map(([c, t]) => <span key={t} className={`land-hchip ${c}`}>{t}</span>)}
+                    {clear && <span className="land-hchip ok">All clear</span>}
+                  </span>
+                  <span className="land-tile-go">View →</span>
+                </a>
+              )
+            })}
+          </div>
 
-        <div className="land-tiles">
-          {lines === null ? <p className="gate-dim">Loading…</p> : lines.length === 0 ? (
-            <p className="gate-dim">No lines registered yet — the administrator adds them with the first assets.</p>
-          ) : lines.map((l) => {
-            const p = perLine[l.name] || {}
-            const open = openByLine[l.name] || 0
-            const chips = []
-            if (open) chips.push(['alert', `${open} open`])
-            if (p.overdue) chips.push(['warn', `${p.overdue} overdue`])
-            if (p.exceeded) chips.push(['warn', `${p.exceeded} past life`])
-            const clear = failReady && !loading && chips.length === 0
-            return (
-              <a key={l.name} className={`land-tile${l.initiator ? ' initiator' : ''}`}
-                 href={`#/line/${encodeURIComponent(l.name)}`}
-                 style={{ '--line-c': lineColor(l.name) }}>
-                {l.initiator && <Alpona />}
-                <span className="gate-line-dot" />
-                <span className="land-tile-name">{l.name}
-                  {l.initiator && <span className="gate-initiator-chip">সূচনা · initiator</span>}
-                </span>
-                <span className="land-tile-sub">{l.assets} assets · {l.stations} locations</span>
-                <span className="land-tile-health">
-                  {chips.map(([c, t]) => <span key={t} className={`land-hchip ${c}`}>{t}</span>)}
-                  {clear && <span className="land-hchip ok">All clear</span>}
-                </span>
-                <span className="land-tile-go">View →</span>
-              </a>
-            )
-          })}
+          {/* right rail: the network-wide figures, tucked over the train art so
+              the right side reads as a balanced "at a glance" panel */}
+          <aside className="land-glance">
+            <div className="land-glance-h">Network at a glance</div>
+            <div className="land-kpis">
+              {kpi(lines ? lines.length : '—', 'Lines')}
+              {kpi(loading ? '—' : nf(net.assets), 'Assets')}
+              {kpi(nf(locations), 'Locations')}
+              {kpi(net.open == null ? '—' : nf(net.open), 'Open failures', net.open ? 'alert' : '')}
+              {kpi(loading ? '—' : nf(net.overdue), 'PM overdue', net.overdue ? 'warn' : '')}
+              {kpi(loading ? '—' : nf(net.exceeded), 'Exceeded life', net.exceeded ? 'warn' : '')}
+            </div>
+          </aside>
         </div>
         <div className="gate-foot"><AmpsLink /> · MIT © 2026 <SignatureMark /></div>
       </div>
