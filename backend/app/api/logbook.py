@@ -710,8 +710,10 @@ from sqlalchemy.exc import SQLAlchemyError
 
 LOG_SAMPLE_CSV = """kind,date,type,group,asset_id,station,location,equipment,fault_type,details,action_taken,consumables,attended_by,resolved_on,closes_failure_ref,reported_by,repercussion
 maintenance,2026-01-05,YEARLY MAINTENANCE,HT,B2HB11,Baranagar,TSS/ASS,VCB,,Maintenance done,,,PS Staff,,,,
-failure,2026-02-10 14:30,FAILURE,HT,B2HB11,Baranagar,TSS/ASS,VCB,Communication fault,Failure of operation from SCADA,Card replaced and tested,1× comm card,PS Staff,,,TPC,Supply fed from standby
-rectification,2026-02-11 10:00,RECTIFICATION,HT,B2HB11,Baranagar,TSS/ASS,VCB,Communication fault,Faulty comm card replaced and re-tested,SCADA link verified,1× spare card; 2× PT fuse,PS Staff,2026-02-11 12:30,B2HB11@2026-02-10,,
+failure,2026-02-10 14:30,FAILURE,HT,B2HB11,Baranagar,TSS/ASS,VCB,Communication fault,Failure of operation from SCADA,,,,PS Staff,,,TPC,Supply fed from standby
+acknowledgement,2026-02-10 16:00,ACKNOWLEDGEMENT,HT,B2HB11,Baranagar,TSS/ASS,VCB,Communication fault,Comm card not available. Demand raised; mail sent to stores,,,PS Staff,,B2HB11@2026-02-10,,
+job_card,2026-02-11 09:00,JOB CARD,HT,B2HB11,Baranagar,TSS/ASS,VCB,Communication fault,Job card issued to M/s Siemens to replace the comm card,,,PS Staff,,B2HB11@2026-02-10,,
+rectification,2026-02-12 10:00,RECTIFICATION,HT,B2HB11,Baranagar,TSS/ASS,VCB,Communication fault,Faulty comm card replaced and re-tested,SCADA link verified,1× spare card; 2× PT fuse,PS Staff,2026-02-12 12:30,B2HB11@2026-02-10,,
 general,2026-03-01,NOTE,HT,B2HB11,Baranagar,TSS/ASS,VCB,,Panel cleaned and inspected during patrol,,,PS Staff,,,,
 """
 
