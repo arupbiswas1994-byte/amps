@@ -165,6 +165,7 @@ function LiveDashboard({ go, initialLine = null }) {
   const [fStatus, setFStatus] = usePersistedState('reg.status', '')
   const [sortKey, setSortKey] = usePersistedState('reg.sortKey', null)  // null = register order
   const [sortDir, setSortDir] = usePersistedState('reg.sortDir', 'asc')
+  const [page, setPage] = useState(0)   // register pages 150 rows/page for speed
   const [newOpen, setNewOpen] = useState(false)   // inline "+ new asset" form
   const [impBusy, setImpBusy] = useState(false)
   const [impResult, setImpResult] = useState(null)
@@ -219,6 +220,14 @@ function LiveDashboard({ go, initialLine = null }) {
       return (a < b ? -1 : a > b ? 1 : x.code.localeCompare(y.code)) * dir
     })
   }
+  // page the (already filtered + sorted) rows — rendering all 3000+ at once is
+  // ~38k DOM nodes and janky; a page is ~1.5k and snappy. Reset on any change.
+  const REG_PAGE = 150
+  const pageCount = Math.max(1, Math.ceil(shown.length / REG_PAGE))
+  const pageSafe = Math.min(page, pageCount - 1)
+  const pageRows = shown.slice(pageSafe * REG_PAGE, (pageSafe + 1) * REG_PAGE)
+  useEffect(() => { setPage(0) }, [filter, q, fSystem, fClass, fLocation, fStatus, sortKey, sortDir]) // eslint-disable-line
+
   const toggleSort = (k) => {
     if (sortKey === k) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
     else { setSortKey(k); setSortDir('asc') }
@@ -391,7 +400,7 @@ function LiveDashboard({ go, initialLine = null }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {shown.map((a) => {
+                  {pageRows.map((a) => {
                     const s = sched[a.code]
                     return (
                       <tr key={a.code} tabIndex={0} onClick={() => go(`/asset/${a.code}`)}
@@ -412,6 +421,13 @@ function LiveDashboard({ go, initialLine = null }) {
                   })}
                 </tbody>
               </table>
+            </div>
+          )}
+          {shown.length > REG_PAGE && (
+            <div className="log-pager">
+              <button type="button" className="btn ghost" disabled={pageSafe === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>← Prev</button>
+              <span className="dim">{pageSafe * REG_PAGE + 1}–{Math.min((pageSafe + 1) * REG_PAGE, shown.length)} of {shown.length.toLocaleString()}</span>
+              <button type="button" className="btn ghost" disabled={pageSafe >= pageCount - 1} onClick={() => setPage((p) => p + 1)}>Next →</button>
             </div>
           )}
         </>
