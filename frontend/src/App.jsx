@@ -1457,7 +1457,6 @@ function LiveFailures({ line = '' }) {
 
   return (
     <>
-      {line && <div className="page-head"><h1 style={{ borderBottom: `3px solid ${lineColor(line)}`, paddingBottom: 4, display: 'inline-block' }}>{line} · failures</h1></div>}
       <div className="asset-toolbar" ref={toolbarRef}>
         {!anon && <input className="asset-search" type="search" value={q} onChange={(e) => setQ(e.target.value)}
                placeholder="Search failures — asset, fault, crew…" aria-label="Search failures" />}
