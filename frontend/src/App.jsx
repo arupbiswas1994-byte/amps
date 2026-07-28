@@ -142,18 +142,29 @@ const StageChip = ({ stage }) => (
 
 const SEV_RANK = { overdue: 0, due_soon: 1, ok: 2 }
 
+/* filters that survive tab switches — parked in localStorage under a namespaced
+   key so leaving a page and coming back keeps the view you set up. */
+function usePersistedState(key, initial) {
+  const k = `amps.filter.${key}`
+  const [v, setV] = useState(() => {
+    try { const s = localStorage.getItem(k); return s !== null ? JSON.parse(s) : initial } catch { return initial }
+  })
+  useEffect(() => { try { localStorage.setItem(k, JSON.stringify(v)) } catch { /* quota/private mode */ } }, [k, v])
+  return [v, setV]
+}
+
 function LiveDashboard({ go, initialLine = null }) {
   const { assets: all, sched, loading, error } = useLiveAssets()
   const { me, canWrite } = useMe()
   const [line, setLine] = useState(initialLine)
-  const [filter, setFilter] = useState('all')   // all | overdue | due_soon
+  const [filter, setFilter] = usePersistedState('reg.state', 'all')   // all | overdue | due_soon
   const [q, setQ] = useState('')
-  const [fSystem, setFSystem] = useState('')
-  const [fClass, setFClass] = useState('')
-  const [fLocation, setFLocation] = useState('')
-  const [fStatus, setFStatus] = useState('')
-  const [sortKey, setSortKey] = useState(null)  // null = register order
-  const [sortDir, setSortDir] = useState('asc')
+  const [fSystem, setFSystem] = usePersistedState('reg.system', '')
+  const [fClass, setFClass] = usePersistedState('reg.class', '')
+  const [fLocation, setFLocation] = usePersistedState('reg.location', '')
+  const [fStatus, setFStatus] = usePersistedState('reg.status', '')
+  const [sortKey, setSortKey] = usePersistedState('reg.sortKey', null)  // null = register order
+  const [sortDir, setSortDir] = usePersistedState('reg.sortDir', 'asc')
   const [newOpen, setNewOpen] = useState(false)   // inline "+ new asset" form
   const [impBusy, setImpBusy] = useState(false)
   const [impResult, setImpResult] = useState(null)
@@ -390,7 +401,8 @@ function LiveDashboard({ go, initialLine = null }) {
                         <td className="dim" data-l="Class">{a.cls}</td>
                         <td className="dim" data-l="Location">{a.location}</td>
                         <td className="dim" data-l="System">{a.sys ?? '—'}</td>
-                        <td data-l="Status"><StatusChip status={a.status} /></td>
+                        <td data-l="Status"><StatusChip status={a.status} />
+                          {codalExceeded(a) && <span className="codal-dot" title={`Past its ${a.codalLifeYears}-year codal life`} />}</td>
                         <td className="dim dt" data-l="Next PM">{s?.next_due || '—'}</td>
                         <td data-l="PM state">{s
                           ? <span className={schedChip(s.state)}><span className="dot" />{SCHED_LABEL[s.state]}{s.overdue_count > 1 ? ` · ${s.overdue_count}` : ''}</span>
@@ -409,6 +421,17 @@ function LiveDashboard({ go, initialLine = null }) {
 }
 
 const daysUntil = (iso) => Math.round((new Date(iso) - new Date()) / 86400000)
+
+/* an asset is past its codal (prescribed) service life when commissioned-date +
+   codal-life-years is in the past. Returns the expiry year, or null if unknown. */
+const codalExpiry = (a) => {
+  if (!a || !a.commissionedOn || a.codalLifeYears == null) return null
+  const d = new Date(a.commissionedOn + 'T00:00:00')
+  if (isNaN(d)) return null
+  d.setFullYear(d.getFullYear() + Number(a.codalLifeYears))
+  return d
+}
+const codalExceeded = (a) => { const e = codalExpiry(a); return e != null && e < new Date() }
 
 /* Lines named after colours get their colour as the chip dot — free for any
    org that names lines that way; everyone else gets a neutral dot. */
@@ -894,6 +917,11 @@ function LiveAssetDetail({ code }) {
               </div>
               <div className="hero-badges">
                 <span className={`status-pill s-${a.status}`}><span className="dot" />{STATUS_LABEL[a.status]}</span>
+                {codalExceeded(a) && (
+                  <span className="codal-badge" title={`Past its ${a.codalLifeYears}-year codal life (since ${codalExpiry(a).getFullYear()})`}>
+                    <span className="dot" />Exceeded service life
+                  </span>
+                )}
                 <span className={`crit-badge c-${a.criticality}`} title="Criticality">Criticality {a.criticality}</span>
                 {canWrite && !editing && (
                   <button className="btn ghost sm" type="button" onClick={() => setEditing(true)}>Edit details</button>
@@ -917,7 +945,7 @@ function LiveAssetDetail({ code }) {
             ['Asset class', a.cls],
             ['Make / model', a.makeModel || '—'],
             ['Commissioned', a.commissionedOn || '—'],
-            ['Codal life', a.codalLifeYears != null ? `${a.codalLifeYears} years` : '—'],
+            ['Codal life', a.codalLifeYears != null ? `${a.codalLifeYears} years${codalExceeded(a) ? ` · exceeded ${codalExpiry(a).getFullYear()}` : ''}` : '—'],
             ['Last serviced', lastServiced || '—'],
             ['Maintenance records', String(maint.length)],
           ].map(([k, v]) => (
@@ -1334,11 +1362,11 @@ function LiveFailures() {
   const [stats, setStats] = useState(null)
   const [rows, setRows] = useState([])
   const [error, setError] = useState(null)
-  const [cls, setCls] = useState('')
+  const [cls, setCls] = usePersistedState('fail.class', '')
   const [q, setQ] = useState('')
-  const [state, setState] = useState('open')   // tab: 'open' | 'resolved'
-  const [period, setPeriod] = useState(0)
-  const [showViz, setShowViz] = useState(true)  // analytics charts, collapsible
+  const [state, setState] = usePersistedState('fail.state', 'open')   // tab: 'open' | 'resolved'
+  const [period, setPeriod] = usePersistedState('fail.period', 0)
+  const [showViz, setShowViz] = usePersistedState('fail.showViz', true)  // analytics charts, collapsible
   const toolbarRef = useRef(null)
   useEffect(() => {
     const setVars = () => { const tb = document.querySelector('.topbar'); if (tb) document.documentElement.style.setProperty('--topbar-h', `${tb.offsetHeight}px`) }
@@ -1989,31 +2017,32 @@ function AboutPage() {
   )
 }
 
+const TAG_CAP = 500   // cap the QRs rendered at once — keeps the page responsive
+
 function TagSheet() {
   const live = useLiveAssets()
   const all = LIVE ? live.assets : ASSETS
-  // the system's top group (HT / LT / ECS …) — selective printing works by group
-  const groupOf = (a) => (a.sys || '').split('·')[0].trim() || 'Other'
-  const groups = [...new Set(all.map(groupOf).filter((g) => g && g !== 'Other'))].sort()
-  // default to HT so the page loads a manageable slice, not thousands of QRs
-  const [group, setGroup] = useState('HT')
+  // same filters as the register (System / Class / Location / Status), so it
+  // generalises across lines. No default — the last-used filter is retained
+  // (persisted), so you return to the set you were printing.
+  const systems = [...new Set(all.map((a) => a.sys).filter(Boolean))].sort()
+  const [fSystem, setFSystem] = usePersistedState('tags.system', '')
   const [q, setQ] = useState('')
-  const [fClass, setFClass] = useState('')
-  const [fLocation, setFLocation] = useState('')
+  const [fClass, setFClass] = usePersistedState('tags.class', '')
+  const [fLocation, setFLocation] = usePersistedState('tags.location', '')
+  const [fStatus, setFStatus] = usePersistedState('tags.status', '')
   const toolbarRef = useRef(null)
   useEffect(() => {
     const setVars = () => { const tb = document.querySelector('.topbar'); if (tb) document.documentElement.style.setProperty('--topbar-h', `${tb.offsetHeight}px`) }
     setVars(); window.addEventListener('resize', setVars); return () => window.removeEventListener('resize', setVars)
   })
-  // if HT isn't present in this register, fall back to the first group
-  useEffect(() => { if (groups.length && !groups.includes(group)) setGroup(groups[0]) }, [groups.join()]) // eslint-disable-line
 
-  const inGroup = group === '__all' ? all : all.filter((a) => groupOf(a) === group)
-  const uniq = (k) => [...new Set(inGroup.map((a) => a[k]).filter(Boolean))].sort()
-  const classes = uniq('cls'); const locations = uniq('location')
+  const uniq = (k, base) => [...new Set((base || all).map((a) => a[k]).filter(Boolean))].sort()
+  const classes = uniq('cls'); const locations = uniq('location'); const statuses = uniq('status')
   const ql = q.trim().toLowerCase()
-  const shown = inGroup.filter((a) =>
-    (!fClass || a.cls === fClass) && (!fLocation || a.location === fLocation)
+  const shown = all.filter((a) =>
+    (!fSystem || a.sys === fSystem) && (!fClass || a.cls === fClass)
+    && (!fLocation || a.location === fLocation) && (!fStatus || a.status === fStatus)
     && (!ql || [a.code, a.name, a.location, a.cls].some((v) => (v || '').toLowerCase().includes(ql))))
 
   if (LIVE && live.loading) return <p className="dim">Loading the asset register…</p>
@@ -2023,12 +2052,10 @@ function TagSheet() {
       <div className="asset-toolbar" ref={toolbarRef}>
         <input className="asset-search" type="search" value={q} onChange={(e) => setQ(e.target.value)}
                placeholder="Search code, asset, class or location…" aria-label="Search assets" />
-        <div className="asset-filter" role="tablist" aria-label="Group">
-          {groups.map((g) => (
-            <button key={g} type="button" className={`btn preset ${group === g ? 'active' : ''}`} onClick={() => setGroup(g)}>{g}</button>
-          ))}
-          <button type="button" className={`btn preset ${group === '__all' ? 'active' : ''}`} onClick={() => setGroup('__all')}>All</button>
-        </div>
+        <select value={fSystem} onChange={(e) => setFSystem(e.target.value)} aria-label="Filter by system">
+          <option value="">All systems</option>
+          {systems.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
         <select value={fClass} onChange={(e) => setFClass(e.target.value)} aria-label="Filter by class">
           <option value="">All classes</option>
           {classes.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -2037,7 +2064,11 @@ function TagSheet() {
           <option value="">All locations</option>
           {locations.map((l) => <option key={l} value={l}>{l}</option>)}
         </select>
-        {(q || fClass || fLocation) && <button type="button" className="btn ghost sm" onClick={() => { setQ(''); setFClass(''); setFLocation('') }}>Clear</button>}
+        <select value={fStatus} onChange={(e) => setFStatus(e.target.value)} aria-label="Filter by status">
+          <option value="">Any status</option>
+          {statuses.map((s) => <option key={s} value={s}>{STATUS_LABEL[s] || s}</option>)}
+        </select>
+        {(q || fSystem || fClass || fLocation || fStatus) && <button type="button" className="btn ghost sm" onClick={() => { setQ(''); setFSystem(''); setFClass(''); setFLocation(''); setFStatus('') }}>Clear</button>}
         <span className="asset-count">{shown.length} tag{shown.length === 1 ? '' : 's'}</span>
         <div className="asset-actions">
           <button type="button" className="icon-btn" title="Print these tags" aria-label="Print tags" onClick={() => window.print()}>
@@ -2047,13 +2078,14 @@ function TagSheet() {
         </div>
       </div>
       <p className="dim tags-note no-print" style={{ margin: '0 0 12px' }}>
-        Showing {group === '__all' ? 'all groups' : group} · {shown.length} tag{shown.length === 1 ? '' : 's'} — filter to the set you need, then print. One tag per asset; scanning opens the asset's live record.
+        {shown.length} tag{shown.length === 1 ? '' : 's'}{fSystem ? ` · ${fSystem}` : ''} — filter to the set you need, then print. One tag per asset; scanning opens the asset's live record.
+        {shown.length > TAG_CAP && <> <b>Showing the first {TAG_CAP}</b> — refine the filter to reach the rest.</>}
       </p>
       {shown.length === 0
         ? <div className="card"><p className="dim" style={{ margin: 0 }}>No assets match — adjust the filters.</p></div>
         : (
           <div className="tags">
-            {shown.map((a) => (
+            {shown.slice(0, TAG_CAP).map((a) => (
               <div className="tag" key={a.code}>
                 <QR value={assetUrl(a.code)} size={140} />
                 <div className="scan-cap">Scan for history</div>
