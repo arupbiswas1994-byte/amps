@@ -799,6 +799,14 @@ tbody tr:hover .edit-link { color: var(--accent); }
 .row-job { background: color-mix(in srgb, #ecd400 7%, transparent); }
 .row-job td.code { box-shadow: inset 3px 0 0 #d4c000; }
 .row-job:hover { background: color-mix(in srgb, #ecd400 13%, transparent); }
+/* faulty-row quick actions: acknowledge / rectify -> straight to the log entry */
+.fault-actions { display: inline-flex; gap: 6px; margin-left: 8px; vertical-align: middle; }
+.fa-btn { display: inline-block; padding: 1px 9px; border-radius: 99px; font-size: 11px;
+  font-weight: 700; text-decoration: none; border: 1px solid; white-space: nowrap; }
+.fa-ack { color: #8a6100; background: #fff; border-color: #e6b800; }
+.fa-ack:hover { background: #fdf3d9; }
+.fa-rect { color: #1a7a3a; background: #fff; border-color: color-mix(in srgb, var(--good) 55%, #cfe8d6); }
+.fa-rect:hover { background: color-mix(in srgb, var(--good) 12%, #fff); }
 
 /* ---- home dashboard ---- */
 .dash-kpis .dash-tile { text-decoration: none; color: inherit; transition: box-shadow .12s, transform .12s; display: block; }

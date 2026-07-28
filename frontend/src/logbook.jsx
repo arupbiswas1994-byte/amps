@@ -24,7 +24,11 @@ const API = import.meta.env.VITE_AMPS_API ?? ''
 
 const SHIFT_LABEL = { M: 'Morning', E: 'Evening', N: 'Night', G: 'General', R: 'Rest' }
 const ENTRY_SHIFTS = ['M', 'E', 'N', 'G']  // R = roster-only, never a log shift
-const ENTRY_TYPES = ['maintenance', 'failure', 'rectification', 'general']
+const ENTRY_TYPES = ['maintenance', 'failure', 'acknowledgement', 'job_card', 'rectification', 'general']
+// entry types that respond to (and link to) an existing failure
+const RESPONSE_TYPES = ['acknowledgement', 'job_card', 'rectification']
+const TYPE_LABEL = { maintenance: 'Maintenance', failure: 'Failure',
+  acknowledgement: 'Acknowledgement', job_card: 'Job card', rectification: 'Rectification', general: 'General' }
 const MAINT_SUBTYPES = ['Monthly', 'Quarterly', 'Half-Yearly', 'Yearly', '5-Yearly', 'Unscheduled']
 /* local-calendar ISO — toISOString() is UTC and shifts IST dates a day back */
 const isoLocal = (d) =>
@@ -160,10 +164,17 @@ function RectifyForm({ failure, busy, onCancel, onSubmit }) {
    corrects the old one, so nothing is lost. Handles the two jobs Arup asked
    for on the imported open failures too — linking the right equipment (asset
    code) and filling the resolve row (recovery date/time). */
-function EditEntryForm({ entry, assets, systems, classSystem, onCancel, onSaved }) {
+function EditEntryForm({ entry, assets, systems, classSystem, initialResp = null, onCancel, onSaved }) {
   const isFail = entry.type === 'failure'
-  // the failure's current response, by dominance: rectification / job card / ack
-  const rb = isFail ? (entry.resolved_by || entry.job_card_by || entry.acknowledged_by) : null
+  // a deep-link (register quick action) may ask to jump straight to a state
+  const RESP_STATE = { acknowledgement: 'acknowledged', job_card: 'job_card', rectification: 'resolved' }
+  const RESP_REF = { acknowledgement: 'acknowledged_by', job_card: 'job_card_by', rectification: 'resolved_by' }
+  // the response to pre-fill: if a deep-link named a kind, use ONLY that kind's
+  // own entry (so "Rectify" on an acknowledged failure starts a fresh fix rather
+  // than inheriting the ack note); otherwise the current response by dominance
+  const rb = !isFail ? null
+    : initialResp ? (entry[RESP_REF[initialResp]] || null)
+    : (entry.resolved_by || entry.job_card_by || entry.acknowledged_by)
   const [text, setText] = useState(entry.text)
   const [assetCode, setAssetCode] = useState(entry.asset_code || '')
   const [system, setSystem] = useState(entry.system || '')
@@ -177,7 +188,12 @@ function EditEntryForm({ entry, assets, systems, classSystem, onCancel, onSaved 
   // failure lifecycle — a linked response entry. Editing a failure lets you set
   // its state (open · acknowledged · job card · resolved), edit the response,
   // and (on re-open) delete the response with a confirmation.
-  const [fstate, setFstate] = useState(isFail ? (entry.state || 'open') : 'open')
+  // start on the state the deep-link asked for (but never downgrade a resolved
+  // failure); otherwise the failure's current state
+  const [fstate, setFstate] = useState(() => {
+    if (isFail && initialResp && RESP_STATE[initialResp] && entry.state !== 'resolved') return RESP_STATE[initialResp]
+    return isFail ? (entry.state || 'open') : 'open'
+  })
   const [rDate, setRDate] = useState(rb ? rb.log_date : entry.log_date)
   const [rTime, setRTime] = useState(rb ? hhmm(rb.at) : '')
   const [rText, setRText] = useState(rb ? bodyText(rb.text) : '')
@@ -412,7 +428,7 @@ function VersionHistory({ id }) {
   )
 }
 
-export default function LogBook({ editId = null, focusDate = null } = {}) {
+export default function LogBook({ editId = null, focusDate = null, initialResp = null } = {}) {
   const { me, canWrite } = useMe()
   const authOn = me?.auth_enabled
   const [entries, setEntries] = useState([])
@@ -550,11 +566,12 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
   // the fix can be linked to the exact breakdown it closes (sets rectifies_id).
   useEffect(() => {
     setRectifiesId('')
-    if (type !== 'rectification' || !assetCode.trim()) { setOpenFails([]); return }
+    if (!RESPONSE_TYPES.includes(type) || !assetCode.trim()) { setOpenFails([]); return }
     let alive = true
     fetch(`${API}/api/logbook?asset_code=${encodeURIComponent(assetCode.trim())}&entry_type=failure&limit=200`)
       .then((r) => (r.ok ? r.json() : []))
-      .then((rows) => alive && setOpenFails(rows.filter((e) => !e.ended_at)))
+      // outstanding = not yet rectified (a failure stays open through ack/job-card)
+      .then((rows) => alive && setOpenFails(rows.filter((e) => e.state !== 'resolved')))
       .catch(() => alive && setOpenFails([]))
     return () => { alive = false }
   }, [type, assetCode])
@@ -646,10 +663,13 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
           asset_code: assetCode.trim() || null,
           text: text.trim(), entered_by: author.trim() || 'demo.visitor',
           attended_by: team.trim() || null,
-          // a failure consumes nothing — the spares are used in the fix below
-          consumables: type === 'failure' ? null : (consumables.trim() || null),
-          // a rectification closes a specific open failure of the asset
-          rectifies_id: type === 'rectification' && rectifiesId ? Number(rectifiesId) : null,
+          // only a rectification (or maintenance/general) consumes spares — a
+          // failure, acknowledgement or job card does not
+          consumables: (type === 'failure' || type === 'acknowledgement' || type === 'job_card')
+            ? null : (consumables.trim() || null),
+          // a response (rectification / acknowledgement / job card) links to a
+          // specific open failure of the asset
+          rectifies_id: RESPONSE_TYPES.includes(type) && rectifiesId ? Number(rectifiesId) : null,
           // one submit, two immutable entries — the backend commits them together.
           // the rectification carries its own fault, consumables and narrative.
           rectification: type === 'failure' && rectified ? {
@@ -811,7 +831,7 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
                 <label>Type
                   <select value={type}
                           onChange={(e) => { setType(e.target.value); if (e.target.value === 'maintenance') setShift('N') }}>
-                    {ENTRY_TYPES.map((t) => <option key={t} value={t}>{t[0].toUpperCase() + t.slice(1)}</option>)}
+                    {ENTRY_TYPES.map((t) => <option key={t} value={t}>{TYPE_LABEL[t] || t}</option>)}
                   </select>
                 </label>
                 {type === 'maintenance' && (
@@ -880,12 +900,14 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
                            placeholder="e.g. DC earth fault" maxLength={120} />
                   </label>
                 )}
-                {type === 'rectification' && (
-                  <label className="fg-span">Closes open failure
+                {RESPONSE_TYPES.includes(type) && (
+                  <label className="fg-span">{type === 'rectification' ? 'Closes open failure' : 'Responds to failure'}
                     {!assetCode.trim()
                       ? <input disabled placeholder="enter the Asset ID above to list its open failures" />
                       : <select value={rectifiesId} onChange={(e) => setRectifiesId(e.target.value)}>
-                          <option value="">{openFails.length ? '— select the breakdown this fixes —' : 'no open failures on this asset'}</option>
+                          <option value="">{openFails.length
+                            ? (type === 'rectification' ? '— select the breakdown this fixes —' : '— select the breakdown this responds to —')
+                            : 'no open failures on this asset'}</option>
                           {openFails.map((f) => (
                             <option key={f.id} value={f.id}>
                               {f.log_date}{f.fault_type ? ` · ${f.fault_type}` : ''} — {bodyText(f.text).slice(0, 60)}
@@ -894,9 +916,9 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
                         </select>}
                   </label>
                 )}
-                {/* a failure is the breakdown event — it consumes nothing; the
+                {/* a failure/acknowledgement/job-card consumes nothing — the
                     spares are used in the FIX (rectification / maintenance) */}
-                {type !== 'failure' && (
+                {!['failure', 'acknowledgement', 'job_card'].includes(type) && (
                   <label className="fg-span">Consumables / consumed <span className="ef-opt">(optional)</span>
                     <input value={consumables} onChange={(e) => setConsumables(e.target.value)}
                            placeholder="spares / materials used — e.g. 2× PT fuse, 1L transformer oil" />
@@ -1044,6 +1066,7 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
                       {historyFor === en.id && <VersionHistory id={en.id} />}
                       {canWrite && editingId === en.id && (
                         <EditEntryForm entry={en} assets={assets} systems={systems} classSystem={classSystem}
+                                       initialResp={initialResp}
                                        onCancel={closeEdit}
                                        onSaved={() => { closeEdit(); load() }} />
                       )}

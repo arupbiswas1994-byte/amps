@@ -663,10 +663,16 @@ def failure_stats(days: int = 90, months: int = 6, line: str | None = None,
 
 @router.get("/open-failures-by-asset")
 def open_failures_by_asset(db: Session = Depends(get_db), user=Depends(optional_user)):
-    """{asset_code: {open, ack, jobcard}} — a public aggregate (counts only, no
-    fault text/crew) so the register can flag and float faulty assets to the top.
-    A failure still needs attention when it has no RECTIFICATION; by dominance it
-    counts as jobcard (yellow) > ack (amber) > open (red).
+    """{asset_code: {open, ack, jobcard, acknowledged, rectified, failure_id,
+    failure_date}} — a public aggregate (counts only, no fault text/crew) so the
+    register can flag faulty assets and offer quick acknowledge/rectify actions.
+
+    A failure is OUTSTANDING until a RECTIFICATION closes it — acknowledgement
+    and job card are independent flags that do NOT resolve it. So each asset
+    reports two flags: `acknowledged` (some outstanding failure has an ack or
+    job card) and — always false here since resolved ones are excluded —
+    `rectified`. `failure_id`/`failure_date` point at the latest outstanding
+    failure so a quick action can deep-link straight to it.
     Line-scoped like the rest of the failures surface."""
     q = select(LogEntry).where(LogEntry.type == LogEntryType.FAILURE)
     if user.line_id is not None:
@@ -675,12 +681,21 @@ def open_failures_by_asset(db: Session = Depends(get_db), user=Depends(optional_
     rec = _recovery_map(db, rows)
     ack = _ack_map(db, rows)
     jc = _jobcard_map(db, rows)
-    out: dict[str, dict[str, int]] = {}
+    out: dict[str, dict] = {}
     for e in rows:
         if e.asset is None or e.ended_at is not None or e.id in rec:
             continue  # no asset, or resolved -> not outstanding
-        slot = out.setdefault(e.asset.code, {"open": 0, "ack": 0, "jobcard": 0})
-        slot["jobcard" if e.id in jc else "ack" if e.id in ack else "open"] += 1
+        slot = out.setdefault(e.asset.code, {
+            "open": 0, "ack": 0, "jobcard": 0, "acknowledged": False,
+            "rectified": False, "failure_id": None, "failure_date": None})
+        is_ack, is_jc = e.id in ack, e.id in jc
+        slot["jobcard" if is_jc else "ack" if is_ack else "open"] += 1
+        if is_ack or is_jc:
+            slot["acknowledged"] = True
+        # keep the most recent outstanding failure for the deep-link target
+        if slot["failure_date"] is None or e.log_date >= slot["failure_date"]:
+            slot["failure_id"] = e.id
+            slot["failure_date"] = e.log_date
     return out
 
 

@@ -194,13 +194,21 @@ function LiveDashboard({ go, initialLine = null }) {
   const effLine = line ?? me?.line ?? lines[0] ?? null
   const assets = effLine ? all.filter((a) => a.line === effLine) : all
   const stateOf = (a) => sched[a.code]?.state || null
-  // outstanding failures on this asset by state: open (red) · ack (amber) · job
-  // card (yellow) — all need attention, none is resolved
-  const openN = (a) => openFail[a.code]?.open || 0
-  const ackN = (a) => openFail[a.code]?.ack || 0
-  const jobN = (a) => openFail[a.code]?.jobcard || 0
-  const attnOf = (a) => openN(a) + ackN(a) + jobN(a)   // total outstanding
-  const attnRank = (a) => (openN(a) ? 3 : ackN(a) ? 2 : jobN(a) ? 1 : 0)  // red>amber>yellow
+  // Outstanding failures on this asset. Acknowledge and rectify are TWO
+  // INDEPENDENT flags — an acknowledged (or job-carded) failure is NOT fixed and
+  // still needs rectification. So a faulty asset carries both an acknowledged
+  // flag and the outstanding count; it clears only when rectified.
+  const faultOf = (a) => openFail[a.code] || null
+  const openN = (a) => faultOf(a)?.open || 0        // outstanding, not yet acknowledged
+  const ackN = (a) => faultOf(a)?.ack || 0          // acknowledged (amber)
+  const jobN = (a) => faultOf(a)?.jobcard || 0      // job card raised (yellow)
+  const attnOf = (a) => openN(a) + ackN(a) + jobN(a)   // total outstanding (all need rectifying)
+  const isAcked = (a) => !!faultOf(a)?.acknowledged    // any outstanding failure acknowledged
+  // float order: not-acknowledged (red) first — nobody has even noted it — then
+  // acknowledged (amber) / job-carded (yellow) which are at least in hand
+  const attnRank = (a) => (openN(a) ? 3 : ackN(a) ? 2 : jobN(a) ? 1 : 0)
+  const failId = (a) => faultOf(a)?.failure_id
+  const failDate = (a) => faultOf(a)?.failure_date
   const uniq = (k) => [...new Set(assets.map((a) => a[k]).filter(Boolean))].sort()
   const systemsList = uniq('sys'); const classesList = uniq('cls')
   const locationsList = uniq('location'); const statusesList = uniq('status')
@@ -431,6 +439,11 @@ function LiveDashboard({ go, initialLine = null }) {
                   {pageRows.map((a) => {
                     const s = sched[a.code]
                     const nOpen = openN(a), nAck = ackN(a), nJob = jobN(a)
+                    const faulty = nOpen + nAck + nJob > 0
+                    const fid = failId(a), fdate = failDate(a)
+                    // quick-action deep links: log an acknowledgement / a
+                    // rectification straight against this asset's open failure
+                    const respLink = (kind) => `/log?d=${fdate}&edit=${fid}&resp=${kind}`
                     return (
                       <tr key={a.code} tabIndex={0}
                           className={nOpen ? 'row-faulty' : nAck ? 'row-ack' : nJob ? 'row-job' : ''}
@@ -438,9 +451,17 @@ function LiveDashboard({ go, initialLine = null }) {
                           onKeyDown={(e) => e.key === 'Enter' && go(`/asset/${a.code}`)}>
                         <td className="code" data-l="Code">{a.code}</td>
                         <td data-l="Asset">{a.name}
-                          {nOpen > 0 && <span className="fault-badge" title={`${nOpen} open breakdown${nOpen > 1 ? 's' : ''} — not yet actioned`}>⚠ {nOpen} open</span>}
-                          {nAck > 0 && <span className="fault-badge amber" title={`${nAck} acknowledged — noted (demand/mail) but not yet fixed`}>{nAck} acknowledged</span>}
-                          {nJob > 0 && <span className="fault-badge yellow" title={`${nJob} job card${nJob > 1 ? 's' : ''} raised — awaiting close-out by rectification`}>{nJob} job card</span>}</td>
+                          {nOpen > 0 && <span className="fault-badge" title={`${nOpen} open breakdown${nOpen > 1 ? 's' : ''} — not yet acknowledged`}>⚠ {nOpen} open</span>}
+                          {nAck > 0 && <span className="fault-badge amber" title={`${nAck} acknowledged — noted (demand/mail) but STILL to be rectified`}>{nAck} acknowledged · to rectify</span>}
+                          {nJob > 0 && <span className="fault-badge yellow" title={`${nJob} job card${nJob > 1 ? 's' : ''} raised — STILL to be rectified`}>{nJob} job card · to rectify</span>}
+                          {canWrite && faulty && fid && (
+                            <span className="fault-actions" onClick={(e) => e.stopPropagation()}>
+                              <a className="fa-btn fa-ack" href={`#${respLink('acknowledgement')}`}
+                                 title="Acknowledge this failure (demand raised / mail sent)" aria-label="Acknowledge">◐ Acknowledge</a>
+                              <a className="fa-btn fa-rect" href={`#${respLink('rectification')}`}
+                                 title="Rectify — log the fix that resolves this failure" aria-label="Rectify">✓ Rectify</a>
+                            </span>
+                          )}</td>
                         <td className="dim" data-l="Class">{a.cls}</td>
                         <td className="dim" data-l="Location">{a.location}</td>
                         <td className="dim" data-l="System">{a.sys ?? '—'}</td>
@@ -2671,7 +2692,7 @@ export default function App() {
         : jcMatch ? (LIVE ? <NotYet /> : <JobCard jcId={jcMatch[1]} />)
         : routePath === '/planner' ? (LIVE ? <NotYet /> : <Planner />)
         : routePath === '/roster' ? (LIVE ? <NotYet /> : <DutyRoster />)
-        : routePath === '/log' ? <LogBook editId={routeQuery.get('edit')} focusDate={routeQuery.get('d')} />
+        : routePath === '/log' ? <LogBook editId={routeQuery.get('edit')} focusDate={routeQuery.get('d')} initialResp={routeQuery.get('resp')} />
         /* legacy top-level /failures now redirects to the signed-in line's board */
         : routePath === '/failures' ? (LIVE ? <FailuresRedirect me={me} go={go} /> : <Failures />)
         : routePath === '/spares' ? (LIVE ? <NotYet /> : <Spares />)
