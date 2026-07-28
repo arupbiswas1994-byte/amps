@@ -162,9 +162,7 @@ function RectifyForm({ failure, busy, onCancel, onSubmit }) {
    code) and filling the resolve row (recovery date/time). */
 function EditEntryForm({ entry, assets, systems, classSystem, onCancel, onSaved }) {
   const isFail = entry.type === 'failure'
-  // a failure whose recovery lives in a linked rectification — the rectification
-  // OWNS the resolution, so this form must not offer (or resend) an ended_at.
-  const resolvedByRect = isFail && entry.resolved_by
+  const rb = isFail ? entry.resolved_by : null    // the failure's rectification, if any
   const [text, setText] = useState(entry.text)
   const [assetCode, setAssetCode] = useState(entry.asset_code || '')
   const [system, setSystem] = useState(entry.system || '')
@@ -175,6 +173,16 @@ function EditEntryForm({ entry, assets, systems, classSystem, onCancel, onSaved 
   const [faultType, setFaultType] = useState(entry.fault_type || '')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  // failure resolution — a linked rectification. Editing a failure lets you
+  // edit BOTH the failure and its fix, toggle resolved/open, and (on re-open)
+  // delete the fix with a confirmation.
+  const [resolved, setResolved] = useState(!!rb)
+  const [rDate, setRDate] = useState(rb ? rb.log_date : entry.log_date)
+  const [rTime, setRTime] = useState(rb ? hhmm(rb.at) : '')
+  const [rText, setRText] = useState(rb ? bodyText(rb.text) : '')
+  const [rFault, setRFault] = useState(rb?.fault_type || entry.fault_type || '')
+  const [rTeam, setRTeam] = useState(rb?.attended_by || '')
+  const [rConsum, setRConsum] = useState(rb?.consumables || '')
 
   const textRef = useRef(null)
   useEffect(() => { textRef.current?.focus({ preventScroll: true }) }, [])
@@ -185,8 +193,10 @@ function EditEntryForm({ entry, assets, systems, classSystem, onCancel, onSaved 
 
   const save = async () => {
     if (!text.trim() || busy) return
+    if (isFail && resolved && !rText.trim()) { setErr('A resolved failure needs the rectification — what was done to fix it.'); return }
     setBusy(true); setErr('')
     try {
+      // 1) correct the entry's own fields (append-only correction)
       const res = await fetch(`${API}/api/logbook`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -203,10 +213,29 @@ function EditEntryForm({ entry, assets, systems, classSystem, onCancel, onSaved 
         }),
       })
       if (!res.ok) throw new Error((await res.json().catch(() => null))?.detail || `HTTP ${res.status}`)
+      // 2) a failure's resolution: file/update the fix, or (re-open) delete it
+      if (isFail && (resolved || rb)) {
+        const rectification = resolved ? {
+          date: rDate, time: rTime || null, text: rText.trim(),
+          fault_type: rFault.trim() || null, attended_by: rTeam.trim() || null,
+          consumables: rConsum.trim() || null,
+        } : null
+        const r2 = await fetch(`${API}/api/logbook/${entry.id}/resolution`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rectification }),
+        })
+        if (!r2.ok) throw new Error((await r2.json().catch(() => null))?.detail || `HTTP ${r2.status}`)
+      }
       onSaved()
     } catch (ex) {
       setErr(String(ex.message || ex).replace(/^Error: /, ''))
     } finally { setBusy(false) }
+  }
+
+  // toggling a resolved failure back to open will delete its fix — confirm first
+  const onToggleResolved = (want) => {
+    if (!want && rb && !window.confirm('Re-open this failure? Its rectification log will be deleted.')) return
+    setResolved(want)
   }
 
   return (
@@ -225,18 +254,6 @@ function EditEntryForm({ entry, assets, systems, classSystem, onCancel, onSaved 
             {entry.rectifies.fault_type && <> · <b>{entry.rectifies.fault_type}</b></>}
             {entry.rectifies.asset_code && <> · {entry.rectifies.asset_code}</>}
             <div className="mf-text">{bodyText(entry.rectifies.text)}</div>
-          </span>
-        </div>
-      )}
-      {/* a failure resolved by a rectification shows that fix — the resolution is
-          managed there, so this form does not carry a Resolved-on/at field */}
-      {resolvedByRect && (
-        <div className="master-fail mf-resolved">
-          <span className="mf-tag">Resolved by</span>
-          <span className="mf-body">
-            <b className="dt">{entry.resolved_by.log_date}</b> · rectification #{entry.resolved_by.id}
-            <div className="mf-text">{bodyText(entry.resolved_by.text)}</div>
-            <span className="dim" style={{ fontSize: 11 }}>Edit the rectification to change the recovery details.</span>
           </span>
         </div>
       )}
@@ -300,6 +317,43 @@ function EditEntryForm({ entry, assets, systems, classSystem, onCancel, onSaved 
             </label>
           </div>
         </section>
+
+        {/* a failure's resolution — its linked rectification, edited right here */}
+        {isFail && (
+          <section className="fg fg-fail">
+            <span className="fg-lbl">Resolution</span>
+            <div className="fg-fields">
+              <label className="fg-span">State
+                <select value={resolved ? 'resolved' : 'open'}
+                        onChange={(e) => onToggleResolved(e.target.value === 'resolved')}>
+                  <option value="open">Still open</option>
+                  <option value="resolved">Resolved (rectified)</option>
+                </select>
+              </label>
+              {resolved && <>
+                <label>Rectified on
+                  <input type="date" value={rDate} min={entry.log_date} onChange={(e) => setRDate(e.target.value)} />
+                </label>
+                <label>Rectified at
+                  <TimeInput value={rTime} onChange={setRTime} label="Rectified at" />
+                </label>
+                <label>Team
+                  <input value={rTeam} onChange={(e) => setRTeam(e.target.value)} placeholder="crew that fixed it" />
+                </label>
+                <label className="fg-span-2">Fault addressed
+                  <input value={rFault} onChange={(e) => setRFault(e.target.value)} placeholder={faultType || 'e.g. DC earth fault'} />
+                </label>
+                <label className="fg-span">Consumables / consumed
+                  <input value={rConsum} onChange={(e) => setRConsum(e.target.value)}
+                         placeholder="spares used in the fix — e.g. 2× PT fuse" />
+                </label>
+                <label className="fg-span">What was done <span className="ef-opt">(rectification)</span>
+                  <input value={rText} onChange={(e) => setRText(e.target.value)} placeholder="what was done to rectify it…" />
+                </label>
+              </>}
+            </div>
+          </section>
+        )}
       </div>
 
       <div className="ep-actions">

@@ -84,25 +84,43 @@ class LogEntryOut(BaseModel):
 class EntryRef(BaseModel):
     id: int
     log_date: date
+    at: datetime
     fault_type: str | None
     text: str
     asset_code: str | None
+    attended_by: str | None
+    consumables: str | None
 
 
 def _recovery_map(db: Session, entries: list[LogEntry]) -> dict[int, LogEntry]:
-    """failure id -> its LATEST rectification entry (which carries the recovery).
+    """failure HEAD id -> its LATEST rectification entry (carries the recovery).
 
-    The latest entry dominates: a temporary fix followed by a permanent one
-    resolves to the permanent one. Derived at read time so the failure entry
-    itself is never rewritten — the book stays append-only."""
-    ids = [e.id for e in entries if e.type == LogEntryType.FAILURE]
-    if not ids:
+    A rectification points at the failure it was logged against; editing that
+    failure appends a correction (a new head), so the rectification's target may
+    be a superseded entry. We follow the correction chain: the head failure
+    inherits the rectification pointed at any entry in its own history. Latest
+    rectification dominates. Read-time only — the book stays append-only."""
+    heads = [e for e in entries if e.type == LogEntryType.FAILURE]
+    if not heads:
         return {}
+    # map every failure entry id -> its current head, by walking corrects_id back
+    # from each head through the whole failure correction ancestry.
+    id_to_head = {}
+    for h in heads:
+        cur = h
+        seen = set()
+        while cur is not None and cur.id not in seen:
+            id_to_head[cur.id] = h.id
+            seen.add(cur.id)
+            cur = db.get(LogEntry, cur.corrects_id) if cur.corrects_id else None
     rows = db.scalars(
-        select(LogEntry).where(LogEntry.rectifies_id.in_(ids))
+        select(LogEntry).where(LogEntry.rectifies_id.in_(id_to_head.keys()))
         .order_by(LogEntry.at, LogEntry.id)
     ).all()
-    return {r.rectifies_id: r for r in rows}   # later rows overwrite earlier
+    out = {}
+    for r in rows:                 # later rows overwrite earlier (latest dominates)
+        out[id_to_head[r.rectifies_id]] = r
+    return out
 
 
 def _down_hours(e: LogEntry, recovered: datetime | None = None) -> float | None:
@@ -124,8 +142,9 @@ def _down_hours(e: LogEntry, recovered: datetime | None = None) -> float | None:
 def _ref(x: LogEntry | None) -> "EntryRef | None":
     if x is None:
         return None
-    return EntryRef(id=x.id, log_date=x.log_date, fault_type=x.fault_type,
-                    text=x.text, asset_code=x.asset.code if x.asset else None)
+    return EntryRef(id=x.id, log_date=x.log_date, at=x.at, fault_type=x.fault_type,
+                    text=x.text, asset_code=x.asset.code if x.asset else None,
+                    attended_by=x.attended_by, consumables=x.consumables)
 
 
 def _to_out(e: LogEntry, resolver: LogEntry | None = None,
@@ -353,6 +372,89 @@ def entry_versions(entry_id: int, db: Session = Depends(get_db), user=Depends(cu
         chain.append(nxt); cur = nxt
     rec = _recovery_map(db, chain)
     return [_to_out(x, rec.get(x.id)) for x in chain]
+
+
+class RectificationIn(BaseModel):
+    date: date
+    time: str | None = None
+    text: str = ""
+    fault_type: str | None = None
+    attended_by: str | None = None
+    consumables: str | None = None
+
+
+class ResolutionIn(BaseModel):
+    # a rectification to file/update = resolve; null = re-open (delete the fix)
+    rectification: RectificationIn | None = None
+
+
+def _scope_ok(user, e: LogEntry) -> bool:
+    return user.line_id is None or e.line_id in (user.line_id, None)
+
+
+@router.put("/{failure_id}/resolution", response_model=LogEntryOut)
+def set_resolution(failure_id: int, body: ResolutionIn,
+                   db: Session = Depends(get_db), user=Depends(current_user)):
+    """Manage a failure's resolution as a linked rectification entry.
+
+    - rectification given  → file it (or update the existing one) that closes
+      this failure. The failure itself never carries an ended_at.
+    - rectification null    → re-open: delete the failure's rectification(s).
+    A failure is only ever resolved by a rectification, so this is the one place
+    that resolution is created, edited or removed."""
+    fail = db.get(LogEntry, failure_id)
+    if not fail or fail.type != LogEntryType.FAILURE or not _scope_ok(user, fail):
+        raise HTTPException(404, "failure not found")
+    existing = db.scalars(
+        select(LogEntry).where(LogEntry.rectifies_id == fail.id)
+        .order_by(LogEntry.at.desc(), LogEntry.id.desc())).all()
+
+    if body.rectification is None:
+        # re-open — remove every rectification that closed this failure
+        for r in existing:
+            db.delete(r)
+        audit(db, "log_entry", fail.id, "reopened",
+              detail=f"deleted {len(existing)} rectification(s)", actor=user.username)
+        db.commit(); db.refresh(fail)
+        return _to_out(fail)
+
+    r = body.rectification
+    when = None
+    if r.time:
+        try:
+            when = datetime.strptime(r.time, "%H:%M").time()
+        except ValueError:
+            raise HTTPException(422, "time must be HH:MM")
+    at = datetime.combine(r.date, when or datetime.min.time())
+    if at < fail.at:
+        raise HTTPException(422, "the fix cannot precede the failure")
+    text = "[RECTIFICATION] " + (r.text.strip() or "Rectified")
+    if existing:
+        # update the current fix in place (it's the operator's own resolution)
+        rect = existing[0]
+        rect.at, rect.log_date = at, r.date
+        rect.text = text
+        rect.fault_type = (r.fault_type or fail.fault_type)
+        rect.attended_by = r.attended_by or None
+        rect.consumables = r.consumables or None
+        # drop any older duplicates so "latest dominates" stays clean
+        for extra in existing[1:]:
+            db.delete(extra)
+        action = "updated"
+    else:
+        rect = LogEntry(
+            at=at, log_date=r.date, shift=ShiftCode.GENERAL,
+            type=LogEntryType.RECTIFICATION, system=fail.system, category=fail.category,
+            fault_type=(r.fault_type or fail.fault_type), text=text,
+            entered_by=user.username, attended_by=r.attended_by or None,
+            consumables=r.consumables or None,
+            rectifies_id=fail.id, asset_id=fail.asset_id, line_id=fail.line_id)
+        db.add(rect)
+        action = "resolved"
+    db.flush()
+    audit(db, "log_entry", fail.id, action, detail=f"rectification={rect.id}", actor=user.username)
+    db.commit(); db.refresh(fail)
+    return _to_out(fail, rect)
 
 
 @router.get("/bounds")
