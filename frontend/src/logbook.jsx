@@ -22,11 +22,79 @@ function TimeInput({ value, onChange, className = '', label = 'Time (optional)' 
 
 const API = import.meta.env.VITE_AMPS_API ?? ''
 
+/* Structured checksheet — pick a predefined template (per asset class) and tick
+   each item pass / fail / N-A with an optional reading. The filled result rides
+   on the log entry (checksheet field). Templates come from the backend registry;
+   until the section's formats are loaded a class may have none, and the section
+   simply doesn't appear. */
+const CS_STATUS = [['pass', '✓', 'pass'], ['fail', '✕', 'fail'], ['na', '–', 'n/a']]
+
+function ChecksheetFill({ appliesTo, assetClass, subtype, value, onChange }) {
+  const [templates, setTemplates] = useState(null)
+  useEffect(() => {
+    const p = new URLSearchParams({ applies_to: appliesTo })
+    if (assetClass) p.set('asset_class', assetClass)
+    if (subtype) p.set('subtype', subtype)
+    fetch(`${API}/api/logbook/checksheet-templates?${p}`)
+      .then((r) => (r.ok ? r.json() : [])).then(setTemplates).catch(() => setTemplates([]))
+  }, [appliesTo, assetClass, subtype])
+
+  if (templates === null) return null
+  if (templates.length === 0) return null   // no checksheet defined for this class yet
+
+  const pick = (key) => {
+    const t = templates.find((x) => x.key === key)
+    if (!t) { onChange(null); return }
+    onChange({ template: t.key, name: t.name,
+      results: t.items.map((it) => ({ label: it.label, unit: it.unit || null, status: 'na', reading: '' })) })
+  }
+  const setItem = (i, patch) => {
+    const results = value.results.map((r, j) => j === i ? { ...r, ...patch } : r)
+    onChange({ ...value, results })
+  }
+
+  return (
+    <section className="fg cs-fill">
+      <span className="fg-lbl">Checksheet</span>
+      <div className="fg-fields">
+        <label className="fg-span">Template
+          <select value={value?.template || ''} onChange={(e) => pick(e.target.value)}>
+            <option value="">— none —</option>
+            {templates.map((t) => <option key={t.key} value={t.key}>{t.name}</option>)}
+          </select>
+        </label>
+        {value?.results && (
+          <div className="fg-span cs-items">
+            {value.results.map((r, i) => (
+              <div className="cs-item" key={i}>
+                <span className="cs-label">{r.label}</span>
+                <span className="cs-status">
+                  {CS_STATUS.map(([s, glyph, lbl]) => (
+                    <button type="button" key={s} title={lbl}
+                            className={`cs-btn cs-${s}${r.status === s ? ' on' : ''}`}
+                            onClick={() => setItem(i, { status: s })}>{glyph}</button>
+                  ))}
+                </span>
+                <input className="cs-reading" value={r.reading || ''} placeholder={r.unit ? `reading (${r.unit})` : 'reading'}
+                       onChange={(e) => setItem(i, { reading: e.target.value })} />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
 const SHIFT_LABEL = { M: 'Morning', E: 'Evening', N: 'Night', G: 'General', R: 'Rest' }
 const ENTRY_SHIFTS = ['M', 'E', 'N', 'G']  // R = roster-only, never a log shift
 const ENTRY_TYPES = ['maintenance', 'failure', 'acknowledgement', 'job_card', 'rectification', 'general']
 // entry types that respond to (and link to) an existing failure
 const RESPONSE_TYPES = ['acknowledgement', 'job_card', 'rectification']
+// entry types that can carry a structured checksheet (physical work)
+const CS_KINDS = ['maintenance', 'job_card', 'rectification']
+// the checksheet's "applies_to" bucket for a given entry type
+const CS_APPLIES = { maintenance: 'maintenance', job_card: 'job_card', rectification: 'job_card' }
 const TYPE_LABEL = { maintenance: 'Maintenance', failure: 'Failure',
   acknowledgement: 'Acknowledgement', job_card: 'Job card', rectification: 'Rectification', general: 'General' }
 const MAINT_SUBTYPES = ['Monthly', 'Quarterly', 'Half-Yearly', 'Yearly', '5-Yearly', 'Unscheduled']
@@ -175,6 +243,7 @@ function EditEntryForm({ entry, assets, systems, classSystem, initialResp = null
     : initialResp ? (entry[RESP_REF[initialResp]] || null)
     : (entry.resolved_by || entry.job_card_by || entry.acknowledged_by)
   const [text, setText] = useState(entry.text)
+  const [csEdit, setCsEdit] = useState(entry.checksheet || null)  // this entry's own checksheet
   const [assetCode, setAssetCode] = useState(entry.asset_code || '')
   const [system, setSystem] = useState(entry.system || '')
   const [category, setCategory] = useState(entry.category || '')
@@ -208,6 +277,8 @@ function EditEntryForm({ entry, assets, systems, classSystem, initialResp = null
   const [rConsum, setRConsum] = useState(pSrc?.consumables || '')
   // a rectification may be carried out by us or by the agency under a job card
   const [rViaJobCard, setRViaJobCard] = useState(!!entry.resolved_by?.via_job_card || !!entry.job_card_by)
+  // the progress response (job card / rectification) may carry a checksheet
+  const [rCs, setRCs] = useState(entry.resolved_by?.checksheet || entry.job_card_by?.checksheet || null)
   // ── acknowledgement note fields (independent) ──
   const aSrc = entry.acknowledged_by || null
   const [aDate, setADate] = useState(aSrc ? aSrc.log_date : entry.log_date)
@@ -256,6 +327,7 @@ function EditEntryForm({ entry, assets, systems, classSystem, initialResp = null
           asset_code: assetCode.trim() || null,
           time: tim || null, text: text.trim(), attended_by: team.trim() || null,
           consumables: isFail ? null : (consumables.trim() || null),
+          checksheet: isFail ? null : (csEdit || null),  // preserve/edit the entry's checksheet
           fault_type: isFail ? (faultType.trim() || null) : null,
           end_date: null, end_time: null,
         }),
@@ -274,6 +346,7 @@ function EditEntryForm({ entry, assets, systems, classSystem, initialResp = null
             fault_type: rFault.trim() || null, attended_by: rTeam.trim() || null,
             consumables: isResolved ? (rConsum.trim() || null) : null,
             via_job_card: isResolved ? rViaJobCard : false,
+            checksheet: rCs || null,
           } : null,
         }
         const r2 = await fetch(`${API}/api/logbook/${entry.id}/resolution`, {
@@ -376,6 +449,13 @@ function EditEntryForm({ entry, assets, systems, classSystem, initialResp = null
           </div>
         </section>
 
+        {/* the entry's own checksheet — maintenance & job-card/rectification work */}
+        {CS_KINDS.includes(entry.type) && (
+          <ChecksheetFill appliesTo={CS_APPLIES[entry.type]} assetClass={category}
+                          subtype={entry.type === 'maintenance' ? entry.subtype : null}
+                          value={csEdit} onChange={setCsEdit} />
+        )}
+
         {/* a failure has TWO axes: an independent Acknowledged checkbox, and a
             Progress dropdown (open / job card issued / rectified). Rectified is
             terminal — it resolves the failure and mutes the acknowledgement. */}
@@ -446,6 +526,9 @@ function EditEntryForm({ entry, assets, systems, classSystem, initialResp = null
                            : 'e.g. Job card issued to M/s Siemens to replace WAGO'} />
                 </label>
                 {progress === 'job_card' && <p className="ef-hint fg-span-2">A job card keeps the failure open (yellow). Set Progress to <b>Rectified</b> once the card is closed by a fix.</p>}
+                <div className="fg-span">
+                  <ChecksheetFill appliesTo="job_card" assetClass={category} value={rCs} onChange={setRCs} />
+                </div>
               </>}
             </div>
           </section>
@@ -523,6 +606,7 @@ export default function LogBook({ editId = null, focusDate = null, initialResp =
   // add-entry form
   const [text, setText] = useState('')
   const [consumables, setConsumables] = useState('')
+  const [checksheet, setChecksheet] = useState(null)   // filled structured checksheet
   const [openFails, setOpenFails] = useState([])   // asset's open failures (for rectification)
   const [rectifiesId, setRectifiesId] = useState('')  // the failure this rectification closes
   const [shift, setShift] = useState('M')
@@ -727,6 +811,8 @@ export default function LogBook({ editId = null, focusDate = null, initialResp =
           // failure, acknowledgement or job card does not
           consumables: (type === 'failure' || type === 'acknowledgement' || type === 'job_card')
             ? null : (consumables.trim() || null),
+          // a structured checksheet rides on maintenance / job-card / rectification work
+          checksheet: CS_KINDS.includes(type) ? (checksheet || null) : null,
           // a response (rectification / acknowledgement / job card) links to a
           // specific open failure of the asset
           rectifies_id: RESPONSE_TYPES.includes(type) && rectifiesId ? Number(rectifiesId) : null,
@@ -752,7 +838,7 @@ export default function LogBook({ editId = null, focusDate = null, initialResp =
         const body = await res.json().catch(() => null)
         throw new Error(body?.detail || `HTTP ${res.status}`)
       }
-      setText(''); setConsumables(''); setAssetCode(''); setTim(''); setFaultType(''); setSystem('')
+      setText(''); setConsumables(''); setChecksheet(null); setAssetCode(''); setTim(''); setFaultType(''); setSystem('')
       setRectifiesId(''); setOpenFails([])
       setRectified(false); setRDate(''); setRTim(''); setRText(''); setRTeam(''); setRConsumables(''); setRFaultType('')
       setTeam('')
@@ -990,6 +1076,11 @@ export default function LogBook({ editId = null, focusDate = null, initialResp =
                 </label>
               </div>
             </section>
+            {/* structured checksheet — maintenance & job-card/rectification work */}
+            {CS_KINDS.includes(type) && (
+              <ChecksheetFill appliesTo={CS_APPLIES[type]} assetClass={category} subtype={type === 'maintenance' ? subtype : null}
+                              value={checksheet} onChange={setChecksheet} />
+            )}
           </div>
 
           {/* rectification, filed as its own entry — shown when a failure is logged

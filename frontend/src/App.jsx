@@ -588,6 +588,35 @@ const tidyLog = (t = '') => t
 
 /* One entry row, shared by both history sections. The asset class is constant
    for this asset (it's in the facts grid), so it's not repeated on every row. */
+/* a filled structured checksheet, shown collapsed with a pass/total summary */
+const CS_GLYPH = { pass: '✓', fail: '✕', na: '–' }
+function ChecksheetView({ cs }) {
+  const [open, setOpen] = useState(false)
+  if (!cs?.results?.length) return null
+  const pass = cs.results.filter((r) => r.status === 'pass').length
+  const fail = cs.results.filter((r) => r.status === 'fail').length
+  return (
+    <div className={`cs-view${fail ? ' has-fail' : ''}`}>
+      <button type="button" className="cs-head" onClick={(e) => { e.stopPropagation(); setOpen((v) => !v) }}>
+        <span className="cs-caret">{open ? '▾' : '▸'}</span>
+        <span className="cs-name">▤ {cs.name || 'Checksheet'}</span>
+        <span className="cs-sum">{pass}/{cs.results.length} pass{fail ? ` · ${fail} fail` : ''}</span>
+      </button>
+      {open && (
+        <ul className="cs-list">
+          {cs.results.map((r, i) => (
+            <li key={i} className={`cs-row cs-${r.status}`}>
+              <span className={`cs-mark cs-m-${r.status}`}>{CS_GLYPH[r.status] || '–'}</span>
+              <span className="cs-l">{r.label}</span>
+              {r.reading && <span className="cs-r">{r.reading}{r.unit ? ` ${r.unit}` : ''}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 // failure lifecycle chip: open (red) · acknowledged (amber) · job card (yellow) · resolved (green)
 const FAIL_STATE_CHIP = { open: 'd-overdue', acknowledged: 'd-ack', job_card: 'd-job', resolved: 'd-ok' }
 const FAIL_STATE_LABEL = { open: 'open', acknowledged: 'acknowledged', job_card: 'job card issued', resolved: 'resolved' }
@@ -617,6 +646,7 @@ function LogRow({ en, staff }) {
       </div>
       <div className="findings">{tidyLog(en.text)}</div>
       {en.consumables && <div className="le-consumables"><span className="lc-tag">Consumed</span> {en.consumables}</div>}
+      {en.checksheet && <ChecksheetView cs={en.checksheet} />}
       {(en.attended_by || en.entered_by) && (
         <div className="sub">by <b>{en.attended_by || en.entered_by}</b>
           {en.attended_by && en.attended_by !== en.entered_by && <> · recorded by {en.entered_by}</>}
@@ -629,6 +659,7 @@ function LogRow({ en, staff }) {
           <span className="fr-date dt">{resp.log_date}</span>
           <div className="fr-text">{tidyLog(resp.text)}</div>
           {resp.consumables && <div className="le-consumables"><span className="lc-tag">Consumed</span> {resp.consumables}</div>}
+          {resp.checksheet && <ChecksheetView cs={resp.checksheet} />}
           {resp.attended_by && <div className="sub">by <b>{resp.attended_by}</b></div>}
         </div>
       )}

@@ -271,6 +271,10 @@ class LogEntry(Base):
     fault_type: Mapped[str | None] = mapped_column(String(120))
     # spares / materials consumed during the work (free text, e.g. "2× PT fuse")
     consumables: Mapped[str | None] = mapped_column(Text)
+    # a filled structured checksheet, as a JSON string:
+    #   {"template": "...", "name": "...", "results": [{"label","status","reading"}]}
+    # attached to maintenance and to job-card/rectification work.
+    checksheet: Mapped[str | None] = mapped_column(Text)
     asset_id: Mapped[int | None] = mapped_column(ForeignKey("assets.id"))
     text: Mapped[str] = mapped_column(Text)
     # Who WROTE the entry (the session on authenticated deployments) versus

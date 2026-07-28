@@ -41,7 +41,7 @@ def _migrate(engine):
                         "ended_at": "TIMESTAMP", "fault_type": "VARCHAR(120)",
                         "rectifies_id": "INTEGER", "attended_by": "VARCHAR(200)",
                         "system": "VARCHAR(80)", "consumables": "TEXT",
-                        "via_job_card": "BOOLEAN"},
+                        "via_job_card": "BOOLEAN", "checksheet": "TEXT"},
     }
     # widen columns that real-world data outgrew (no-op where already wide;
     # SQLite ignores VARCHAR lengths so this only matters on Postgres).

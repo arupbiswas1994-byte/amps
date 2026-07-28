@@ -208,6 +208,35 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 .logsub-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--sg, #d9d2c2); flex: none; }
 .logsub-h .dim { font-weight: 400; }
 .attn-count { color: var(--critical); }
+
+/* checksheet — fill (edit forms) */
+.cs-items { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+.cs-item { display: flex; align-items: center; gap: 10px; padding: 4px 0; border-bottom: 1px dashed #eee; }
+.cs-item .cs-label { flex: 1 1 auto; font-size: 13px; color: var(--ink); }
+.cs-status { display: inline-flex; gap: 3px; flex: none; }
+.cs-btn { width: 26px; height: 24px; border: 1px solid var(--border); background: #fff; border-radius: 6px;
+  cursor: pointer; font-size: 13px; font-weight: 700; color: var(--ink-3); }
+.cs-btn.cs-pass.on { background: color-mix(in srgb, var(--good) 15%, #fff); border-color: var(--good); color: #1a7a3a; }
+.cs-btn.cs-fail.on { background: #fdecec; border-color: var(--critical); color: var(--critical); }
+.cs-btn.cs-na.on { background: #f1f0ee; border-color: #cfc9bd; color: var(--ink-2); }
+.cs-reading { flex: 0 0 130px; font: inherit; font-size: 12.5px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; }
+/* checksheet — view (log rows) */
+.cs-view { margin: 6px 0 2px; }
+.cs-head { display: inline-flex; align-items: center; gap: 8px; background: #f7f6f3; border: 1px solid #eae7e0;
+  border-radius: 8px; padding: 4px 11px; cursor: pointer; font: inherit; }
+.cs-view.has-fail .cs-head { background: #fdf1f1; border-color: #f2d4d4; }
+.cs-caret { font-size: 10px; color: var(--ink-3); }
+.cs-name { font-size: 12.5px; font-weight: 700; color: var(--ink); }
+.cs-sum { font-size: 11.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.cs-list { list-style: none; margin: 6px 0 0; padding: 6px 0 0 6px; border-left: 2px solid #eae7e0; display: flex; flex-direction: column; gap: 3px; }
+.cs-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.cs-mark { width: 16px; height: 16px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 800; flex: none; }
+.cs-m-pass { background: color-mix(in srgb, var(--good) 18%, #fff); color: #1a7a3a; }
+.cs-m-fail { background: #fdecec; color: var(--critical); }
+.cs-m-na { background: #f1f0ee; color: var(--ink-3); }
+.cs-l { flex: 1 1 auto; color: var(--ink); }
+.cs-r { flex: none; font-weight: 600; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .chip.w-open .dot { background: var(--warning); }
 .chip.w-assigned .dot { background: #2a78d6; }
 .chip.w-done .dot, .chip.w-verified .dot { background: var(--good); }

@@ -12,6 +12,7 @@ Design rules:
   * Optionally tied to an asset (by code), so scanning a QR tag can show
     everything ever logged against that equipment.
 """
+import json
 from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -22,6 +23,7 @@ from sqlalchemy.orm import Session
 from app.api.assets import visible_asset
 from app.api.auth import AUTH_ON, current_user, is_anonymous, optional_user
 from app.db import audit, get_db
+from app.checksheet_templates import templates_for
 from app.models import Asset, LogEntry, LogEntryType, Location, LocationKind, ShiftCode
 
 router = APIRouter()
@@ -39,6 +41,8 @@ class LogEntryIn(BaseModel):
     entered_by: str = ""                # ignored on authenticated deployments
     attended_by: str | None = None      # the crew that actually did the work
     consumables: str | None = None      # spares/materials consumed (free text)
+    # a filled structured checksheet: {template, name, results:[{label,status,reading}]}
+    checksheet: dict | None = None
     asset_code: str | None = None
     corrects_id: int | None = None
     # failure rows only: when supply/equipment came back, and the fault class.
@@ -86,6 +90,8 @@ class LogEntryOut(BaseModel):
     ended_at: datetime | None
     fault_type: str | None
     consumables: str | None
+    # a filled structured checksheet attached to this entry, if any
+    checksheet: dict | None = None
     down_hours: float | None
 
 
@@ -99,6 +105,7 @@ class EntryRef(BaseModel):
     attended_by: str | None
     consumables: str | None
     via_job_card: bool = False
+    checksheet: dict | None = None
 
 
 def _response_map(db: Session, entries: list[LogEntry],
@@ -169,13 +176,42 @@ def _down_hours(e: LogEntry, recovered: datetime | None = None) -> float | None:
     return round(hrs, 2) if hrs > 0 else None
 
 
+def _load_checksheet(raw: str | None) -> dict | None:
+    """Parse the stored checksheet JSON; tolerate legacy/bad rows as None."""
+    if not raw:
+        return None
+    try:
+        v = json.loads(raw)
+        return v if isinstance(v, dict) and v.get("results") else None
+    except (ValueError, TypeError):
+        return None
+
+
+def _dump_checksheet(cs: dict | None) -> str | None:
+    """Serialise a filled checksheet to JSON, keeping only the fields we store."""
+    if not cs or not isinstance(cs, dict):
+        return None
+    results = [
+        {"label": str(r.get("label", ""))[:120],
+         "status": (r.get("status") or "na"),
+         "reading": (str(r.get("reading"))[:60] if r.get("reading") not in (None, "") else None)}
+        for r in (cs.get("results") or []) if r.get("label")
+    ]
+    if not results:
+        return None
+    return json.dumps({"template": str(cs.get("template", ""))[:80] or None,
+                       "name": str(cs.get("name", ""))[:120] or None,
+                       "results": results}, ensure_ascii=False)
+
+
 def _ref(x: LogEntry | None) -> "EntryRef | None":
     if x is None:
         return None
     return EntryRef(id=x.id, log_date=x.log_date, at=x.at, fault_type=x.fault_type,
                     text=x.text, asset_code=x.asset.code if x.asset else None,
                     attended_by=x.attended_by, consumables=x.consumables,
-                    via_job_card=bool(x.via_job_card))
+                    via_job_card=bool(x.via_job_card),
+                    checksheet=_load_checksheet(x.checksheet))
 
 
 def _to_out(e: LogEntry, resolver: LogEntry | None = None,
@@ -204,6 +240,7 @@ def _to_out(e: LogEntry, resolver: LogEntry | None = None,
         # ONLY a rectification ends a failure; ack/job-card leave it open
         ended_at=e.ended_at or recovered, fault_type=e.fault_type,
         consumables=e.consumables,
+        checksheet=_load_checksheet(e.checksheet),
         down_hours=_down_hours(e, recovered),
     )
 
@@ -306,6 +343,7 @@ def _create_entry(db: Session, entry: LogEntryIn, user, rectifies: LogEntry | No
         entered_by=author,
         attended_by=((entry.attended_by or "").strip()[:200] or None),
         consumables=((entry.consumables or "").strip() or None),
+        checksheet=_dump_checksheet(entry.checksheet),
         asset=asset, corrects_id=entry.corrects_id,
         line_id=user.line_id,  # NULL = department-wide entry (HQ/admin)
     )
@@ -436,6 +474,7 @@ class RectificationIn(BaseModel):
     attended_by: str | None = None
     consumables: str | None = None
     via_job_card: bool = False   # the fix was carried out by the agency under a job card
+    checksheet: dict | None = None  # a structured checksheet for the fix / job card
 
 
 class ResolutionIn(BaseModel):
@@ -514,6 +553,7 @@ def set_resolution(failure_id: int, body: ResolutionIn,
             resp.attended_by = r.attended_by or None
             resp.consumables = (r.consumables or None) if is_rect else None
             resp.via_job_card = bool(r.via_job_card) if is_rect else None
+            resp.checksheet = _dump_checksheet(r.checksheet)
             for extra in existing[1:]:
                 db.delete(extra)
         else:
@@ -524,6 +564,7 @@ def set_resolution(failure_id: int, body: ResolutionIn,
                 entered_by=user.username, attended_by=r.attended_by or None,
                 consumables=(r.consumables or None) if is_rect else None,
                 via_job_card=bool(r.via_job_card) if is_rect else None,
+                checksheet=_dump_checksheet(r.checksheet),
                 rectifies_id=fail.id, asset_id=fail.asset_id, line_id=fail.line_id))
 
     if body.progress == "rectified":
@@ -758,6 +799,15 @@ def logbook_import_sample():
     """The standard logbook template — maintenance and failure rows, any line."""
     return Response(LOG_SAMPLE_CSV, media_type="text/csv", headers={
         "Content-Disposition": 'attachment; filename="amps-logbook-sample.csv"'})
+
+
+@router.get("/checksheet-templates")
+def checksheet_templates(applies_to: str | None = None, asset_class: str | None = None,
+                         subtype: str | None = None, user=Depends(optional_user)):
+    """Predefined checksheet templates for a context (kind + asset class + freq).
+    A writer picks one when logging maintenance / a job card, then ticks its
+    items; the filled result is stored on the entry. Public read (no records)."""
+    return templates_for(applies_to, asset_class, subtype)
 
 
 # the logbook 'kind' cell → entry type; blank/unknown defaults to maintenance
