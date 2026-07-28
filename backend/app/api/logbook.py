@@ -419,13 +419,20 @@ def failure_stats(days: int = 90, months: int = 6, db: Session = Depends(get_db)
 
 
 # ---- bulk history import: scattered sheet logbooks -> one digital book ----
-# The unified Green Line CSV format is the standard for every line:
-#   kind,type,group,asset_id,station,location,equipment,start,end,
-#   fault_type,details,action_taken,attended_by,reported_by,repercussion
-# kind is one of: maintenance | failure | rectification | general. Failures and
-# rectifications may carry an end time + fault_type; maintenance takes its cycle
-# from the type word. Rows whose asset isn't in the register still import (the
-# code is kept in the text), so nothing is lost. Duplicate-safe by content.
+# One row = one entry, dated by a single `date`. Columns:
+#   kind,date,type,group,asset_id,station,location,equipment,fault_type,
+#   details,action_taken,consumables,attended_by,resolved_on,
+#   closes_failure_ref,reported_by,repercussion
+# kind is one of: maintenance | failure | rectification | general.
+#  - maintenance takes its cycle from the type word (advances the schedule).
+#  - failure: fill `resolved_on` once restored (blank = still open) + fault_type.
+#  - rectification: `closes_failure_ref` links it to the failure it fixes
+#    ("ASSET@YYYY-MM-DD", "ASSET", "YYYY-MM-DD", or a failure id). If it matches
+#    no open failure (or is blank), the rectification stands on its own — a
+#    proactive/suo-moto fix or modification, recorded but not closing anything.
+# `start`/`end` are still accepted as aliases for date/resolved_on (older sheets).
+# Rows whose asset isn't in the register still import (the code is kept in the
+# text). Duplicate-safe by content.
 
 import csv as _csv
 import io as _io
@@ -433,11 +440,11 @@ import io as _io
 from fastapi import Request, Response
 from sqlalchemy.exc import SQLAlchemyError
 
-LOG_SAMPLE_CSV = """kind,type,group,asset_id,station,location,equipment,start,end,fault_type,details,action_taken,consumables,attended_by,reported_by,repercussion
-maintenance,YEARLY MAINTENANCE,HT,B2HB11,Baranagar,TSS/ASS,VCB,2026-01-05,2026-01-05,,Maintenance done,,,PS Staff,,
-failure,FAILURE,HT,B2HB11,Baranagar,TSS/ASS,VCB,2026-02-10 14:30,2026-02-10 16:05,Communication fault,Failure of operation from SCADA,Card replaced and tested,1× comm card,PS Staff,TPC,Supply fed from standby
-rectification,RECTIFICATION,HT,B2HB11,Baranagar,TSS/ASS,VCB,2026-02-11 10:00,2026-02-11 12:30,Communication fault,Faulty comm card replaced with spare and re-tested,Card swapped; SCADA link verified,1× spare card; 2× PT fuse,PS Staff,,
-general,NOTE,HT,B2HB11,Baranagar,TSS/ASS,VCB,2026-03-01,,,Panel cleaned and inspected during patrol,,,PS Staff,,
+LOG_SAMPLE_CSV = """kind,date,type,group,asset_id,station,location,equipment,fault_type,details,action_taken,consumables,attended_by,resolved_on,closes_failure_ref,reported_by,repercussion
+maintenance,2026-01-05,YEARLY MAINTENANCE,HT,B2HB11,Baranagar,TSS/ASS,VCB,,Maintenance done,,,PS Staff,,,,
+failure,2026-02-10 14:30,FAILURE,HT,B2HB11,Baranagar,TSS/ASS,VCB,Communication fault,Failure of operation from SCADA,Card replaced and tested,1× comm card,PS Staff,,,TPC,Supply fed from standby
+rectification,2026-02-11 10:00,RECTIFICATION,HT,B2HB11,Baranagar,TSS/ASS,VCB,Communication fault,Faulty comm card replaced and re-tested,SCADA link verified,1× spare card; 2× PT fuse,PS Staff,2026-02-11 12:30,B2HB11@2026-02-10,,
+general,2026-03-01,NOTE,HT,B2HB11,Baranagar,TSS/ASS,VCB,,Panel cleaned and inspected during patrol,,,PS Staff,,,,
 """
 
 
@@ -478,6 +485,48 @@ def _parse_dt(s: str) -> datetime | None:
     return None
 
 
+def _resolve_failure_ref(db: Session, ref: str, row_asset):
+    """Find the OPEN failure a rectification closes, from a sheet reference.
+
+    Accepts: a failure id ('#123' or '123'), 'ASSET@YYYY-MM-DD', 'ASSET',
+    or 'YYYY-MM-DD' (asset then taken from the rectification's own row).
+    Matches the asset's open failure (ended_at NULL) on that date, else its
+    most recent open failure. Returns the LogEntry or None."""
+    ref = (ref or "").strip()
+    if not ref:
+        return None
+    # a bare failure id
+    bare = ref.lstrip("#")
+    if bare.isdigit():
+        f = db.get(LogEntry, int(bare))
+        return f if f and f.type == LogEntryType.FAILURE else None
+    code, _, date_s = ref.partition("@")
+    code = code.strip()
+    date_s = date_s.strip()
+    # if the left side looks like a date and there's no '@', it IS the date
+    if not date_s and _parse_dt(code):
+        date_s, code = code, ""
+    asset = None
+    if code:
+        asset = db.scalar(select(Asset).where(Asset.code == code))
+    asset = asset or row_asset
+    if asset is None:
+        return None
+    q = (select(LogEntry).where(LogEntry.asset_id == asset.id,
+                                LogEntry.type == LogEntryType.FAILURE,
+                                LogEntry.ended_at.is_(None))
+         .order_by(LogEntry.log_date.desc(), LogEntry.id.desc()))
+    open_fails = db.scalars(q).all()
+    if not open_fails:
+        return None
+    d = _parse_dt(date_s)
+    if d:
+        for f in open_fails:
+            if f.log_date == d.date():
+                return f
+    return open_fails[0]   # latest open failure
+
+
 class LogImportOut(BaseModel):
     log_entries: int
     failures: int
@@ -491,7 +540,7 @@ async def import_history(request: Request, db: Session = Depends(get_db),
                          user=Depends(current_user)):
     text = (await request.body()).decode("utf-8-sig", errors="replace")
     rows = list(_csv.DictReader(_io.StringIO(text)))
-    if not rows or "details" not in rows[0] or "start" not in rows[0]:
+    if not rows or "details" not in rows[0] or not ({"date", "start"} & set(rows[0])):
         raise HTTPException(422, "expected the standard logbook CSV "
                                  "(see /api/logbook/import/sample)")
 
@@ -507,7 +556,10 @@ async def import_history(request: Request, db: Session = Depends(get_db),
     batch = 0
     for n, r in enumerate(rows, start=2):
         get = lambda k: (r.get(k) or "").strip()
-        start = _parse_dt(get("start")) or _parse_dt(get("end"))
+        getfirst = lambda *ks: next((v for v in (get(k) for k in ks) if v), "")
+        # one date per entry ('date'); failures may add a recovery ('resolved_on').
+        # 'start'/'end' kept as aliases so the older two-date sheets still import.
+        start = _parse_dt(getfirst("date", "start")) or _parse_dt(getfirst("resolved_on", "end"))
         if not start:
             failed += 1
             if len(errors) < 20:
@@ -544,10 +596,17 @@ async def import_history(request: Request, db: Session = Depends(get_db),
             # (a sheet end that predates the start is a day/month swap — drop it)
             # failures & rectifications carry a recovery/completion time + fault
             has_recovery = etype in (LogEntryType.FAILURE, LogEntryType.RECTIFICATION)
-            end = _parse_dt(get("end")) if has_recovery else None
+            end = _parse_dt(getfirst("resolved_on", "end")) if has_recovery else None
             if end and end < start:
                 end = None
-            db.add(LogEntry(
+            # a rectification may name the failure it closes, via closes_failure_ref
+            # ("ASSET@YYYY-MM-DD", "ASSET", "YYYY-MM-DD", or a failure id). We
+            # resolve it to that asset's matching OPEN failure and link it, so the
+            # two-part failure→fix flow works from the sheet too.
+            rectifies = None
+            if etype == LogEntryType.RECTIFICATION and get("closes_failure_ref"):
+                rectifies = _resolve_failure_ref(db, get("closes_failure_ref"), asset)
+            new = LogEntry(
                 at=start, log_date=start.date(),
                 shift=ShiftCode.NIGHT if etype == LogEntryType.MAINTENANCE else ShiftCode.GENERAL,
                 type=etype,
@@ -558,7 +617,9 @@ async def import_history(request: Request, db: Session = Depends(get_db),
                 text=body_text, entered_by=(get("attended_by") or "imported record")[:120],
                 attended_by=(get("attended_by")[:200] or None),
                 consumables=(get("consumables") or None),
-                asset=asset, line_id=line_id))
+                rectifies_id=rectifies.id if rectifies else None,
+                asset=asset, line_id=line_id)
+            db.add(new)
             if is_failure:
                 n_fails += 1
             else:
