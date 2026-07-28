@@ -265,10 +265,13 @@ function EditEntryForm({ entry, assets, systems, classSystem, onCancel, onSaved 
                 <input type="time" value={endTim} onChange={(e) => setEndTim(e.target.value)} />
               </label>
             </>}
-            <label className="fg-span">Consumables / consumed
-              <input value={consumables} onChange={(e) => setConsumables(e.target.value)}
-                     placeholder="spares / materials used — e.g. 2× PT fuse, 1L transformer oil" />
-            </label>
+            {/* a failure logs no consumables — the spares belong to its fix */}
+            {!isFail && (
+              <label className="fg-span">Consumables / consumed
+                <input value={consumables} onChange={(e) => setConsumables(e.target.value)}
+                       placeholder="spares / materials used — e.g. 2× PT fuse, 1L transformer oil" />
+              </label>
+            )}
             <label className="fg-span">Entry
               <textarea ref={textRef} value={text} rows={2}
                         onChange={(e) => setText(e.target.value)} placeholder="What was done, readings, event…" />
@@ -370,6 +373,8 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
   const [rShift, setRShift] = useState('G')
   const [rText, setRText] = useState('')
   const [rTeam, setRTeam] = useState('')
+  const [rConsumables, setRConsumables] = useState('')   // spares used in the fix
+  const [rFaultType, setRFaultType] = useState('')       // fault the fix addressed
   // closing a failure that was logged open earlier — the two-row form can't
   // reach it, that entry already exists
   const [rectifying, setRectifying] = useState(null)
@@ -545,10 +550,12 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
           asset_code: assetCode.trim() || null,
           text: text.trim(), entered_by: author.trim() || 'demo.visitor',
           attended_by: team.trim() || null,
-          consumables: consumables.trim() || null,
+          // a failure consumes nothing — the spares are used in the fix below
+          consumables: type === 'failure' ? null : (consumables.trim() || null),
           // a rectification closes a specific open failure of the asset
           rectifies_id: type === 'rectification' && rectifiesId ? Number(rectifiesId) : null,
-          // one submit, two immutable entries — the backend commits them together
+          // one submit, two immutable entries — the backend commits them together.
+          // the rectification carries its own fault, consumables and narrative.
           rectification: type === 'failure' && rectified ? {
             log_date: rDate || logDate,
             time: rTim || null,
@@ -557,6 +564,8 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
             system: system || null,
             category: category || null,
             asset_code: assetCode.trim() || null,
+            fault_type: (rFaultType.trim() || faultType.trim() || null),
+            consumables: rConsumables.trim() || null,
             text: (rText.trim() || 'Rectified'),
             entered_by: author.trim() || 'demo.visitor',
             attended_by: rTeam.trim() || team.trim() || null,
@@ -569,7 +578,7 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
       }
       setText(''); setConsumables(''); setAssetCode(''); setTim(''); setFaultType(''); setSystem('')
       setRectifiesId(''); setOpenFails([])
-      setRectified(false); setRDate(''); setRTim(''); setRText(''); setRTeam('')
+      setRectified(false); setRDate(''); setRTim(''); setRText(''); setRTeam(''); setRConsumables(''); setRFaultType('')
       setTeam('')
       setAllDates(false)  // show the day just written to
       await load()
@@ -788,10 +797,14 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
                         </select>}
                   </label>
                 )}
-                <label className="fg-span">Consumables / consumed <span className="ef-opt">(optional)</span>
-                  <input value={consumables} onChange={(e) => setConsumables(e.target.value)}
-                         placeholder="spares / materials used — e.g. 2× PT fuse, 1L transformer oil" />
-                </label>
+                {/* a failure is the breakdown event — it consumes nothing; the
+                    spares are used in the FIX (rectification / maintenance) */}
+                {type !== 'failure' && (
+                  <label className="fg-span">Consumables / consumed <span className="ef-opt">(optional)</span>
+                    <input value={consumables} onChange={(e) => setConsumables(e.target.value)}
+                           placeholder="spares / materials used — e.g. 2× PT fuse, 1L transformer oil" />
+                  </label>
+                )}
                 <label className="fg-span">Entry
                   <textarea value={text} rows={2} onChange={(e) => setText(e.target.value)}
                             placeholder={`Log entry for ${fmtDate(logDate)} — work done, readings, events…`} />
@@ -800,10 +813,12 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
             </section>
           </div>
 
-          {/* rectification, filed as its own entry — shown when a failure is logged already-fixed */}
+          {/* rectification, filed as its own entry — shown when a failure is logged
+              already-fixed. A full rectification entry (own date/time/crew, the
+              fault it addressed, what was done, and the consumables it used). */}
           {type === 'failure' && rectified && (
             <div className="ef-rect">
-              <span className="ef-sublbl">Rectification — filed as a second entry</span>
+              <span className="ef-sublbl">Rectification — the fix, filed as a second entry that closes this failure</span>
               <div className="fg-fields">
                 <label>Rectified on
                   <input type="date" value={rDate} onChange={(e) => setRDate(e.target.value)} />
@@ -816,8 +831,16 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
                     {ENTRY_SHIFTS.map((s) => <option key={s} value={s}>{s} — {SHIFT_LABEL[s]}</option>)}
                   </select>
                 </label>
-                <label className="fg-span-2">Team
+                <label>Team
                   <input value={rTeam} onChange={(e) => setRTeam(e.target.value)} placeholder="crew" />
+                </label>
+                <label className="fg-span-2">Fault addressed <span className="ef-opt">(optional)</span>
+                  <input value={rFaultType} onChange={(e) => setRFaultType(e.target.value)}
+                         placeholder={faultType || 'e.g. DC earth fault'} />
+                </label>
+                <label className="fg-span">Consumables / consumed <span className="ef-opt">(optional)</span>
+                  <input value={rConsumables} onChange={(e) => setRConsumables(e.target.value)}
+                         placeholder="spares / materials used in the fix — e.g. 2× PT fuse" />
                 </label>
                 <label className="fg-span">What was done
                   <input value={rText} onChange={(e) => setRText(e.target.value)}
