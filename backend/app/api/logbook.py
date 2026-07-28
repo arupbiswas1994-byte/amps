@@ -495,6 +495,9 @@ def _resolve_failure_ref(db: Session, ref: str, row_asset):
     ref = (ref or "").strip()
     if not ref:
         return None
+    # the session is autoflush=False, so a failure added earlier in THIS import
+    # isn't queryable until flushed — do it so a failure+fix in one file links.
+    db.flush()
     # a bare failure id
     bare = ref.lstrip("#")
     if bare.isdigit():
