@@ -1395,6 +1395,12 @@ function LiveFailures() {
       <div className="asset-toolbar" ref={toolbarRef}>
         <input className="asset-search" type="search" value={q} onChange={(e) => setQ(e.target.value)}
                placeholder="Search failures — asset, fault, crew…" aria-label="Search failures" />
+        <div className="asset-filter" role="tablist" aria-label="Failure state">
+          <button type="button" className={`btn preset ${state === 'open' ? 'active' : ''}${openRows.length ? ' has-od' : ''}`}
+                  onClick={() => setState('open')}>Open {openRows.length}</button>
+          <button type="button" className={`btn preset ${state === 'resolved' ? 'active' : ''}`}
+                  onClick={() => setState('resolved')}>Resolved {resolvedRows.length}</button>
+        </div>
         <select value={period} onChange={(e) => setPeriod(Number(e.target.value))} aria-label="Period">
           {FAIL_PERIODS.map(([lbl], i) => <option key={lbl} value={i}>{lbl}</option>)}
         </select>
@@ -1476,19 +1482,7 @@ function LiveFailures() {
         </section>
       </div>
 
-      <h2>Failure &amp; recovery log</h2>
-      <div className="fail-tabs" role="tablist">
-        <button type="button" role="tab" aria-selected={state === 'open'}
-                className={`fail-tab${state === 'open' ? ' active' : ''}${openRows.length ? ' has-open' : ''}`}
-                onClick={() => setState('open')}>
-          Open failures <span className="fail-tab-n">{openRows.length}</span>
-        </button>
-        <button type="button" role="tab" aria-selected={state === 'resolved'}
-                className={`fail-tab${state === 'resolved' ? ' active' : ''}`}
-                onClick={() => setState('resolved')}>
-          Resolved <span className="fail-tab-n">{resolvedRows.length}</span>
-        </button>
-      </div>
+      <h2>{state === 'open' ? 'Open failures' : 'Resolved failures'} <span className="dim" style={{ fontWeight: 400, fontSize: 15 }}>· {shown.length}</span></h2>
       <div className="card tbl-wrap">
         <table>
           <thead><tr><th>Asset</th><th>Class</th><th>Occurred</th><th>Restored</th><th>Down</th><th>State</th><th>Team</th><th>Fault → what happened</th>{canWrite && <th aria-label="Edit"></th>}</tr></thead>
