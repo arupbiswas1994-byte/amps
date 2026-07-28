@@ -713,12 +713,16 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
         <DateRuler value={allDates ? '' : logDate} days={7}
                    onChange={(d) => { setLogDate(d); setAllDates(false); setNewOpen(false) }} />
         <div className="log-tools">
+          {/* merged scope: "all dates" + the period window in one control. A day
+              picked on the calendar shows the neutral state; choosing a period
+              switches to that window (what the separate "All dates" button did). */}
+          <select className="log-scope" value={allDates ? period : ''}
+                  onChange={(e) => { setPeriod(e.target.value); setAllDates(true) }} aria-label="Date scope">
+            <option value="" disabled hidden>Single day ▸</option>
+            {PERIODS.map(([lbl, v]) => <option key={v} value={v}>{v === 'all' ? 'All dates' : `This ${lbl.toLowerCase()}`}</option>)}
+          </select>
           <input className="asset-search" type="search" value={search} onChange={(e) => setSearch(e.target.value)}
                  placeholder="Search the log — text, asset, crew, fault…" aria-label="Search the log" />
-          <div className="asset-filter" role="tablist" aria-label="Date scope">
-            <button type="button" className={`btn preset${allDates ? ' active' : ''}`}
-                    onClick={() => setAllDates(true)}>All dates</button>
-          </div>
           <select value={fType} onChange={(e) => setFType(e.target.value)} aria-label="Filter by type">
             <option value="">All types</option>
             {ENTRY_TYPES.map((t) => <option key={t} value={t}>{t[0].toUpperCase() + t.slice(1)}</option>)}
@@ -726,9 +730,6 @@ export default function LogBook({ editId = null, focusDate = null } = {}) {
           <select value={fCat} onChange={(e) => setFCat(e.target.value)} aria-label="Filter by class">
             <option value="">All classes</option>
             {classes.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-          <select value={period} onChange={(e) => { setPeriod(e.target.value); setAllDates(true) }} aria-label="Period">
-            {PERIODS.map(([lbl, v]) => <option key={v} value={v}>{lbl}</option>)}
           </select>
           {(search || fCat || fType || !allDates) && (
             <button type="button" className="btn ghost sm" onClick={() => {
