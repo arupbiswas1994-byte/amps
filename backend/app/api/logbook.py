@@ -475,9 +475,11 @@ def logbook_bounds(db: Session = Depends(get_db), user=Depends(current_user)):
 
 @router.get("/failure-stats")
 def failure_stats(days: int = 90, months: int = 6, db: Session = Depends(get_db),
-                  user=Depends(current_user)):
+                  user=Depends(optional_user)):
     """Breakdown KPIs off the one ledger — counts, downtime, MTTR, trend.
 
+    Public (walk-up) surface: the aggregate figures and charts are open, but the
+    detailed open-item list (fault text, crew) is only returned when signed in.
     Every figure is derived from failure log entries: nothing is stored
     pre-aggregated, so the tiles can never drift from the book."""
     from collections import Counter
@@ -543,11 +545,13 @@ def failure_stats(days: int = 90, months: int = 6, db: Session = Depends(get_db)
         "by_class": [{"name": k, "count": v} for k, v in by_class.most_common(6)],
         "by_fault": [{"name": k, "count": v} for k, v in by_fault.most_common(6)],
         "by_asset": [{"name": k, "count": v} for k, v in by_asset.most_common(6)],
-        "open_items": [
+        # the detailed open list (fault text, crew) is signed-in only; a public
+        # walk-up sees the aggregate figures and charts, not the row detail.
+        "open_items": ([] if is_anonymous(user) else [
             {"id": e.id, "asset_code": e.asset.code if e.asset else None,
              "log_date": e.log_date, "text": e.text[:160]}
             for e in sorted(open_now, key=lambda x: x.log_date, reverse=True)[:10]
-        ],
+        ]),
     }
 
 

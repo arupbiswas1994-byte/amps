@@ -1374,7 +1374,10 @@ const FAIL_PERIODS = [
 ]
 
 function LiveFailures() {
-  const { canWrite } = useMe()
+  const { canWrite, me } = useMe()
+  // anonymous (walk-up) sees the summary + charts only; the row-level table
+  // (crew, fault text) stays behind sign-in.
+  const anon = LIVE && me?.auth_enabled && me?.username === 'viewer'
   const [stats, setStats] = useState(null)
   const [rows, setRows] = useState([])
   const [error, setError] = useState(null)
@@ -1394,14 +1397,14 @@ function LiveFailures() {
   useEffect(() => {
     let alive = true
     setStats(null)
-    Promise.all([
-      getJSON(`/api/logbook/failure-stats?days=${days}&months=${months}`),
-      getJSON('/api/logbook?entry_type=failure&limit=1000'),
-    ])
-      .then(([s, l]) => { if (alive) { setStats(s); setRows(l) } })
+    // stats are public; the row-level list is signed-in only
+    const jobs = [getJSON(`/api/logbook/failure-stats?days=${days}&months=${months}`)]
+    if (!anon) jobs.push(getJSON('/api/logbook?entry_type=failure&limit=1000'))
+    Promise.all(jobs)
+      .then(([s, l]) => { if (alive) { setStats(s); setRows(l || []) } })
       .catch((e) => alive && setError(String(e)))
     return () => { alive = false }
-  }, [days, months])
+  }, [days, months, anon])
 
   if (error) return <div className="card offline-note">Backend unreachable — {error}.</div>
   if (!stats) return <p className="dim">Loading failure record…</p>
@@ -1440,14 +1443,16 @@ function LiveFailures() {
   return (
     <>
       <div className="asset-toolbar" ref={toolbarRef}>
-        <input className="asset-search" type="search" value={q} onChange={(e) => setQ(e.target.value)}
-               placeholder="Search failures — asset, fault, crew…" aria-label="Search failures" />
-        <div className="asset-filter" role="tablist" aria-label="Failure state">
-          <button type="button" className={`btn preset ${state === 'open' ? 'active' : ''}${openRows.length ? ' has-od' : ''}`}
-                  onClick={() => setState('open')}>Open {openRows.length}</button>
-          <button type="button" className={`btn preset ${state === 'resolved' ? 'active' : ''}`}
-                  onClick={() => setState('resolved')}>Resolved {resolvedRows.length}</button>
-        </div>
+        {!anon && <input className="asset-search" type="search" value={q} onChange={(e) => setQ(e.target.value)}
+               placeholder="Search failures — asset, fault, crew…" aria-label="Search failures" />}
+        {!anon && (
+          <div className="asset-filter" role="tablist" aria-label="Failure state">
+            <button type="button" className={`btn preset ${state === 'open' ? 'active' : ''}${openRows.length ? ' has-od' : ''}`}
+                    onClick={() => setState('open')}>Open {openRows.length}</button>
+            <button type="button" className={`btn preset ${state === 'resolved' ? 'active' : ''}`}
+                    onClick={() => setState('resolved')}>Resolved {resolvedRows.length}</button>
+          </div>
+        )}
         <select value={period} onChange={(e) => setPeriod(Number(e.target.value))} aria-label="Period">
           {FAIL_PERIODS.map(([lbl], i) => <option key={lbl} value={i}>{lbl}</option>)}
         </select>
@@ -1455,19 +1460,22 @@ function LiveFailures() {
           <option value="">All classes</option>
           {stats.by_class.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
         </select>
-        {(q || cls) && <button type="button" className="btn ghost sm" onClick={() => { setQ(''); setCls('') }}>Clear</button>}
-        <span className="asset-count">{shown.length} shown</span>
-        <div className="asset-actions">
-          <button type="button" className="icon-btn" title="Download the failures in view (CSV)"
-                  aria-label="Download failures" onClick={exportCsv} disabled={!shown.length}>
-            <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M8 2.4v7.2M4.8 6.6 8 9.8l3.2-3.2M3 12.8h10" /></svg>
-          </button>
-          <button type="button" className="icon-btn" title="Print" aria-label="Print" onClick={() => window.print()}>
-            <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M4.5 6V2.5h7V6M4.5 12H3.2V6.4h9.6V12H11.5M4.5 9.6h7V13.5h-7z" /></svg>
-          </button>
-        </div>
+        {!anon && (q || cls) && <button type="button" className="btn ghost sm" onClick={() => { setQ(''); setCls('') }}>Clear</button>}
+        {!anon && <span className="asset-count">{shown.length} shown</span>}
+        {anon && <span className="asset-count">Public summary · sign in for records</span>}
+        {!anon && (
+          <div className="asset-actions">
+            <button type="button" className="icon-btn" title="Download the failures in view (CSV)"
+                    aria-label="Download failures" onClick={exportCsv} disabled={!shown.length}>
+              <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M8 2.4v7.2M4.8 6.6 8 9.8l3.2-3.2M3 12.8h10" /></svg>
+            </button>
+            <button type="button" className="icon-btn" title="Print" aria-label="Print" onClick={() => window.print()}>
+              <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4.5 6V2.5h7V6M4.5 12H3.2V6.4h9.6V12H11.5M4.5 9.6h7V13.5h-7z" /></svg>
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="kpis kpis-slim">
@@ -1527,6 +1535,12 @@ function LiveFailures() {
         </div>
       )}
 
+      {anon ? (
+        <div className="card"><p className="dim" style={{ margin: 0 }}>
+          The failure summary above is public. <a className="crumb" href="#/login">Sign in</a> to view the individual failure records (asset, fault, crew and recovery detail).
+        </p></div>
+      ) : (
+      <>
       <h2 className="fail-log-h">{state === 'open' ? 'Open failures' : 'Resolved failures'} <span className="dim" style={{ fontWeight: 400, fontSize: 15 }}>· {shown.length}</span></h2>
       <div className="card tbl-wrap">
         <table>
@@ -1568,6 +1582,8 @@ function LiveFailures() {
         </table>
         {shown.length === 0 && <p className="dim" style={{ padding: '1rem' }}>Nothing matches this filter.</p>}
       </div>
+      </>
+      )}
     </>
   )
 }
@@ -2116,6 +2132,75 @@ function TagSheet() {
   )
 }
 
+/* ---------- home dashboard (signed-in landing) ---------- */
+
+function LineDashboard({ go }) {
+  const { assets, sched, loading } = useLiveAssets()
+  const { me } = useMe()
+  const [stats, setStats] = useState(null)
+  const [recent, setRecent] = useState([])
+  useEffect(() => {
+    getJSON('/api/logbook/failure-stats?days=180&months=6').then(setStats).catch(() => {})
+    getJSON('/api/logbook?limit=6').then(setRecent).catch(() => {})
+  }, [])
+  if (loading) return <p className="dim">Loading the dashboard…</p>
+  const stateOf = (a) => sched[a.code]?.state
+  const overdue = assets.filter((a) => stateOf(a) === 'overdue').length
+  const dueSoon = assets.filter((a) => stateOf(a) === 'due_soon').length
+  const exceeded = assets.filter(codalExceeded).length
+  const stations = new Set(assets.map((a) => a.location)).size
+  const trend = stats ? stats.per_month.map((m) => ({ label: new Date(`${m.month}-01T00:00:00`).toLocaleString(undefined, { month: 'short' }), count: m.count })) : []
+  const line = me?.line || ORG
+  const tile = (v, k, cls, to) => (
+    <a className={`tile dash-tile${cls ? ' ' + cls : ''}`} href={to} role="button">
+      <div className="v">{v}</div><div className="k">{k}</div>
+    </a>
+  )
+  return (
+    <>
+      <div className="page-head"><h1>{line} · overview</h1></div>
+      <div className="kpis dash-kpis">
+        {tile(assets.length.toLocaleString(), 'Assets', '', '#/assets')}
+        {tile(stations, 'Locations', '', '#/assets')}
+        {tile(dueSoon, 'PM due soon', dueSoon ? 'warn' : '', '#/assets')}
+        {tile(overdue, 'PM overdue', overdue ? 'alert' : '', '#/assets')}
+        {tile(stats ? stats.open : '—', 'Open failures', stats && stats.open ? 'alert' : '', '#/failures')}
+        {tile(exceeded, 'Exceeded life', exceeded ? 'warn' : '', '#/assets')}
+      </div>
+
+      <div className="dash-grid">
+        <section className="card viz-card">
+          <h2 className="viz-h">Failures per month <span className="viz-note">last 6 months</span></h2>
+          {trend.length ? <TrendChart data={trend} /> : <p className="dim">No failure data.</p>}
+          <p className="viz-insight"><a className="crumb" href="#/failures">Open the failures dashboard →</a></p>
+        </section>
+        <section className="card viz-card">
+          <h2 className="viz-h">Recent logbook <span className="viz-note">latest entries</span></h2>
+          {recent.length === 0 ? <p className="dim">No entries yet.</p> : (
+            <div className="dash-recent">
+              {recent.map((e) => (
+                <a key={e.id} className="dr-row" href={e.asset_code ? `#/asset/${encodeURIComponent(e.asset_code)}` : '#/log'}>
+                  <span className={`chip ${e.type === 'failure' ? 'd-overdue' : ''}`}><span className="dot" />{e.type}</span>
+                  <span className="dr-txt">{tidyLog(e.text).slice(0, 64)}</span>
+                  <span className="dim dt dr-date">{e.log_date}</span>
+                </a>
+              ))}
+            </div>
+          )}
+          <p className="viz-insight"><a className="crumb" href="#/log">Open the log book →</a></p>
+        </section>
+      </div>
+
+      <div className="dash-links">
+        {[['#/assets', 'Assets', 'register, QR & schedules'], ['#/log', 'Log book', 'daily shift log'],
+          ['#/failures', 'Failures', 'breakdowns & recovery'], ['#/tags', 'QR tags', 'print asset tags']].map(([to, t, s]) => (
+          <a key={to} className="dash-link card" href={to}><b>{t}</b><span className="dim">{s}</span></a>
+        ))}
+      </div>
+    </>
+  )
+}
+
 /* ---------- shell + hash router ---------- */
 
 const routeFromHash = () => location.hash.replace(/^#/, '') || '/'
@@ -2123,7 +2208,8 @@ const routeFromHash = () => location.hash.replace(/^#/, '') || '/'
 /* Live deployments only show modules whose backend exists; the rest join the
    nav release by release. The demo build keeps the full walkthrough. */
 const NAV = LIVE ? [
-  ['/', 'Assets'],
+  ['/', 'Home'],
+  ['/assets', 'Assets'],
   ['/log', 'Log book'],
   ['/failures', 'Failures'],
   ['/tags', 'QR tags'],
@@ -2336,7 +2422,7 @@ export default function App() {
   // The train artwork is mounted once, outside the page switch — it never
   // reloads on navigation; only its opacity changes (full on the landing,
   // muted behind every other page).
-  const onLanding = anonymous && routePath !== '/login' && !assetMatch && !lineMatch
+  const onLanding = anonymous && routePath !== '/login' && !assetMatch && !lineMatch && routePath !== '/failures'
   const siteArt = (
     <img className={`site-art${onLanding ? '' : ' muted'}`} alt="" aria-hidden="true"
          src={`${import.meta.env.BASE_URL}landing-art.webp`} />
@@ -2354,10 +2440,12 @@ export default function App() {
         <header className="topbar">
   <Brand />
           <nav className="nav">
+            {LIVE && <a href="#/failures" className={routePath === '/failures' ? 'active' : ''}>Failures</a>}
             <a href="#/login" className="btn login-btn">Sign in</a>
           </nav>
         </header>
-        {assetMatch ? <LiveAssetDetail code={assetCode} />
+        {routePath === '/failures' ? <LiveFailures />
+          : assetMatch ? <LiveAssetDetail code={assetCode} />
           : <LineView name={decodeURIComponent(lineMatch[1])} />}
         <footer className="foot">{ORG} · maintenance records · <AmpsLink />, MIT © 2026 <FootSig /></footer>
       </div>
@@ -2401,7 +2489,8 @@ export default function App() {
         : routePath === '/procurement' ? (LIVE ? <NotYet /> : <Procurement />)
         : routePath === '/tags' ? <TagSheet />
         : routePath === '/about' ? <AboutPage />
-        : (LIVE ? <LiveDashboard go={go} /> : <Dashboard go={go} />)}
+        : routePath === '/assets' ? (LIVE ? <LiveDashboard go={go} /> : <Dashboard go={go} />)
+        : (LIVE ? <LineDashboard go={go} /> : <Dashboard go={go} />)}
 
       <footer className="foot">
         {LIVE
