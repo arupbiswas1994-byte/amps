@@ -1171,8 +1171,10 @@ function Planner() {
 
 /* ---------- failures & recovery: analysis dashboard ---------- */
 
-function TrendChart({ data }) {
-  const W = 560, H = 170, PAD = { t: 18, r: 8, b: 24, l: 8 }
+function TrendChart({ data, compact }) {
+  // compact (single-row analytics) uses a taller aspect so the bars fill the
+  // card instead of hugging the top; the wide 2-col demo keeps the short aspect.
+  const W = 560, H = compact ? 320 : 170, PAD = { t: 18, r: 8, b: 24, l: 8 }
   const max = Math.max(...data.map((m) => m.count), 1)
   const iw = W - PAD.l - PAD.r
   const ih = H - PAD.t - PAD.b
@@ -1446,7 +1448,7 @@ function LiveFailures() {
         <div className="viz-grid2 viz-compact">
           <section className="card viz-card">
             <h2 className="viz-h">Failures per month <span className="viz-note">last {months} months</span></h2>
-            <TrendChart data={trend} />
+            <TrendChart data={trend} compact />
             <p className="viz-insight">
               {dir === 'down' && <>Improving — {last3} in the last 3 months vs {prev3} in the previous 3.</>}
               {dir === 'up' && <>Worsening — {last3} in the last 3 months vs {prev3} in the previous 3.</>}
