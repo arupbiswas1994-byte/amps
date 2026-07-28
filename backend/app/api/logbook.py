@@ -578,6 +578,24 @@ def failure_stats(days: int = 90, months: int = 6, line: str | None = None,
     }
 
 
+@router.get("/open-failures-by-asset")
+def open_failures_by_asset(db: Session = Depends(get_db), user=Depends(optional_user)):
+    """{asset_code: open_failure_count} — a public aggregate (counts only, no
+    fault text/crew) so the register can flag and pin faulty assets to the top.
+    Open = a failure entry with no recovery (no ended_at, no linked
+    rectification). Line-scoped like the rest of the failures surface."""
+    from collections import Counter
+    q = select(LogEntry).where(LogEntry.type == LogEntryType.FAILURE)
+    if user.line_id is not None:
+        q = q.where((LogEntry.line_id == user.line_id) | (LogEntry.line_id.is_(None)))
+    rows = db.scalars(q).all()
+    rec = _recovery_map(db, rows)
+    counts = Counter(
+        e.asset.code for e in rows
+        if e.asset is not None and e.ended_at is None and e.id not in rec)
+    return dict(counts)
+
+
 # ---- bulk history import: scattered sheet logbooks -> one digital book ----
 # One row = one entry, dated by a single `date`. Columns:
 #   kind,date,type,group,asset_id,station,location,equipment,fault_type,

@@ -74,21 +74,24 @@ export async function apiLogout() {
 
 /** Register + dashboard source: every asset, plus PM items due within 60 days. */
 export function useLiveAssets() {
-  const [state, set] = useState({ assets: [], sched: {}, loading: LIVE, error: null })
+  const [state, set] = useState({ assets: [], sched: {}, openFail: {}, loading: LIVE, error: null })
   useEffect(() => {
     if (!LIVE) return undefined
     let alive = true
     Promise.all([
       getJSON('/api/assets'),
       getJSON('/api/maintenance/schedule').catch(() => []),
+      // {asset_code: open_failure_count} — public aggregate for the register flag
+      getJSON('/api/logbook/open-failures-by-asset').catch(() => ({})),
     ])
-      .then(([assets, sched]) => alive && set({
+      .then(([assets, sched, openFail]) => alive && set({
         assets: assets.map(toView),
         // per-asset schedule health, keyed by code for O(1) row lookup
         sched: Object.fromEntries(sched.map((s) => [s.asset_code, s])),
+        openFail: openFail || {},
         loading: false, error: null,
       }))
-      .catch((e) => alive && set({ assets: [], sched: {}, loading: false, error: String(e) }))
+      .catch((e) => alive && set({ assets: [], sched: {}, openFail: {}, loading: false, error: String(e) }))
     return () => { alive = false }
   }, [])
   return state

@@ -154,7 +154,7 @@ function usePersistedState(key, initial) {
 }
 
 function LiveDashboard({ go, initialLine = null }) {
-  const { assets: all, sched, loading, error } = useLiveAssets()
+  const { assets: all, sched, openFail, loading, error } = useLiveAssets()
   const { me, canWrite } = useMe()
   const [line, setLine] = useState(initialLine)
   const [filter, setFilter] = usePersistedState('reg.state', 'all')   // all | overdue | due_soon
@@ -194,6 +194,7 @@ function LiveDashboard({ go, initialLine = null }) {
   const effLine = line ?? me?.line ?? lines[0] ?? null
   const assets = effLine ? all.filter((a) => a.line === effLine) : all
   const stateOf = (a) => sched[a.code]?.state || null
+  const faultsOf = (a) => openFail[a.code] || 0   // open failures on this asset
   const uniq = (k) => [...new Set(assets.map((a) => a[k]).filter(Boolean))].sort()
   const systemsList = uniq('sys'); const classesList = uniq('cls')
   const locationsList = uniq('location'); const statusesList = uniq('status')
@@ -212,13 +213,20 @@ function LiveDashboard({ go, initialLine = null }) {
   if (fStatus) base = base.filter((a) => a.status === fStatus)
   const overdue = base.filter((a) => stateOf(a) === 'overdue')
   const dueSoon = base.filter((a) => stateOf(a) === 'due_soon')
-  let shown = filter === 'all' ? base : base.filter((a) => stateOf(a) === filter)
+  const faulty = base.filter((a) => faultsOf(a) > 0)
+  let shown = filter === 'all' ? base
+    : filter === 'faulty' ? base.filter((a) => faultsOf(a) > 0)
+    : base.filter((a) => stateOf(a) === filter)
   if (sortKey) {
     const dir = sortDir === 'asc' ? 1 : -1
     shown = [...shown].sort((x, y) => {
       const a = sortVal(x, sortKey), b = sortVal(y, sortKey)
       return (a < b ? -1 : a > b ? 1 : x.code.localeCompare(y.code)) * dir
     })
+  } else if (faulty.length) {
+    // no manual sort: pin assets with open failures to the top (register order
+    // preserved within each group), like the Fiber console floats blocked lines
+    shown = [...shown].sort((x, y) => (faultsOf(y) > 0) - (faultsOf(x) > 0))
   }
   // page the (already filtered + sorted) rows — rendering all 3000+ at once is
   // ~38k DOM nodes and janky; a page is ~1.5k and snappy. Reset on any change.
@@ -239,11 +247,11 @@ function LiveDashboard({ go, initialLine = null }) {
   // download the table exactly as filtered & sorted, as CSV
   const exportCsv = () => {
     const cell = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
-    const head = COLS.map(([, l]) => l)
+    const head = [...COLS.map(([, l]) => l), 'Open failures']
     const body = shown.map((a) => {
       const s = sched[a.code]
       return [a.code, a.name, a.cls, a.location, a.sys || '', STATUS_LABEL[a.status] || a.status,
-        s?.next_due || '', s ? SCHED_LABEL[s.state] : ''].map(cell).join(',')
+        s?.next_due || '', s ? SCHED_LABEL[s.state] : '', faultsOf(a) || ''].map(cell).join(',')
     })
     const csv = [head.map(cell).join(','), ...body].join('\n')
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
@@ -317,8 +325,10 @@ function LiveDashboard({ go, initialLine = null }) {
             <input className="asset-search" type="search" value={q} onChange={(e) => setQ(e.target.value)}
                    placeholder="Search code, asset, class or location…" aria-label="Search assets" />
             <div className="asset-filter" role="tablist" aria-label="PM state filter">
-              {[['all', `All ${base.length}`], ['overdue', `Overdue ${overdue.length}`], ['due_soon', `Due soon ${dueSoon.length}`]].map(([k, lbl]) => (
-                <button key={k} type="button" className={`btn preset ${filter === k ? 'active' : ''}${k === 'overdue' && overdue.length ? ' has-od' : ''}`}
+              {[['all', `All ${base.length}`], ['faulty', `Faulty ${faulty.length}`], ['overdue', `Overdue ${overdue.length}`], ['due_soon', `Due soon ${dueSoon.length}`]]
+                .filter(([k]) => k !== 'faulty' || faulty.length)
+                .map(([k, lbl]) => (
+                <button key={k} type="button" className={`btn preset ${filter === k ? 'active' : ''}${(k === 'overdue' && overdue.length) || (k === 'faulty' && faulty.length) ? ' has-od' : ''}`}
                         onClick={() => setFilter(k)}>{lbl}</button>
               ))}
             </div>
@@ -413,11 +423,14 @@ function LiveDashboard({ go, initialLine = null }) {
                 <tbody>
                   {pageRows.map((a) => {
                     const s = sched[a.code]
+                    const nf = faultsOf(a)
                     return (
-                      <tr key={a.code} tabIndex={0} onClick={() => go(`/asset/${a.code}`)}
+                      <tr key={a.code} tabIndex={0} className={nf ? 'row-faulty' : ''}
+                          onClick={() => go(`/asset/${a.code}`)}
                           onKeyDown={(e) => e.key === 'Enter' && go(`/asset/${a.code}`)}>
                         <td className="code" data-l="Code">{a.code}</td>
-                        <td data-l="Asset">{a.name}</td>
+                        <td data-l="Asset">{a.name}
+                          {nf > 0 && <span className="fault-badge" title={`${nf} open failure${nf > 1 ? 's' : ''} on this asset`}>⚠ {nf} open</span>}</td>
                         <td className="dim" data-l="Class">{a.cls}</td>
                         <td className="dim" data-l="Location">{a.location}</td>
                         <td className="dim" data-l="System">{a.sys ?? '—'}</td>
