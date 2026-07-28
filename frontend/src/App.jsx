@@ -2487,15 +2487,7 @@ function LineView({ name }) {
 
 /* one line's failures board — reached at /line/<name>/failures */
 function LineFailures({ name }) {
-  const { me } = useMe()
-  const back = me?.line ? '#/' : `#/line/${encodeURIComponent(name)}`
-  const backLabel = me?.line ? '← Home' : `← ${name}`
-  return (
-    <>
-      <a className="crumb" href={back}>{backLabel}</a>
-      <LiveFailures line={name} />
-    </>
-  )
+  return <LiveFailures line={name} />
 }
 
 /* legacy /failures — send the coordinator to their line's board, and anyone
