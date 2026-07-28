@@ -1273,7 +1273,7 @@ body:has(.gate) {
 /* tiles fill the left column; the glance panel (and train) take the right.
    The grid soaks up the leftover height and centers in it */
 .land-tiles {
-  flex: 1 1 auto; min-width: 0; align-content: center;
+  flex: 1 1 auto; min-width: 0; align-content: start;
   display: grid; grid-template-columns: 1fr 1fr; gap: clamp(10px, 1.8vh, 16px) 16px;
 }
 /* pastel fill: the line colour softened into paper, dark ink on top */
@@ -1304,11 +1304,11 @@ body:has(.gate) {
 /* network glance: line tiles on the left, the aggregate KPI panel on the
    right rail (over the train art) so the layout reads balanced */
 .land-body {
-  flex: 1; min-height: 0; display: flex; align-items: center;
+  flex: 1; min-height: 0; display: flex; align-items: flex-start;
   gap: clamp(16px, 2.4vw, 30px);
 }
 .land-glance {
-  flex: 0 0 clamp(210px, 26vw, 300px); align-self: center;
+  flex: 0 0 clamp(210px, 26vw, 300px); align-self: flex-start;
   display: flex; flex-direction: column; gap: 10px; position: relative; z-index: 1;
 }
 .land-glance-h {
