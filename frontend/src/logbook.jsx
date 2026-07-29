@@ -456,28 +456,19 @@ function EditEntryForm({ entry, assets, systems, classSystem, initialResp = null
                           value={csEdit} onChange={setCsEdit} />
         )}
 
-        {/* a failure has TWO independent axes, each its own log that coexists:
-            an Acknowledged checkbox (the acknowledgement log) and a Progress
-            dropdown (the job-card / rectification log). Acknowledging then
-            rectifying keeps BOTH logs — one never converts into the other. */}
+        {/* a failure has TWO independent logs, each in its OWN grouped block:
+            (1) the Acknowledgement — a tick plus its note; (2) the Progress —
+            the job-card / rectification. Both are kept; one never becomes the
+            other. */}
         {isFail && (
-          <section className="fg fg-fail">
-            <span className="fg-lbl">Status</span>
+          <section className="fg fg-fail resp-group">
+            <span className="fg-lbl">Acknowledgement <span className="ef-opt">— its own log</span></span>
             <div className="fg-fields">
               <label className="flag-check fg-span">
                 <input type="checkbox" checked={acknowledged}
                        onChange={(e) => setAcknowledged(e.target.checked)} />
-                Acknowledged <span className="ef-opt">— noted (demand / mail); kept as its own log</span>
+                Acknowledged <span className="ef-opt">— noted (demand raised / mail sent), not yet fixed</span>
               </label>
-              <label className="fg-span">Progress
-                <select value={progress} onChange={(e) => onSetProgress(e.target.value)}>
-                  <option value="open">Open — not yet fixed</option>
-                  <option value="job_card">Job card issued — raised to OEM/dept</option>
-                  <option value="rectified">Rectified — fixed</option>
-                </select>
-              </label>
-
-              {/* acknowledgement note — its own log, independent of progress */}
               {acknowledged && <>
                 <label>Acknowledged on
                   <input type="date" value={aDate} min={entry.log_date} onChange={(e) => setADate(e.target.value)} />
@@ -490,8 +481,21 @@ function EditEntryForm({ entry, assets, systems, classSystem, initialResp = null
                          placeholder="e.g. Relay not available. Demand raised, mail sent 30-06" />
                 </label>
               </>}
+            </div>
+          </section>
+        )}
 
-              {/* progress detail — the job card, or the rectification */}
+        {isFail && (
+          <section className="fg fg-fail resp-group">
+            <span className="fg-lbl">Progress / rectification <span className="ef-opt">— its own log</span></span>
+            <div className="fg-fields">
+              <label className="fg-span">Progress
+                <select value={progress} onChange={(e) => onSetProgress(e.target.value)}>
+                  <option value="open">Open — not yet fixed</option>
+                  <option value="job_card">Job card issued — raised to OEM/dept</option>
+                  <option value="rectified">Rectified — fixed</option>
+                </select>
+              </label>
               {progressActive && <>
                 <label>{isResolved ? 'Rectified on' : 'Job card dated'}
                   <input type="date" value={rDate} min={entry.log_date} onChange={(e) => setRDate(e.target.value)} />

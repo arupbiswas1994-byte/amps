@@ -629,6 +629,10 @@ td .chip.d-none { color: var(--ink-3); }
   font-size: 9px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); }
 .fg-record .fg-lbl { color: #2f6690; }
 .fg-fail .fg-lbl { color: var(--serious); }
+/* the two failure-response logs as visually distinct grouped blocks */
+.resp-group { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-top: 10px;
+  background: color-mix(in srgb, var(--serious) 3%, transparent); }
+.resp-group .ef-opt { text-transform: none; letter-spacing: 0; font-weight: 400; }
 
 /* dynamic grid — auto-fit so fields pack to the available width */
 .fg-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
