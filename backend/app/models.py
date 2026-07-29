@@ -66,10 +66,15 @@ class Asset(Base):
     __tablename__ = "assets"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    code: Mapped[str] = mapped_column(String(120), unique=True, index=True)  # printed on QR tag
+    # printed on the QR tag. NOT globally unique — different lines/depots reuse
+    # the same code series (e.g. Green and Blue both have 05DB01). Uniqueness is
+    # per line (unique index on code+line_id, created in _migrate).
+    code: Mapped[str] = mapped_column(String(120), index=True)
     name: Mapped[str] = mapped_column(String(160))
     asset_class_id: Mapped[int] = mapped_column(ForeignKey("asset_classes.id"))
     location_id: Mapped[int] = mapped_column(ForeignKey("locations.id"))
+    # denormalised SITE (line) id — lets code be unique per line and scopes lookups
+    line_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id"))
     make_model: Mapped[str | None] = mapped_column(String(160))
     # Reporting rollup a department thinks in (e.g. "Traction / PS", "Station E&M").
     # Free text so every deployment names its own systems; distinct from asset_class.

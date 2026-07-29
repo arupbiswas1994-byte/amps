@@ -1000,7 +1000,12 @@ async def import_history(request: Request, line: str | None = None,
 
     # preload once: register codes and already-imported content keys.
     # ONE ledger — every row (maintenance and failure) becomes a log entry.
-    assets = {a.code: a for a in db.scalars(select(Asset)).all()}
+    # Codes repeat across lines, so scope the code->asset map to the import's line
+    # (?line=) when given, else fall back to a global map (last-wins).
+    asset_q = select(Asset)
+    if import_line_id:
+        asset_q = asset_q.where(Asset.line_id == import_line_id)
+    assets = {a.code: a for a in db.scalars(asset_q).all()}
     have_logs = {(str(e[0]), e[1] or '', e[2]) for e in
                  db.execute(select(LogEntry.log_date, Asset.code, LogEntry.text)
                             .outerjoin(Asset, LogEntry.asset_id == Asset.id)).all()}

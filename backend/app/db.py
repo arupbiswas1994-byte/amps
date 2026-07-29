@@ -35,7 +35,8 @@ def _migrate(engine):
 
     wanted = {
         "assets": {"system": "VARCHAR(80)", "description": "TEXT", "remarks": "TEXT",
-                   "codal_life_years": "INTEGER", "depot": "VARCHAR(40)"},
+                   "codal_life_years": "INTEGER", "depot": "VARCHAR(40)",
+                   "line_id": "INTEGER"},
         "users": {"password_hash": "VARCHAR(200)", "line_id": "INTEGER",
                   "depot": "VARCHAR(40)"},
         "log_entries": {"line_id": "INTEGER", "subtype": "VARCHAR(40)", "category": "VARCHAR(80)",
@@ -87,6 +88,27 @@ def _migrate(engine):
     with engine.begin() as conn:
         for name, defn in indexes.items():
             conn.execute(text(f"CREATE INDEX IF NOT EXISTS {name} ON {defn}"))
+
+    # Asset codes are unique PER LINE, not globally — different lines/depots reuse
+    # the same code series. Migrate the old global unique index to a composite one.
+    with engine.begin() as conn:
+        # backfill the denormalised line_id from each asset's station -> parent site
+        conn.execute(text(
+            "UPDATE assets SET line_id = ("
+            "  SELECT loc.parent_id FROM locations loc WHERE loc.id = assets.location_id"
+            ") WHERE line_id IS NULL"))
+        # drop the old GLOBAL unique index on code, if it still exists
+        conn.execute(text("DROP INDEX IF EXISTS ix_assets_code"))
+        # a plain (non-unique) index on code for lookups
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_assets_code ON assets (code)"))
+        # per-line uniqueness (only when it can be created cleanly — i.e. no dup
+        # (code,line) rows already exist; a data-quality dup would raise, so guard)
+        try:
+            conn.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ux_assets_code_line "
+                "ON assets (code, line_id)"))
+        except Exception:
+            pass  # existing (code,line) duplicates: leave it to a data cleanup
 
 
 def get_db():

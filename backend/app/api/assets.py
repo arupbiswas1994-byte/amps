@@ -131,11 +131,17 @@ def _get_or_create_location(db: Session, name: str, line: str | None = None) -> 
 
 
 def visible_asset(db: Session, code: str, user) -> Asset:
-    """The asset, if it exists inside the user's scope — else 404 (unscoped
-    users see everything). Shared by every router that references assets."""
-    obj = db.scalar(select(Asset).where(Asset.code == code))
+    """The asset with this code inside the user's scope — else 404. Codes repeat
+    across lines, so a scoped user resolves to THEIR line's asset; an unscoped
+    admin gets the first match (rare — admins rarely fetch by bare code)."""
+    q = select(Asset).where(Asset.code == code)
     scope = scope_location_ids(db, user)
-    if not obj or (scope is not None and obj.location_id not in scope):
+    if scope is not None:
+        q = q.where(Asset.location_id.in_(scope))
+    if getattr(user, "depot", None):
+        q = q.where(Asset.depot == user.depot)
+    obj = db.scalars(q).first()
+    if not obj:
         raise HTTPException(404, "asset not found")
     return obj
 
@@ -152,15 +158,27 @@ def list_assets(db: Session = Depends(get_db), user=Depends(optional_user)):
     return [_to_out(a) for a in db.scalars(q).all()]
 
 
+def _line_site(db: Session, line: str | None):
+    """The SITE (line) row for a line name, if it exists."""
+    if not line:
+        return None
+    return db.scalar(select(Location).where(Location.name == line,
+                                            Location.kind == LocationKind.SITE))
+
+
 def _create_one(db: Session, asset: AssetIn, user) -> Asset:
     """Shared by single create and bulk import — same validation, same audit."""
-    if db.scalar(select(Asset).where(Asset.code == asset.code)):
-        raise HTTPException(409, f"asset code {asset.code} already exists")
     if user.line_id is not None:
         my_line = db.get(Location, user.line_id).name
         if asset.line and asset.line != my_line:
             raise HTTPException(403, f"your account manages {my_line} only")
         asset.line = my_line  # scoped users always register into their own line
+    # codes are unique PER LINE — the same code may exist on another line
+    site = _line_site(db, asset.line)
+    dup = select(Asset).where(Asset.code == asset.code)
+    dup = dup.where(Asset.line_id == site.id) if site else dup.where(Asset.line_id.is_(None))
+    if db.scalar(dup):
+        raise HTTPException(409, f"asset code {asset.code} already exists on {asset.line or 'this line'}")
     # a depot-scoped account always registers into its own depot
     depot = (user.depot if getattr(user, "depot", None) else asset.depot) or None
     try:
@@ -168,6 +186,7 @@ def _create_one(db: Session, asset: AssetIn, user) -> Asset:
         status = AssetStatus(asset.status)
     except ValueError as e:
         raise HTTPException(422, str(e))
+    loc = _get_or_create_location(db, asset.location, asset.line)
     obj = Asset(
         code=asset.code, name=asset.name, make_model=asset.make_model,
         criticality=crit, system=asset.system, status=status,
@@ -175,7 +194,8 @@ def _create_one(db: Session, asset: AssetIn, user) -> Asset:
         description=asset.description, remarks=asset.remarks,
         codal_life_years=asset.codal_life_years, depot=depot,
         asset_class=_get_or_create_class(db, asset.asset_class),
-        location=_get_or_create_location(db, asset.location, asset.line),
+        location=loc,
+        line_id=(loc.parent_id if loc.parent_id else (site.id if site else None)),
     )
     db.add(obj)
     db.flush()
@@ -378,8 +398,10 @@ def update_asset(code: str, patch: AssetUpdate, db: Session = Depends(get_db),
         changes.append(f"{field}: {old or '—'}→{new or '—'}")
 
     if patch.code is not None and patch.code != a.code:
-        if db.scalar(select(Asset).where(Asset.code == patch.code)):
-            raise HTTPException(409, f"asset code {patch.code} already exists")
+        # codes are unique per line, so the clash check is scoped to this line
+        if db.scalar(select(Asset).where(Asset.code == patch.code,
+                                         Asset.line_id == a.line_id)):
+            raise HTTPException(409, f"asset code {patch.code} already exists on this line")
         note("code", a.code, patch.code)
         a.code = patch.code
     if patch.name is not None and patch.name != a.name:
