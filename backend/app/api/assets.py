@@ -65,6 +65,7 @@ class AssetIn(BaseModel):
     description: str | None = None       # a fuller description of the asset
     remarks: str | None = None           # free-form remarks
     codal_life_years: int | None = None  # prescribed service life, in years
+    depot: str | None = None             # maintenance depot code, e.g. SHY / KHG / CPD
 
 
 class AssetUpdate(BaseModel):
@@ -83,6 +84,7 @@ class AssetUpdate(BaseModel):
     description: str | None = None
     remarks: str | None = None
     codal_life_years: int | None = None
+    depot: str | None = None
 
 
 class AssetOut(AssetIn):
@@ -98,7 +100,7 @@ def _to_out(a: Asset) -> AssetOut:
         line=a.location.parent.name if a.location.parent else None,
         commissioned_on=a.commissioned_on,
         description=a.description, remarks=a.remarks,
-        codal_life_years=a.codal_life_years,
+        codal_life_years=a.codal_life_years, depot=a.depot,
     )
 
 
@@ -144,6 +146,9 @@ def list_assets(db: Session = Depends(get_db), user=Depends(optional_user)):
     scope = scope_location_ids(db, user)
     if scope is not None:
         q = q.where(Asset.location_id.in_(scope))
+    # a depot-scoped account (e.g. an SSE) sees only its depot's assets
+    if getattr(user, "depot", None):
+        q = q.where(Asset.depot == user.depot)
     return [_to_out(a) for a in db.scalars(q).all()]
 
 
@@ -156,6 +161,8 @@ def _create_one(db: Session, asset: AssetIn, user) -> Asset:
         if asset.line and asset.line != my_line:
             raise HTTPException(403, f"your account manages {my_line} only")
         asset.line = my_line  # scoped users always register into their own line
+    # a depot-scoped account always registers into its own depot
+    depot = (user.depot if getattr(user, "depot", None) else asset.depot) or None
     try:
         crit = Criticality(asset.criticality)
         status = AssetStatus(asset.status)
@@ -166,7 +173,7 @@ def _create_one(db: Session, asset: AssetIn, user) -> Asset:
         criticality=crit, system=asset.system, status=status,
         commissioned_on=asset.commissioned_on,
         description=asset.description, remarks=asset.remarks,
-        codal_life_years=asset.codal_life_years,
+        codal_life_years=asset.codal_life_years, depot=depot,
         asset_class=_get_or_create_class(db, asset.asset_class),
         location=_get_or_create_location(db, asset.location, asset.line),
     )

@@ -82,6 +82,9 @@ class Asset(Base):
     description: Mapped[str | None] = mapped_column(Text)
     remarks: Mapped[str | None] = mapped_column(Text)
     codal_life_years: Mapped[int | None]
+    # the maintenance depot this asset belongs to (e.g. SHY, KHG, CPD) — a line
+    # may have several depots, each with its own SSE/coordinator scope.
+    depot: Mapped[str | None] = mapped_column(String(40))
 
     asset_class: Mapped[AssetClass] = relationship()
     location: Mapped[Location] = relationship(back_populates="assets")
@@ -219,6 +222,9 @@ class User(Base):
     password_hash: Mapped[str | None] = mapped_column(String(200))
     # Access scope: a SITE location (e.g. a metro line). NULL = all sites (HQ/admin).
     line_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id"))
+    # optional narrower scope WITHIN the line: a depot code (e.g. SHY, KHG). When
+    # set, the user only sees that depot's assets/logs; NULL = the whole line.
+    depot: Mapped[str | None] = mapped_column(String(40))
 
     line: Mapped["Location | None"] = relationship()
 

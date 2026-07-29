@@ -35,8 +35,9 @@ def _migrate(engine):
 
     wanted = {
         "assets": {"system": "VARCHAR(80)", "description": "TEXT", "remarks": "TEXT",
-                   "codal_life_years": "INTEGER"},
-        "users": {"password_hash": "VARCHAR(200)", "line_id": "INTEGER"},
+                   "codal_life_years": "INTEGER", "depot": "VARCHAR(40)"},
+        "users": {"password_hash": "VARCHAR(200)", "line_id": "INTEGER",
+                  "depot": "VARCHAR(40)"},
         "log_entries": {"line_id": "INTEGER", "subtype": "VARCHAR(40)", "category": "VARCHAR(80)",
                         "ended_at": "TIMESTAMP", "fault_type": "VARCHAR(120)",
                         "rectifies_id": "INTEGER", "attended_by": "VARCHAR(200)",

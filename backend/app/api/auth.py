@@ -174,13 +174,15 @@ class MeOut(BaseModel):
     full_name: str
     role: str
     line: str | None
+    depot: str | None = None
     auth_enabled: bool
 
 
 def _me(user) -> MeOut:
     line = user.line.name if getattr(user, "line", None) else None
     return MeOut(username=user.username, full_name=user.full_name,
-                 role=user.role.value, line=line, auth_enabled=AUTH_ON)
+                 role=user.role.value, line=line,
+                 depot=getattr(user, "depot", None), auth_enabled=AUTH_ON)
 
 
 @router.post("/login", response_model=MeOut)

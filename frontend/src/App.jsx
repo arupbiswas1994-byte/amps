@@ -163,6 +163,7 @@ function LiveDashboard({ go, initialLine = null }) {
   const [fClass, setFClass] = usePersistedState('reg.class', '')
   const [fLocation, setFLocation] = usePersistedState('reg.location', '')
   const [fStatus, setFStatus] = usePersistedState('reg.status', '')
+  const [fDepot, setFDepot] = usePersistedState('reg.depot', '')
   const [sortKey, setSortKey] = usePersistedState('reg.sortKey', null)  // null = register order
   const [sortDir, setSortDir] = usePersistedState('reg.sortDir', 'asc')
   const [page, setPage] = useState(0)   // register pages 150 rows/page for speed
@@ -212,6 +213,7 @@ function LiveDashboard({ go, initialLine = null }) {
   const uniq = (k) => [...new Set(assets.map((a) => a[k]).filter(Boolean))].sort()
   const systemsList = uniq('sys'); const classesList = uniq('cls')
   const locationsList = uniq('location'); const statusesList = uniq('status')
+  const depotsList = uniq('depot')   // maintenance depots present on this line
   const ql = q.trim().toLowerCase()
   // the sort accessor per column; PM columns read the derived schedule
   const sortVal = (a, k) => k === 'next_due' ? (sched[a.code]?.next_due || '9999')
@@ -225,6 +227,7 @@ function LiveDashboard({ go, initialLine = null }) {
   if (fClass) base = base.filter((a) => a.cls === fClass)
   if (fLocation) base = base.filter((a) => a.location === fLocation)
   if (fStatus) base = base.filter((a) => a.status === fStatus)
+  if (fDepot) base = base.filter((a) => a.depot === fDepot)
   const overdue = base.filter((a) => stateOf(a) === 'overdue')
   const dueSoon = base.filter((a) => stateOf(a) === 'due_soon')
   const faulty = base.filter((a) => attnOf(a) > 0)   // open OR acknowledged
@@ -347,6 +350,12 @@ function LiveDashboard({ go, initialLine = null }) {
                         onClick={() => setFilter(k)}>{lbl}</button>
               ))}
             </div>
+            {depotsList.length > 0 && !me?.depot && (
+              <select value={fDepot} onChange={(e) => setFDepot(e.target.value)} aria-label="Filter by depot">
+                <option value="">All depots</option>
+                {depotsList.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+            )}
             <select value={fSystem} onChange={(e) => setFSystem(e.target.value)} aria-label="Filter by system">
               <option value="">All systems</option>
               {systemsList.map((s) => <option key={s} value={s}>{s}</option>)}

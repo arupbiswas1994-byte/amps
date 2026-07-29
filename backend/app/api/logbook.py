@@ -94,6 +94,7 @@ class LogEntryOut(BaseModel):
     consumables: str | None
     # a filled structured checksheet attached to this entry, if any
     checksheet: dict | None = None
+    depot: str | None = None       # the asset's maintenance depot (SHY/KHG/CPD)
     down_hours: float | None
 
 
@@ -276,6 +277,7 @@ def _to_out(e: LogEntry, resolver: LogEntry | None = None,
         ended_at=e.ended_at or recovered, fault_type=e.fault_type,
         consumables=e.consumables,
         checksheet=_load_checksheet(e.checksheet),
+        depot=(e.asset.depot if e.asset else None),
         down_hours=_down_hours(e, recovered),
     )
 
@@ -398,7 +400,7 @@ def list_entries(log_date: date | None = None, shift: str | None = None,
                  asset_code: str | None = None, entry_type: str | None = None,
                  category: str | None = None, q: str | None = None,
                  date_from: date | None = None, date_to: date | None = None,
-                 line: str | None = None,
+                 line: str | None = None, depot: str | None = None,
                  limit: int = 200, offset: int = 0, response: Response = None,
                  db: Session = Depends(get_db), user=Depends(optional_user)):
     """The day's log, a shift's log, or one asset's complete logged history.
@@ -421,6 +423,12 @@ def list_entries(log_date: date | None = None, shift: str | None = None,
     filters.append(LogEntry.id.not_in(superseded))
     if user.line_id is not None:
         filters.append((LogEntry.line_id == user.line_id) | (LogEntry.line_id.is_(None)))
+    # depot scope/filter: a depot-scoped account is locked to its own depot; any
+    # user may also narrow by the ?depot= dropdown. Matches the entry's asset.
+    depot_pick = (getattr(user, "depot", None) or (depot.strip() if depot else None)) or None
+    if depot_pick:
+        filters.append(LogEntry.asset_id.in_(
+            select(Asset.id).where(Asset.depot == depot_pick)))
     if line and line.strip():
         site = db.scalar(select(Location).where(Location.kind == LocationKind.SITE,
                                                 func.lower(Location.name) == line.strip().lower()))
@@ -695,6 +703,8 @@ def failure_stats(days: int = 90, months: int = 6, line: str | None = None,
     q = select(LogEntry).where(LogEntry.type == LogEntryType.FAILURE)
     if user.line_id is not None:
         q = q.where((LogEntry.line_id == user.line_id) | (LogEntry.line_id.is_(None)))
+    if getattr(user, "depot", None):   # a depot-scoped account sees only its depot
+        q = q.where(LogEntry.asset_id.in_(select(Asset.id).where(Asset.depot == user.depot)))
     # optional public line filter: the walk-up failures board scopes to one line
     # so each line shows its own KPIs instead of the network total. Ignored when
     # it names a line the caller isn't already scoped to nothing.
@@ -806,6 +816,8 @@ def open_failures_by_asset(db: Session = Depends(get_db), user=Depends(optional_
     q = select(LogEntry).where(LogEntry.type == LogEntryType.FAILURE)
     if user.line_id is not None:
         q = q.where((LogEntry.line_id == user.line_id) | (LogEntry.line_id.is_(None)))
+    if getattr(user, "depot", None):
+        q = q.where(LogEntry.asset_id.in_(select(Asset.id).where(Asset.depot == user.depot)))
     rows = _drop_superseded(db, db.scalars(q).all())   # current heads only
     rec = _recovery_map(db, rows)
     ack = _ack_map(db, rows)

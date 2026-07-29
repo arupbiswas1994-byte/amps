@@ -609,6 +609,7 @@ export default function LogBook({ editId = null, focusDate = null, initialResp =
   const [total, setTotal] = useState(0)
   const [fCat, setFCat] = useState('')             // '' = all categories (classes)
   const [fType, setFType] = useState('')           // '' = all types
+  const [fDepot, setFDepot] = useState('')         // '' = all depots (line-wide)
   const [search, setSearch] = useState('')         // free-text box value
   const [qParam, setQParam] = useState('')         // debounced -> ?q= server search
   const [impBusy, setImpBusy] = useState(false)
@@ -662,6 +663,7 @@ export default function LogBook({ editId = null, focusDate = null, initialResp =
   }, [])
   // distinct asset classes, sorted — the category dropdown's options
   const classes = [...new Set(assets.map((a) => a.asset_class).filter(Boolean))].sort()
+  const depots = [...new Set(assets.map((a) => a.depot).filter(Boolean))].sort()
   // the systems (short) and, per system, the classes under it — so the class
   // picker only ever shows what belongs to the chosen system
   const systems = [...new Set(assets.map((a) => a.system).filter(Boolean))].sort()
@@ -699,6 +701,7 @@ export default function LogBook({ editId = null, focusDate = null, initialResp =
       if (!allDates && !searching) q.set('log_date', logDate)
       if (fCat) q.set('category', fCat)
       if (fType) q.set('entry_type', fType)
+      if (fDepot) q.set('depot', fDepot)
       if (searching) q.set('q', qParam.trim())
       if (allDates || searching) {
         if (from) q.set('date_from', from)
@@ -717,9 +720,9 @@ export default function LogBook({ editId = null, focusDate = null, initialResp =
     }
   }
 
-  useEffect(() => { load() }, [logDate, allDates, fCat, fType, qParam, from, to, page])  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load() }, [logDate, allDates, fCat, fType, fDepot, qParam, from, to, page])  // eslint-disable-line react-hooks/exhaustive-deps
   // any change of what we are looking at starts again at the first page
-  useEffect(() => { setPage(0) }, [logDate, allDates, fCat, fType, qParam, from, to])
+  useEffect(() => { setPage(0) }, [logDate, allDates, fCat, fType, fDepot, qParam, from, to])
   // debounce the search box so we don't hit the API on every keystroke
   useEffect(() => { const t = setTimeout(() => setQParam(search), 300); return () => clearTimeout(t) }, [search])
   // logging a rectification against an asset → show that asset's OPEN failures so
@@ -925,6 +928,12 @@ export default function LogBook({ editId = null, focusDate = null, initialResp =
           </select>
           <input className="asset-search" type="search" value={search} onChange={(e) => setSearch(e.target.value)}
                  placeholder="Search the log — text, asset, crew, fault…" aria-label="Search the log" />
+          {depots.length > 0 && !me?.depot && (
+            <select value={fDepot} onChange={(e) => setFDepot(e.target.value)} aria-label="Filter by depot">
+              <option value="">All depots</option>
+              {depots.map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
+          )}
           <select value={fType} onChange={(e) => setFType(e.target.value)} aria-label="Filter by type">
             <option value="">All types</option>
             {ENTRY_TYPES.map((t) => <option key={t} value={t}>{t[0].toUpperCase() + t.slice(1)}</option>)}

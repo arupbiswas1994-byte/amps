@@ -34,6 +34,7 @@ const toView = (a) => ({
   description: a.description || null,
   remarks: a.remarks || null,
   codalLifeYears: a.codal_life_years ?? null,
+  depot: a.depot || null,
 })
 
 /** Session identity. Reads are open to everyone (the QR-scan surface);
