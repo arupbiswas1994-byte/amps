@@ -205,6 +205,12 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 .fail-resp.ignored { opacity: .82; }
 .fr-ignored { font-size: 10px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase;
   color: #a15c00; background: #fdecd4; border: 1px solid #f0d29a; border-radius: 99px; padding: 1px 7px; margin-left: 8px; }
+/* job-cards board: days-pending badge, escalating colour */
+.jc-age { display: inline-block; min-width: 44px; text-align: center; font-weight: 800; font-size: 13px;
+  font-variant-numeric: tabular-nums; padding: 2px 9px; border-radius: 99px;
+  color: #1a7a3a; background: color-mix(in srgb, var(--good) 12%, #fff); border: 1px solid color-mix(in srgb, var(--good) 30%, transparent); }
+.jc-age.warm { color: #8a6100; background: #fdf3d9; border-color: #f0dca8; }
+.jc-age.hot { color: var(--critical); background: #fdecec; border-color: #f2d4d4; }
 
 /* unified failure sub-groups (open / acknowledged / job card / resolved) */
 .logsub { margin: 10px 0 4px; padding-left: 12px; border-left: 3px solid var(--sg, #d9d2c2); }

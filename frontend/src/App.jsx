@@ -2371,6 +2371,63 @@ function LineDashboard({ go }) {
   )
 }
 
+/* Job-cards board — every failure with a job card raised to an agency/dept
+   that is not yet closed, so the section can chase them. Oldest (most overdue)
+   first, with days-pending front and centre. Signed-in only (operational). */
+function JobCardsView({ line = '' }) {
+  const { me, canWrite } = useMe()
+  const [rows, setRows] = useState(null)
+  const [error, setError] = useState(null)
+  useEffect(() => {
+    const lq = line ? `&line=${encodeURIComponent(line)}` : ''
+    getJSON(`/api/logbook?entry_type=failure&limit=1000${lq}`)
+      .then((r) => setRows(r || [])).catch((e) => setError(String(e)))
+  }, [line])
+  if (error) return <div className="card offline-note">Backend unreachable — {error}.</div>
+  if (rows === null) return <p className="dim">Loading job cards…</p>
+  // a job card is outstanding while the failure sits at state 'job_card'
+  const daysPending = (d) => Math.max(0, Math.round((Date.now() - new Date(`${d}T00:00:00`)) / 86400000))
+  const cards = rows.filter((f) => f.state === 'job_card' && f.job_card_by)
+    .map((f) => ({ f, jc: f.job_card_by, days: daysPending(f.job_card_by.log_date) }))
+    .sort((a, b) => b.days - a.days)
+  const line_ = me?.line || ''
+  return (
+    <>
+      <div className="page-head"><h1>Job cards {line_ && <span className="dim">· {line_}</span>}</h1></div>
+      <p className="dim" style={{ marginTop: -6 }}>Failures with a job card raised to an agency/department, still awaiting close-out — oldest first.</p>
+      {cards.length === 0 ? (
+        <div className="card"><p className="dim" style={{ margin: 0 }}>No open job cards — nothing to chase. 👍</p></div>
+      ) : (
+        <div className="card tbl-wrap">
+          <table>
+            <thead><tr><th>Pending</th><th>Asset</th><th>Fault</th><th>Issued to</th><th>Raised</th><th>Job card detail</th>{canWrite && <th aria-label="Action"></th>}</tr></thead>
+            <tbody>
+              {cards.map(({ f, jc, days }) => (
+                <tr key={f.id} tabIndex={0}
+                    onClick={() => f.asset_code && (location.hash = `/asset/${f.asset_code}`)}
+                    onKeyDown={(e) => e.key === 'Enter' && f.asset_code && (location.hash = `/asset/${f.asset_code}`)}>
+                  <td data-l="Pending"><span className={`jc-age${days >= 30 ? ' hot' : days >= 14 ? ' warm' : ''}`}>{days}d</span></td>
+                  <td className="code" data-l="Asset">{f.asset_code || '—'}</td>
+                  <td className="wrap-cell" data-l="Fault">{f.fault_type ? <b>{f.fault_type}</b> : tidyLog(f.text).slice(0, 50)}</td>
+                  <td className="dim" data-l="Issued to">{jc.attended_by || '—'}</td>
+                  <td className="dim dt" data-l="Raised">{jc.log_date}</td>
+                  <td className="wrap-cell" data-l="Detail">{tidyLog(jc.text)}</td>
+                  {canWrite && (
+                    <td className="td-edit" data-l="Action">
+                      <a className="fa-btn fa-rect" href={`#/log?d=${f.log_date}&edit=${f.id}&resp=rectification`}
+                         onClick={(e) => e.stopPropagation()}>✓ Rectify / close</a>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  )
+}
+
 /* ---------- shell + hash router ---------- */
 
 const routeFromHash = () => location.hash.replace(/^#/, '') || '/'
@@ -2382,6 +2439,7 @@ const NAV = LIVE ? [
   ['/assets', 'Assets'],
   ['/log', 'Log book'],
   ['/failures', 'Failures'],
+  ['/job-cards', 'Job cards'],
   ['/tags', 'QR tags'],
 ] : [
   ['/', 'Assets'],
@@ -2765,6 +2823,7 @@ export default function App() {
         : routePath === '/log' ? <LogBook editId={routeQuery.get('edit')} focusDate={routeQuery.get('d')} initialResp={routeQuery.get('resp')} />
         /* legacy top-level /failures now redirects to the signed-in line's board */
         : routePath === '/failures' ? (LIVE ? <FailuresRedirect me={me} go={go} /> : <Failures />)
+        : routePath === '/job-cards' ? (LIVE ? <JobCardsView line={signedIn && me.line ? me.line : ''} /> : <NotYet />)
         : routePath === '/spares' ? (LIVE ? <NotYet /> : <Spares />)
         : routePath === '/procurement' ? (LIVE ? <NotYet /> : <Procurement />)
         : routePath === '/tags' ? <TagSheet />
