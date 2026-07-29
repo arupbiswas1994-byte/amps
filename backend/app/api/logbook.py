@@ -566,10 +566,18 @@ def set_resolution(failure_id: int, body: ResolutionIn,
         raise HTTPException(404, "failure not found")
     if body.progress not in ("open", "job_card", "rectified"):
         raise HTTPException(422, f"unknown progress '{body.progress}'")
+    # A response may have been logged against an EARLIER version of this failure:
+    # editing a failure appends a correction (new head), and its ack/job-card/fix
+    # keep pointing at the old id. Collect the whole correction chain so we find
+    # and reconcile those responses instead of orphaning them into duplicates.
+    chain_ids, cur, seen = set(), fail, set()
+    while cur is not None and cur.id not in seen:
+        chain_ids.add(cur.id); seen.add(cur.id)
+        cur = db.get(LogEntry, cur.corrects_id) if cur.corrects_id else None
     # only the ACTIVE (non-retracted) responses are the current state; retracted
     # ones stay in the book as audit history and are never touched here
     linked = db.scalars(
-        select(LogEntry).where(LogEntry.rectifies_id == fail.id,
+        select(LogEntry).where(LogEntry.rectifies_id.in_(chain_ids),
                                LogEntry.retracted.isnot(True))
         .order_by(LogEntry.at.desc(), LogEntry.id.desc())).all()
     by_type = {t: [e for e in linked if e.type == t] for t in (
