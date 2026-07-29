@@ -439,11 +439,14 @@ function LiveDashboard({ go, initialLine = null }) {
                   {pageRows.map((a) => {
                     const s = sched[a.code]
                     const nOpen = openN(a), nAck = ackN(a), nJob = jobN(a)
-                    const faulty = nOpen + nAck + nJob > 0
+                    const nOut = nOpen + nAck + nJob  // outstanding failures on the asset
                     const fid = failId(a), fdate = failDate(a)
-                    // quick-action deep links: log an acknowledgement / a
-                    // rectification straight against this asset's open failure
-                    const respLink = (kind) => `/log?d=${fdate}&edit=${fid}&resp=${kind}`
+                    // With ONE outstanding failure a quick action deep-links to it;
+                    // with several, no single target is right — go to the asset's
+                    // failure list, where each failure is actioned individually.
+                    const single = nOut === 1 && fid
+                    const ackHref = single ? `#/log?d=${fdate}&edit=${fid}&resp=acknowledgement` : `#/asset/${a.code}`
+                    const rectHref = single ? `#/log?d=${fdate}&edit=${fid}&resp=rectification` : `#/asset/${a.code}`
                     return (
                       <tr key={a.code} tabIndex={0}
                           className={nOpen ? 'row-faulty' : nAck ? 'row-ack' : nJob ? 'row-job' : ''}
@@ -454,12 +457,17 @@ function LiveDashboard({ go, initialLine = null }) {
                           {nOpen > 0 && <span className="fault-badge" title={`${nOpen} open breakdown${nOpen > 1 ? 's' : ''} — not yet acknowledged`}>⚠ {nOpen} open</span>}
                           {nAck > 0 && <span className="fault-badge amber" title={`${nAck} acknowledged — noted (demand/mail) but STILL to be rectified`}>{nAck} acknowledged · to rectify</span>}
                           {nJob > 0 && <span className="fault-badge yellow" title={`${nJob} job card${nJob > 1 ? 's' : ''} raised — STILL to be rectified`}>{nJob} job card · to rectify</span>}
-                          {canWrite && faulty && fid && (
+                          {canWrite && nOut > 0 && (
                             <span className="fault-actions" onClick={(e) => e.stopPropagation()}>
-                              <a className="fa-btn fa-ack" href={`#${respLink('acknowledgement')}`}
-                                 title="Acknowledge this failure (demand raised / mail sent)" aria-label="Acknowledge">◐ Acknowledge</a>
-                              <a className="fa-btn fa-rect" href={`#${respLink('rectification')}`}
-                                 title="Rectify — log the fix that resolves this failure" aria-label="Rectify">✓ Rectify</a>
+                              {/* Acknowledge only makes sense for a not-yet-acknowledged (open) failure */}
+                              {nOpen > 0 && (
+                                <a className="fa-btn fa-ack" href={ackHref}
+                                   title={single ? 'Acknowledge this failure (demand raised / mail sent)' : 'Several failures — open the asset to acknowledge each'}
+                                   aria-label="Acknowledge">◐ Acknowledge</a>
+                              )}
+                              <a className="fa-btn fa-rect" href={rectHref}
+                                 title={single ? 'Rectify — log the fix that resolves this failure' : 'Several failures — open the asset to rectify each'}
+                                 aria-label="Rectify">✓ Rectify{nOut > 1 ? ` (${nOut})` : ''}</a>
                             </span>
                           )}</td>
                         <td className="dim" data-l="Class">{a.cls}</td>
@@ -632,6 +640,11 @@ function LogRow({ en, staff }) {
     acknowledgement: { cls: 'ack', tag: '◐ Acknowledged' },
   }
   const rm = respKind ? RESP_META[respKind] : null
+  // per-failure quick actions on the asset page — each outstanding failure is
+  // actioned individually (handles the several-failures-on-one-asset case).
+  // Acknowledge shows only for a not-yet-acknowledged (open) failure.
+  const outstanding = en.type === 'failure' && en.state && en.state !== 'resolved'
+  const faLink = (kind) => `#/log?d=${en.log_date}&edit=${en.id}&resp=${kind}`
   return (
     <div className="wo">
       <div className="row1">
@@ -642,6 +655,12 @@ function LogRow({ en, staff }) {
         <span className="sub dt">{en.log_date}</span>
         {en.down_hours != null && <span className="sub">down <b>{en.down_hours}h</b></span>}
         {en.state && <span className={`chip ${FAIL_STATE_CHIP[en.state]}`}>{FAIL_STATE_LABEL[en.state]}</span>}
+        {staff && outstanding && (
+          <span className="fault-actions">
+            {en.state === 'open' && <a className="fa-btn fa-ack" href={faLink('acknowledgement')}>◐ Acknowledge</a>}
+            <a className="fa-btn fa-rect" href={faLink('rectification')}>✓ Rectify</a>
+          </span>
+        )}
         {staff && <span className="wo-edit"><EditLink id={en.id} date={en.log_date} /></span>}
       </div>
       <div className="findings">{tidyLog(en.text)}</div>
