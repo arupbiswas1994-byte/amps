@@ -152,6 +152,14 @@ def require_admin(user=Depends(current_user)):
     return user
 
 
+def current_writer(user=Depends(current_user)):
+    """A signed-in user who may WRITE. A VIEWER account (e.g. a line-wide
+    read-only 'blue' login) can browse everything but never edit."""
+    if user.role == UserRole.VIEWER:
+        raise HTTPException(403, "this account is view-only")
+    return user
+
+
 def scope_location_ids(db: Session, user) -> set[int] | None:
     """Location ids the user may touch. None = unrestricted (whole department)."""
     if user.line_id is None:

@@ -49,7 +49,9 @@ export function useMe() {
       .then((r) => { if (!r.ok) throw new Error(r.status); return r.json() })
       .then((me) => alive && set({
         me,
-        canWrite: !me.auth_enabled || me.username !== 'viewer',
+        // a viewer account (the anonymous walk-up, or a named view-only login
+        // like a line-wide 'blue' id) reads but never writes
+        canWrite: !me.auth_enabled || (me.username !== 'viewer' && me.role !== 'viewer'),
         loading: false,
       }))
       .catch(() => alive && set({ me: null, canWrite: false, loading: false }))

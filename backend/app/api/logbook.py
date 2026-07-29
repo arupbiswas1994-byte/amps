@@ -21,7 +21,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.assets import visible_asset
-from app.api.auth import AUTH_ON, current_user, is_anonymous, optional_user
+from app.api.auth import AUTH_ON, current_user, current_writer, is_anonymous, optional_user
 from app.db import audit, get_db
 from app.checksheet_templates import templates_for
 from app.models import Asset, LogEntry, LogEntryType, Location, LocationKind, ShiftCode
@@ -296,7 +296,7 @@ def _system_of(asset) -> str | None:
 
 
 @router.post("", response_model=LogEntryOut, status_code=201)
-def add_entry(entry: LogEntryIn, db: Session = Depends(get_db), user=Depends(current_user)):
+def add_entry(entry: LogEntryIn, db: Session = Depends(get_db), user=Depends(current_writer)):
     obj = _create_entry(db, entry, user)
     # A failure logged as already-rectified files BOTH rows in one transaction:
     # a half-written breakdown (failure with no fix, or a fix with no failure)
@@ -562,7 +562,7 @@ def _at_of(fail: LogEntry, r: "RectificationIn") -> datetime:
 
 @router.put("/{failure_id}/resolution", response_model=LogEntryOut)
 def set_resolution(failure_id: int, body: ResolutionIn,
-                   db: Session = Depends(get_db), user=Depends(current_user)):
+                   db: Session = Depends(get_db), user=Depends(current_writer)):
     """Reconcile a failure's whole response state from the two-axis edit form.
 
     Acknowledged is an independent flag; progress (open/job_card/rectified) is the
@@ -981,7 +981,7 @@ class LogImportOut(BaseModel):
 @router.post("/import", response_model=LogImportOut)
 async def import_history(request: Request, line: str | None = None,
                          db: Session = Depends(get_db),
-                         user=Depends(current_user)):
+                         user=Depends(current_writer)):
     # `line` scopes the whole import to one site (e.g. ?line=Green Line): rows
     # with no matching asset would otherwise land with a NULL line and leak
     # into every coordinator's book, so an asset-less row falls back to this.

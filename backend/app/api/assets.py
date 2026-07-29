@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.api.auth import current_user, optional_user, scope_location_ids
+from app.api.auth import current_user, current_writer, optional_user, scope_location_ids
 from app.db import audit, get_db
 from app.engine import (SCHEDULE_FREQ, build_schedule, summarize_schedule)
 from app.models import (Asset, AssetClass, AssetStatus, AuditLog, Criticality,
@@ -184,7 +184,7 @@ def _create_one(db: Session, asset: AssetIn, user) -> Asset:
 
 
 @router.post("", response_model=AssetOut, status_code=201)
-def create_asset(asset: AssetIn, db: Session = Depends(get_db), user=Depends(current_user)):
+def create_asset(asset: AssetIn, db: Session = Depends(get_db), user=Depends(current_writer)):
     obj = _create_one(db, asset, user)
     db.commit()
     db.refresh(obj)
@@ -286,7 +286,7 @@ class ImportOut(BaseModel):
 
 @router.post("/import", response_model=ImportOut)
 async def import_csv(request: Request, db: Session = Depends(get_db),
-                     user=Depends(current_user)):
+                     user=Depends(current_writer)):
     """Bulk-register assets from a CSV in the standard format.
     Existing codes are skipped, so repeat uploads are safe."""
     text = (await request.body()).decode("utf-8-sig", errors="replace")
@@ -360,7 +360,7 @@ def _line_of(a: Asset) -> str | None:
 
 @router.patch("/{code}", response_model=AssetOut)
 def update_asset(code: str, patch: AssetUpdate, db: Session = Depends(get_db),
-                 user=Depends(current_user)):
+                 user=Depends(current_writer)):
     """Edit an asset's technical details, one attributable change at a time.
 
     Every field that actually changes is written to the audit trail as
@@ -523,7 +523,7 @@ class PlanIn(BaseModel):
 
 @router.put("/{code}/plan", response_model=ScheduleOut)
 def set_plan(code: str, plan: PlanIn, db: Session = Depends(get_db),
-             user=Depends(current_user)):
+             user=Depends(current_writer)):
     """Set the asset's maintenance plan — which cycles it needs, with optional
     seed dates. Replaces the plan wholesale; the change is audited. Writers only,
     line-scoped (a plan on an asset outside your line 404s)."""
