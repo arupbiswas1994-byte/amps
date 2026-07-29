@@ -55,6 +55,13 @@ INSTRUCTIONS = {
     47: "rectification the actual repair that RESOLVES the failure (turns it GREEN). Link via closes_failure_ref; put the recovery time in resolved_on and any spares in consumables. If it closes no open failure, it stands alone as a proactive fix.",
     48: "general       any other note (patrol, inspection, observation) — no schedule effect.",
     50: "Failure states shown in AMPS:  OPEN (red) → ACKNOWLEDGED (amber) → JOB CARD ISSUED (yellow) → RESOLVED (green). A faulty asset floats to the top of the register with its state colour until a rectification resolves it.",
+    # depot-wise organisation (2026-07)
+    53: "DEPOTS — depot-wise organisation",
+    54: "• A line can have several maintenance depots. Each depot has its OWN sheet pair: '<Line> · <Depot> · Assets' and '· Logs'.",
+    55: "• Put each depot's rows in its own depot sheet — one asset belongs to exactly one depot (no duplicates across sheets).",
+    56: "• Your AMPS login is scoped to your depot: you see and edit only your depot's assets & logs. A line-wide login stays read-only for oversight.",
+    57: "• Both the Assets register and the Log book have a Depot filter to narrow any view to one depot.",
+    58: "• Blue Line depots: SHY, KHG, MB, JPK, MSN, JOKA. Green Line: single depot CPD.",
 }
 
 # header column index (0-based) -> cell note, applied to every '· Logs' tab
