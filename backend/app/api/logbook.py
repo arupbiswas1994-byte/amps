@@ -145,6 +145,15 @@ def _response_map(db: Session, entries: list[LogEntry],
     return out
 
 
+def _drop_superseded(db: Session, rows: list[LogEntry]) -> list[LogEntry]:
+    """Keep only current HEAD entries — an edit appends a correction that
+    supersedes the old row, so a superseded failure must not be counted (it is
+    the same breakdown as its head, and its responses map onto the head)."""
+    superseded = set(db.scalars(
+        select(LogEntry.corrects_id).where(LogEntry.corrects_id.is_not(None))).all())
+    return [e for e in rows if e.id not in superseded]
+
+
 def _recovery_map(db: Session, entries: list[LogEntry]) -> dict[int, LogEntry]:
     """failure HEAD id -> its latest RECTIFICATION (the entry that resolves it)."""
     return _response_map(db, entries, LogEntryType.RECTIFICATION)
@@ -643,7 +652,7 @@ def failure_stats(days: int = 90, months: int = 6, line: str | None = None,
                                                 func.lower(Location.name) == line.strip().lower()))
         if site:
             q = q.where(LogEntry.line_id == site.id)
-    rows = db.scalars(q).all()
+    rows = _drop_superseded(db, db.scalars(q).all())   # count current heads only
     rec = _recovery_map(db, rows)
     ack = _ack_map(db, rows)
     jc = _jobcard_map(db, rows)
@@ -746,7 +755,7 @@ def open_failures_by_asset(db: Session = Depends(get_db), user=Depends(optional_
     q = select(LogEntry).where(LogEntry.type == LogEntryType.FAILURE)
     if user.line_id is not None:
         q = q.where((LogEntry.line_id == user.line_id) | (LogEntry.line_id.is_(None)))
-    rows = db.scalars(q).all()
+    rows = _drop_superseded(db, db.scalars(q).all())   # current heads only
     rec = _recovery_map(db, rows)
     ack = _ack_map(db, rows)
     jc = _jobcard_map(db, rows)
