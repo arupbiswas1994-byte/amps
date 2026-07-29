@@ -296,6 +296,10 @@ class LogEntry(Base):
     # a RECTIFICATION may be carried out by us or by the agency/OEM under a job
     # card — this flags the latter (set from the edit form's checkbox).
     via_job_card: Mapped[bool | None] = mapped_column(default=None)
+    # a response (ack/job-card/rectification) that was logged then withdrawn is
+    # RETRACTED, not deleted — the record stays for the audit trail, struck
+    # through, and stops counting toward the failure's state.
+    retracted: Mapped[bool | None] = mapped_column(default=None)
     # Which site's (line's) logbook the entry belongs to. NULL = department-wide.
     line_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id"))
 

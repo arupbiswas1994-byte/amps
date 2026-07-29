@@ -642,6 +642,8 @@ function LogRow({ en, staff }) {
     en.acknowledged_by && { kind: 'acknowledgement', ref: en.acknowledged_by },
     en.job_card_by && { kind: 'job_card', ref: en.job_card_by },
     en.resolved_by && { kind: 'rectification', ref: en.resolved_by },
+    // withdrawn responses stay in the book for the audit trail, shown struck
+    ...(en.retracted_responses || []).map((ref) => ({ kind: ref.type, ref, retracted: true })),
   ].filter(Boolean) : []
   // per-failure quick actions on the asset page — each outstanding failure is
   // actioned individually (handles the several-failures-on-one-asset case).
@@ -674,11 +676,12 @@ function LogRow({ en, staff }) {
           {en.attended_by && en.attended_by !== en.entered_by && <> · recorded by {en.entered_by}</>}
         </div>
       )}
-      {responses.map(({ kind, ref }) => {
-        const rm = RESP_META[kind]
+      {responses.map(({ kind, ref, retracted }) => {
+        const rm = RESP_META[kind] || RESP_META.acknowledgement
         return (
-        <div key={kind} className={`fail-resp ${rm.cls}`}>
+        <div key={retracted ? `rt-${ref.id}` : kind} className={`fail-resp ${rm.cls}${retracted ? ' retracted' : ''}`}>
           <span className="fr-tag">{rm.tag}</span>
+          {retracted && <span className="fr-retracted">retracted</span>}
           {ref.via_job_card && <span className="fr-via">▤ via job card</span>}
           <span className="fr-date dt">{ref.log_date}</span>
           <div className="fr-text">{tidyLog(ref.text)}</div>

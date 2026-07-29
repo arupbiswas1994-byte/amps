@@ -196,6 +196,11 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 .fr-text { font-size: 13px; margin-top: 3px; color: var(--ink); }
 .fr-via { font-size: 10.5px; font-weight: 700; color: #6b6000; background: #fbf7d0;
   border: 1px solid #ece08a; border-radius: 99px; padding: 0 7px; margin-left: 8px; }
+/* a withdrawn response — kept for audit, struck through */
+.fail-resp.retracted { opacity: .6; background: repeating-linear-gradient(45deg, #f6f5f2, #f6f5f2 6px, #efeee9 6px, #efeee9 12px); border-left-color: var(--ink-3); }
+.fail-resp.retracted .fr-text, .fail-resp.retracted .fr-tag { text-decoration: line-through; }
+.fr-retracted { font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+  color: #7a7568; background: #eae7e0; border-radius: 99px; padding: 1px 7px; margin-left: 8px; }
 
 /* unified failure sub-groups (open / acknowledged / job card / resolved) */
 .logsub { margin: 10px 0 4px; padding-left: 12px; border-left: 3px solid var(--sg, #d9d2c2); }

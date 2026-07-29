@@ -85,6 +85,8 @@ class LogEntryOut(BaseModel):
     # a failure with a job card raised to the OEM/dept — carries it; "yellow".
     # The job card is closed by a later rectification (then state -> resolved).
     job_card_by: "EntryRef | None" = None
+    # withdrawn responses kept for the audit trail (shown struck through)
+    retracted_responses: "list[EntryRef]" = []
     # failure lifecycle: open | acknowledged | job_card | resolved (None for non-failures)
     state: str | None = None
     ended_at: datetime | None
@@ -106,26 +108,14 @@ class EntryRef(BaseModel):
     consumables: str | None
     via_job_card: bool = False
     checksheet: dict | None = None
+    type: str | None = None       # the response kind (acknowledgement/job_card/rectification)
+    retracted: bool = False       # a withdrawn response, kept for the audit trail
 
 
-def _response_map(db: Session, entries: list[LogEntry],
-                  etype: "LogEntryType") -> dict[int, LogEntry]:
-    """failure HEAD id -> its LATEST linked response of `etype`.
-
-    A response (rectification OR acknowledgement) points at the failure it was
-    logged against via rectifies_id; editing that failure appends a correction
-    (a new head), so the response's target may be a superseded entry. We follow
-    the correction chain: the head failure inherits the response pointed at any
-    entry in its own history. Latest response dominates. Read-time only — the
-    book stays append-only.
-
-    A RECTIFICATION resolves the failure; an ACKNOWLEDGEMENT only notes it
-    (demand raised, mail sent) and leaves it amber/open."""
+def _failure_id_to_head(db: Session, entries: list[LogEntry]) -> dict[int, int]:
+    """Every failure entry id -> its current head id, by walking corrects_id back
+    from each head through the whole failure correction ancestry."""
     heads = [e for e in entries if e.type == LogEntryType.FAILURE]
-    if not heads:
-        return {}
-    # map every failure entry id -> its current head, by walking corrects_id back
-    # from each head through the whole failure correction ancestry.
     id_to_head = {}
     for h in heads:
         cur = h
@@ -134,14 +124,47 @@ def _response_map(db: Session, entries: list[LogEntry],
             id_to_head[cur.id] = h.id
             seen.add(cur.id)
             cur = db.get(LogEntry, cur.corrects_id) if cur.corrects_id else None
+    return id_to_head
+
+
+def _response_map(db: Session, entries: list[LogEntry],
+                  etype: "LogEntryType") -> dict[int, LogEntry]:
+    """failure HEAD id -> its LATEST ACTIVE linked response of `etype`.
+
+    A response points at the failure via rectifies_id; editing the failure
+    appends a correction (a new head), so we follow the chain and the head
+    inherits the response pointed at any entry in its history. Latest dominates.
+    RETRACTED responses are excluded here — an un-ticked acknowledgement stops
+    counting toward the state but is NOT deleted (see _clear/_retracted_map)."""
+    id_to_head = _failure_id_to_head(db, entries)
+    if not id_to_head:
+        return {}
     rows = db.scalars(
         select(LogEntry).where(LogEntry.rectifies_id.in_(id_to_head.keys()),
-                               LogEntry.type == etype)
+                               LogEntry.type == etype,
+                               LogEntry.retracted.isnot(True))
         .order_by(LogEntry.at, LogEntry.id)
     ).all()
     out = {}
     for r in rows:                 # later rows overwrite earlier (latest dominates)
         out[id_to_head[r.rectifies_id]] = r
+    return out
+
+
+def _retracted_map(db: Session, entries: list[LogEntry]) -> dict[int, list[LogEntry]]:
+    """failure HEAD id -> its RETRACTED responses (audit history — kept, struck).
+    These were logged then un-ticked; they stay in the book for the audit trail."""
+    id_to_head = _failure_id_to_head(db, entries)
+    if not id_to_head:
+        return {}
+    rows = db.scalars(
+        select(LogEntry).where(LogEntry.rectifies_id.in_(id_to_head.keys()),
+                               LogEntry.retracted.is_(True))
+        .order_by(LogEntry.at, LogEntry.id)
+    ).all()
+    out: dict[int, list[LogEntry]] = {}
+    for r in rows:
+        out.setdefault(id_to_head[r.rectifies_id], []).append(r)
     return out
 
 
@@ -220,13 +243,15 @@ def _ref(x: LogEntry | None) -> "EntryRef | None":
                     text=x.text, asset_code=x.asset.code if x.asset else None,
                     attended_by=x.attended_by, consumables=x.consumables,
                     via_job_card=bool(x.via_job_card),
-                    checksheet=_load_checksheet(x.checksheet))
+                    checksheet=_load_checksheet(x.checksheet),
+                    type=x.type.value, retracted=bool(x.retracted))
 
 
 def _to_out(e: LogEntry, resolver: LogEntry | None = None,
             master: LogEntry | None = None,
             acker: LogEntry | None = None,
-            jobcard: LogEntry | None = None) -> LogEntryOut:
+            jobcard: LogEntry | None = None,
+            retracted: list | None = None) -> LogEntryOut:
     recovered = resolver.at if resolver else None
     # lifecycle only applies to a failure head, by dominance of the response:
     # rectification (resolved) > job card (job_card) > acknowledgement > open
@@ -245,6 +270,7 @@ def _to_out(e: LogEntry, resolver: LogEntry | None = None,
         resolved_by=_ref(resolver),    # failure → the rectification that closed it
         acknowledged_by=_ref(acker),   # failure → the acknowledgement noting it
         job_card_by=_ref(jobcard),     # failure → the job card raised for it
+        retracted_responses=[_ref(x) for x in (retracted or [])],
         state=state,
         # ONLY a rectification ends a failure; ack/job-card leave it open
         ended_at=e.ended_at or recovered, fault_type=e.fault_type,
@@ -436,6 +462,7 @@ def list_entries(log_date: date | None = None, shift: str | None = None,
     rec = _recovery_map(db, rows)
     ack = _ack_map(db, rows)
     jc = _jobcard_map(db, rows)
+    rt = _retracted_map(db, rows)
     # the master failure each response (rectification/ack/job-card) responds to —
     # for the edit sub-form and for grouping a response under its failure
     master_ids = {e.rectifies_id for e in rows if e.rectifies_id}
@@ -443,7 +470,7 @@ def list_entries(log_date: date | None = None, shift: str | None = None,
     if master_ids:
         masters = {m.id: m for m in db.scalars(
             select(LogEntry).where(LogEntry.id.in_(master_ids))).all()}
-    return [_to_out(e, rec.get(e.id), masters.get(e.rectifies_id), ack.get(e.id), jc.get(e.id)) for e in rows]
+    return [_to_out(e, rec.get(e.id), masters.get(e.rectifies_id), ack.get(e.id), jc.get(e.id), rt.get(e.id)) for e in rows]
 
 
 @router.get("/{entry_id}/versions", response_model=list[LogEntryOut])
@@ -472,7 +499,8 @@ def entry_versions(entry_id: int, db: Session = Depends(get_db), user=Depends(cu
     rec = _recovery_map(db, chain)
     ack = _ack_map(db, chain)
     jc = _jobcard_map(db, chain)
-    return [_to_out(x, rec.get(x.id), None, ack.get(x.id), jc.get(x.id)) for x in chain]
+    rt = _retracted_map(db, chain)
+    return [_to_out(x, rec.get(x.id), None, ack.get(x.id), jc.get(x.id), rt.get(x.id)) for x in chain]
 
 
 class RectificationIn(BaseModel):
@@ -538,15 +566,19 @@ def set_resolution(failure_id: int, body: ResolutionIn,
         raise HTTPException(404, "failure not found")
     if body.progress not in ("open", "job_card", "rectified"):
         raise HTTPException(422, f"unknown progress '{body.progress}'")
+    # only the ACTIVE (non-retracted) responses are the current state; retracted
+    # ones stay in the book as audit history and are never touched here
     linked = db.scalars(
-        select(LogEntry).where(LogEntry.rectifies_id == fail.id)
+        select(LogEntry).where(LogEntry.rectifies_id == fail.id,
+                               LogEntry.retracted.isnot(True))
         .order_by(LogEntry.at.desc(), LogEntry.id.desc())).all()
     by_type = {t: [e for e in linked if e.type == t] for t in (
         LogEntryType.RECTIFICATION, LogEntryType.JOB_CARD, LogEntryType.ACKNOWLEDGEMENT)}
 
     def _clear(t):
+        # AUDIT-SAFE: withdraw by RETRACTING, never deleting — the log stays.
         for e in by_type[t]:
-            db.delete(e)
+            e.retracted = True
         by_type[t] = []
 
     def _upsert(t, r: "RectificationIn"):
@@ -563,8 +595,9 @@ def set_resolution(failure_id: int, body: ResolutionIn,
             resp.consumables = (r.consumables or None) if is_rect else None
             resp.via_job_card = bool(r.via_job_card) if is_rect else None
             resp.checksheet = _dump_checksheet(r.checksheet)
+            resp.retracted = None   # editing an active response keeps it active
             for extra in existing[1:]:
-                db.delete(extra)
+                extra.retracted = True   # older duplicates: retract, don't delete
         else:
             db.add(LogEntry(
                 at=at, log_date=r.date, shift=ShiftCode.GENERAL, type=t,
@@ -610,8 +643,9 @@ def set_resolution(failure_id: int, body: ResolutionIn,
     audit(db, "log_entry", fail.id, "response-set",
           detail=f"ack={body.acknowledged} progress={body.progress}", actor=user.username)
     db.commit(); db.refresh(fail)
-    rec = _recovery_map(db, [fail]); ack = _ack_map(db, [fail]); jc = _jobcard_map(db, [fail])
-    return _to_out(fail, rec.get(fail.id), None, ack.get(fail.id), jc.get(fail.id))
+    rec = _recovery_map(db, [fail]); ack = _ack_map(db, [fail])
+    jc = _jobcard_map(db, [fail]); rt = _retracted_map(db, [fail])
+    return _to_out(fail, rec.get(fail.id), None, ack.get(fail.id), jc.get(fail.id), rt.get(fail.id))
 
 
 @router.get("/bounds")
