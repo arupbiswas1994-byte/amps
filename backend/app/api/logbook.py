@@ -826,7 +826,13 @@ def open_failures_by_asset(db: Session = Depends(get_db), user=Depends(optional_
     for e in rows:
         if e.asset is None or e.ended_at is not None or e.id in rec:
             continue  # no asset, or resolved -> not outstanding
-        slot = out.setdefault(e.asset.code, {
+        # codes repeat across lines, so KEY BY line|code — an anonymous (unscoped)
+        # viewer must not see a Blue asset's job card on the Green asset with the
+        # same code. The frontend looks up by the same line|code key.
+        loc = e.asset.location
+        line = loc.parent.name if loc and loc.parent else ""
+        key = f"{line}|{e.asset.code}"
+        slot = out.setdefault(key, {
             "open": 0, "ack": 0, "jobcard": 0, "acknowledged": False,
             "rectified": False, "failure_id": None, "failure_date": None})
         is_ack, is_jc = e.id in ack, e.id in jc

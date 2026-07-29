@@ -23,6 +23,7 @@ router = APIRouter()
 
 class AssetScheduleSummary(BaseModel):
     asset_code: str
+    line: str | None = None   # codes repeat across lines — qualify the key
     next_frequency: str | None
     next_due: date | None
     days_left: int | None
@@ -52,8 +53,11 @@ def schedule_all(db: Session = Depends(get_db), user=Depends(optional_user)):
             if p.last_done_seed:
                 plan_seeds[p.asset_id][p.frequency] = p.last_done_seed
     ids = set(log_by) | set(plan_freqs)
-    code_by = {a.id: a.code for a in db.scalars(
-        select(Asset).where(Asset.id.in_(ids))).all()} if ids else {}
+    code_by, line_by = {}, {}
+    if ids:
+        for a in db.scalars(select(Asset).where(Asset.id.in_(ids))).all():
+            code_by[a.id] = a.code
+            line_by[a.id] = a.location.parent.name if a.location and a.location.parent else None
     out = []
     for aid in ids:
         log_dates, seeds = log_by.get(aid, {}), plan_seeds.get(aid, {})
@@ -67,7 +71,7 @@ def schedule_all(db: Session = Depends(get_db), user=Depends(optional_user)):
             continue
         s = summarize_schedule(build_schedule(freqs, done))
         if s:
-            out.append(AssetScheduleSummary(asset_code=code_by[aid], **s))
+            out.append(AssetScheduleSummary(asset_code=code_by[aid], line=line_by.get(aid), **s))
     scope = scope_location_ids(db, user)
     if scope is not None:
         codes = {a.code for a in db.scalars(

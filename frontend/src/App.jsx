@@ -153,6 +153,9 @@ function usePersistedState(key, initial) {
   return [v, setV]
 }
 
+// codes repeat across lines — schedule & failure lookups are keyed by line|code
+const assetKey = (a) => `${a.line || ''}|${a.code}`
+
 function LiveDashboard({ go, initialLine = null }) {
   const { assets: all, sched, openFail, loading, error } = useLiveAssets()
   const { me, canWrite } = useMe()
@@ -194,12 +197,12 @@ function LiveDashboard({ go, initialLine = null }) {
   // signed-in user's own line, else the first registered line
   const effLine = line ?? me?.line ?? lines[0] ?? null
   const assets = effLine ? all.filter((a) => a.line === effLine) : all
-  const stateOf = (a) => sched[a.code]?.state || null
+  const stateOf = (a) => sched[assetKey(a)]?.state || null
   // Outstanding failures on this asset. Acknowledge and rectify are TWO
   // INDEPENDENT flags — an acknowledged (or job-carded) failure is NOT fixed and
   // still needs rectification. So a faulty asset carries both an acknowledged
   // flag and the outstanding count; it clears only when rectified.
-  const faultOf = (a) => openFail[a.code] || null
+  const faultOf = (a) => openFail[assetKey(a)] || null
   const openN = (a) => faultOf(a)?.open || 0        // outstanding, not yet acknowledged
   const ackN = (a) => faultOf(a)?.ack || 0          // acknowledged (amber)
   const jobN = (a) => faultOf(a)?.jobcard || 0      // job card raised (yellow)
@@ -216,7 +219,7 @@ function LiveDashboard({ go, initialLine = null }) {
   const depotsList = uniq('depot')   // maintenance depots present on this line
   const ql = q.trim().toLowerCase()
   // the sort accessor per column; PM columns read the derived schedule
-  const sortVal = (a, k) => k === 'next_due' ? (sched[a.code]?.next_due || '9999')
+  const sortVal = (a, k) => k === 'next_due' ? (sched[assetKey(a)]?.next_due || '9999')
     : k === 'pm' ? (SEV_RANK[stateOf(a)] ?? 3)
     : (a[k] || '')
   // base = everything the search + dropdown filters allow (state chip excluded),
@@ -267,7 +270,7 @@ function LiveDashboard({ go, initialLine = null }) {
     const cell = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
     const head = [...COLS.map(([, l]) => l), 'Open failures', 'Acknowledged', 'Job card']
     const body = shown.map((a) => {
-      const s = sched[a.code]
+      const s = sched[assetKey(a)]
       return [a.code, a.name, a.cls, a.location, a.sys || '', STATUS_LABEL[a.status] || a.status,
         s?.next_due || '', s ? SCHED_LABEL[s.state] : '', openN(a) || '', ackN(a) || '', jobN(a) || ''].map(cell).join(',')
     })
@@ -446,7 +449,7 @@ function LiveDashboard({ go, initialLine = null }) {
                 </thead>
                 <tbody>
                   {pageRows.map((a) => {
-                    const s = sched[a.code]
+                    const s = sched[assetKey(a)]
                     const nOpen = openN(a), nAck = ackN(a), nJob = jobN(a)
                     const nOut = nOpen + nAck + nJob  // outstanding failures on the asset
                     const fid = failId(a), fdate = failDate(a)
@@ -2319,7 +2322,7 @@ function LineDashboard({ go }) {
     getJSON('/api/logbook?limit=6').then(setRecent).catch(() => {})
   }, [])
   if (loading) return <p className="dim">Loading the dashboard…</p>
-  const stateOf = (a) => sched[a.code]?.state
+  const stateOf = (a) => sched[assetKey(a)]?.state
   const overdue = assets.filter((a) => stateOf(a) === 'overdue').length
   const dueSoon = assets.filter((a) => stateOf(a) === 'due_soon').length
   const exceeded = assets.filter(codalExceeded).length
@@ -2565,7 +2568,7 @@ function useNetworkGlance() {
   useEffect(() => {
     getJSON('/api/logbook/failure-stats?days=180&months=6').then(setFail).catch(() => setFail({}))
   }, [])
-  const stateOf = (a) => sched[a.code]?.state
+  const stateOf = (a) => sched[assetKey(a)]?.state
   const perLine = {}
   for (const a of assets) {
     const ln = a.line || '—'

@@ -89,8 +89,10 @@ export function useLiveAssets() {
     ])
       .then(([assets, sched, openFail]) => alive && set({
         assets: assets.map(toView),
-        // per-asset schedule health, keyed by code for O(1) row lookup
-        sched: Object.fromEntries(sched.map((s) => [s.asset_code, s])),
+        // codes repeat across lines, so schedule + failures are keyed by
+        // `line|code` (the backend keys open-failures the same way) — a Green
+        // asset never picks up a Blue asset's schedule/job card of the same code
+        sched: Object.fromEntries(sched.map((s) => [`${s.line || ''}|${s.asset_code}`, s])),
         openFail: openFail || {},
         loading: false, error: null,
       }))
