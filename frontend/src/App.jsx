@@ -638,9 +638,11 @@ function LogRow({ en, staff }) {
   // a failure shows ALL its response logs as a timeline — acknowledged, job card
   // and rectification are independent and coexist (an acknowledged-then-fixed
   // failure keeps both). Ordered oldest-intent → fix.
+  // a job card that was rectified by US (not via the agency) was ignored/delayed
+  const jobIgnored = !!(en.job_card_by && en.resolved_by && !en.resolved_by.via_job_card)
   const responses = en.type === 'failure' ? [
     en.acknowledged_by && { kind: 'acknowledgement', ref: en.acknowledged_by },
-    en.job_card_by && { kind: 'job_card', ref: en.job_card_by },
+    en.job_card_by && { kind: 'job_card', ref: en.job_card_by, ignored: jobIgnored },
     en.resolved_by && { kind: 'rectification', ref: en.resolved_by },
     // withdrawn responses stay in the book for the audit trail, shown struck
     ...(en.retracted_responses || []).map((ref) => ({ kind: ref.type, ref, retracted: true })),
@@ -676,12 +678,13 @@ function LogRow({ en, staff }) {
           {en.attended_by && en.attended_by !== en.entered_by && <> · recorded by {en.entered_by}</>}
         </div>
       )}
-      {responses.map(({ kind, ref, retracted }) => {
+      {responses.map(({ kind, ref, retracted, ignored }) => {
         const rm = RESP_META[kind] || RESP_META.acknowledgement
         return (
-        <div key={retracted ? `rt-${ref.id}` : kind} className={`fail-resp ${rm.cls}${retracted ? ' retracted' : ''}`}>
+        <div key={retracted ? `rt-${ref.id}` : kind} className={`fail-resp ${rm.cls}${retracted ? ' retracted' : ''}${ignored ? ' ignored' : ''}`}>
           <span className="fr-tag">{rm.tag}</span>
           {retracted && <span className="fr-retracted">retracted</span>}
+          {ignored && <span className="fr-ignored" title="Rectified by us — the job-card agency was delayed">ignored / delayed</span>}
           {ref.via_job_card && <span className="fr-via">▤ via job card</span>}
           <span className="fr-date dt">{ref.log_date}</span>
           <div className="fr-text">{tidyLog(ref.text)}</div>

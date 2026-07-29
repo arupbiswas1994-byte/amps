@@ -305,6 +305,12 @@ function EditEntryForm({ entry, assets, systems, classSystem, initialResp = null
 
   // the progress axis needs its own detail (job card scope, or the fix)
   const progressActive = progress === 'job_card' || progress === 'rectified'
+  // IMMUTABILITY: an acknowledgement, once logged, cannot be un-ticked; a
+  // rectification is terminal (can't be changed/reverted); an issued job card
+  // can only move forward to rectified, never back to open.
+  const ackLocked = !!entry.acknowledged_by || !!entry.resolved_by
+  const rectLocked = !!entry.resolved_by
+  const jobIssued = !!entry.job_card_by
 
   const save = async () => {
     if (!text.trim() || busy) return
@@ -363,8 +369,8 @@ function EditEntryForm({ entry, assets, systems, classSystem, initialResp = null
 
   // change the progress axis; repopulate its detail from the stored entry
   const onSetProgress = (p) => {
-    if (p !== 'rectified' && entry.resolved_by &&
-        !window.confirm('This failure is rectified — change it back? The rectification log will be deleted.')) return
+    // rectified is terminal and an issued job card can't revert — the control is
+    // disabled in those cases, so only forward moves reach here
     setProgress(p)
     loadProgress(p)
   }
@@ -462,22 +468,23 @@ function EditEntryForm({ entry, assets, systems, classSystem, initialResp = null
             other. */}
         {isFail && (
           <section className="fg fg-fail resp-group">
-            <span className="fg-lbl">Acknowledgement <span className="ef-opt">— its own log</span></span>
+            <span className="fg-lbl">Acknowledgement <span className="ef-opt">— its own log{ackLocked && acknowledged ? ' · logged, locked' : ''}</span></span>
             <div className="fg-fields">
-              <label className="flag-check fg-span">
-                <input type="checkbox" checked={acknowledged}
+              <label className={`flag-check fg-span${ackLocked ? ' muted' : ''}`}
+                     title={ackLocked ? 'An acknowledgement is a logged fact — it cannot be un-ticked' : undefined}>
+                <input type="checkbox" checked={acknowledged} disabled={ackLocked}
                        onChange={(e) => setAcknowledged(e.target.checked)} />
                 Acknowledged <span className="ef-opt">— noted (demand raised / mail sent), not yet fixed</span>
               </label>
               {acknowledged && <>
                 <label>Acknowledged on
-                  <input type="date" value={aDate} min={entry.log_date} onChange={(e) => setADate(e.target.value)} />
+                  <input type="date" value={aDate} min={entry.log_date} readOnly={ackLocked} onChange={(e) => setADate(e.target.value)} />
                 </label>
                 <label>By
-                  <input value={aTeam} onChange={(e) => setATeam(e.target.value)} placeholder="who acknowledged it" />
+                  <input value={aTeam} readOnly={ackLocked} onChange={(e) => setATeam(e.target.value)} placeholder="who acknowledged it" />
                 </label>
                 <label className="fg-span">Acknowledgement note
-                  <input value={aText} onChange={(e) => setAText(e.target.value)}
+                  <input value={aText} readOnly={ackLocked} onChange={(e) => setAText(e.target.value)}
                          placeholder="e.g. Relay not available. Demand raised, mail sent 30-06" />
                 </label>
               </>}
@@ -487,49 +494,54 @@ function EditEntryForm({ entry, assets, systems, classSystem, initialResp = null
 
         {isFail && (
           <section className="fg fg-fail resp-group">
-            <span className="fg-lbl">Progress / rectification <span className="ef-opt">— its own log</span></span>
+            <span className="fg-lbl">Progress / rectification <span className="ef-opt">— its own log{rectLocked ? ' · rectified, locked' : ''}</span></span>
             <div className="fg-fields">
-              <label className="fg-span">Progress
-                <select value={progress} onChange={(e) => onSetProgress(e.target.value)}>
-                  <option value="open">Open — not yet fixed</option>
+              <label className={`fg-span${rectLocked ? ' muted' : ''}`}>Progress
+                <select value={progress} disabled={rectLocked} onChange={(e) => onSetProgress(e.target.value)}
+                        title={rectLocked ? 'A rectified failure is final — it cannot be changed' : undefined}>
+                  {/* an issued job card can only move forward to rectified */}
+                  {!jobIssued && <option value="open">Open — not yet fixed</option>}
                   <option value="job_card">Job card issued — raised to OEM/dept</option>
                   <option value="rectified">Rectified — fixed</option>
                 </select>
               </label>
               {progressActive && <>
                 <label>{isResolved ? 'Rectified on' : 'Job card dated'}
-                  <input type="date" value={rDate} min={entry.log_date} onChange={(e) => setRDate(e.target.value)} />
+                  <input type="date" value={rDate} min={entry.log_date} readOnly={rectLocked} onChange={(e) => setRDate(e.target.value)} />
                 </label>
                 <label>At
-                  <TimeInput value={rTime} onChange={setRTime} label="At" />
+                  <TimeInput value={rTime} onChange={rectLocked ? () => {} : setRTime} label="At" />
                 </label>
                 <label>{isResolved ? 'Team' : 'Issued to'}
-                  <input value={rTeam} onChange={(e) => setRTeam(e.target.value)}
+                  <input value={rTeam} readOnly={rectLocked} onChange={(e) => setRTeam(e.target.value)}
                          placeholder={isResolved ? 'crew / agency that fixed it' : 'agency / dept the card went to'} />
                 </label>
                 <label className="fg-span-2">Fault addressed
-                  <input value={rFault} onChange={(e) => setRFault(e.target.value)} placeholder={faultType || 'e.g. DC earth fault'} />
+                  <input value={rFault} readOnly={rectLocked} onChange={(e) => setRFault(e.target.value)} placeholder={faultType || 'e.g. DC earth fault'} />
                 </label>
-                {isResolved && (
+                {isResolved && jobIssued && (
                   <label className="flag-check fg-span">
-                    <input type="checkbox" checked={rViaJobCard}
+                    <input type="checkbox" checked={rViaJobCard} disabled={rectLocked}
                            onChange={(e) => setRViaJobCard(e.target.checked)} />
-                    Rectified via job card <span className="ef-opt">— the fix was carried out by the agency/OEM under a job card</span>
+                    Rectified by the job-card agency
+                    <span className="ef-opt">{rViaJobCard
+                      ? ' — the agency/OEM closed the card'
+                      : ' — we rectified it (agency delayed); the job card will show ignored/delayed'}</span>
                   </label>
                 )}
                 {isResolved && (
                   <label className="fg-span">Consumables / consumed
-                    <input value={rConsum} onChange={(e) => setRConsum(e.target.value)}
+                    <input value={rConsum} readOnly={rectLocked} onChange={(e) => setRConsum(e.target.value)}
                            placeholder="spares used in the fix — e.g. 2× PT fuse" />
                   </label>
                 )}
                 <label className="fg-span">
                   {isResolved ? 'What was done (rectification)' : 'Job card detail (agency, card no., scope)'}
-                  <input value={rText} onChange={(e) => setRText(e.target.value)}
+                  <input value={rText} readOnly={rectLocked} onChange={(e) => setRText(e.target.value)}
                          placeholder={isResolved ? 'what was done to rectify it…'
                            : 'e.g. Job card issued to M/s Siemens to replace WAGO'} />
                 </label>
-                {progress === 'job_card' && <p className="ef-hint fg-span-2">A job card keeps the failure open (yellow). Set Progress to <b>Rectified</b> once the card is closed by a fix.</p>}
+                {progress === 'job_card' && <p className="ef-hint fg-span-2">A job card keeps the failure open (yellow). Set Progress to <b>Rectified</b> once the fix is done — by the agency, or by us if they are delayed.</p>}
                 <div className="fg-span">
                   <ChecksheetFill appliesTo="job_card" assetClass={category} value={rCs} onChange={setRCs} />
                 </div>

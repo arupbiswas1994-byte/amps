@@ -609,35 +609,44 @@ def set_resolution(failure_id: int, body: ResolutionIn,
                 checksheet=_dump_checksheet(r.checksheet),
                 rectifies_id=fail.id, asset_id=fail.asset_id, line_id=fail.line_id))
 
-    # The three response logs are INDEPENDENT and coexist as history — a failure
-    # acknowledged then rectified keeps BOTH the acknowledgement and the fix. Each
-    # axis is reconciled on its own; the displayed state is by dominance
-    # (rectified > job_card > acknowledged > open). We never convert one log into
-    # another. Progress carries the JOB CARD and RECTIFICATION logs cumulatively:
-    #   open      → neither
-    #   job_card  → the job card (fix not yet done)
-    #   rectified → the rectification (a job card raised earlier is kept)
-    # Acknowledgement is fully independent of progress.
+    # The three response logs are INDEPENDENT and coexist as history, with STATE
+    # TRANSITION RULES that make each an immutable fact once logged:
+    #   • Acknowledgement is SET-ONCE — it can never be un-ticked.
+    #   • A RECTIFICATION is TERMINAL — once fixed it cannot be reverted/changed.
+    #   • An issued JOB CARD only moves FORWARD to rectified, never back to open.
+    #     It is kept when rectified: if the fix came from the agency the job card
+    #     is fulfilled; if we did it ourselves (agency delayed) the job card reads
+    #     "ignored/delayed" — derived from the rectification's via_job_card flag.
+    existing_ack = next(iter(by_type[LogEntryType.ACKNOWLEDGEMENT]), None)
+    existing_rect = next(iter(by_type[LogEntryType.RECTIFICATION]), None)
+    existing_job = next(iter(by_type[LogEntryType.JOB_CARD]), None)
+
+    # Acknowledgement — add or (harmlessly) refresh; NEVER clear a logged one.
     if body.acknowledged:
         if not body.ack:
             raise HTTPException(422, "an acknowledgement needs its note")
         _upsert(LogEntryType.ACKNOWLEDGEMENT, body.ack)
-    else:
-        _clear(LogEntryType.ACKNOWLEDGEMENT)
+    elif existing_ack:
+        raise HTTPException(409, "an acknowledgement is a logged fact — it cannot be withdrawn")
 
-    if body.progress == "rectified":
+    # Progress — forward only; rectified terminal.
+    if existing_rect:
+        # terminal: keep it. Allow editing only the rectification's own detail.
+        if body.progress == "rectified" and body.detail:
+            _upsert(LogEntryType.RECTIFICATION, body.detail)
+        elif body.progress != "rectified":
+            raise HTTPException(409, "a rectified failure is final — it cannot be changed")
+    elif body.progress == "rectified":
         if not body.detail:
             raise HTTPException(422, "a rectified failure needs the fix detail")
-        _upsert(LogEntryType.RECTIFICATION, body.detail)
-        # keep any job card raised earlier — it is real history, not superseded
+        _upsert(LogEntryType.RECTIFICATION, body.detail)  # any job card is kept
     elif body.progress == "job_card":
         if not body.detail:
             raise HTTPException(422, "a job card needs its detail")
         _upsert(LogEntryType.JOB_CARD, body.detail)
-        _clear(LogEntryType.RECTIFICATION)
-    else:  # open — nothing progressed
-        _clear(LogEntryType.RECTIFICATION)
-        _clear(LogEntryType.JOB_CARD)
+    elif existing_job:  # progress=open but a job card was already issued
+        raise HTTPException(409, "an issued job card cannot be reverted to open")
+    # else: open and never job-carded — nothing to record
 
     db.flush()
     audit(db, "log_entry", fail.id, "response-set",
