@@ -311,7 +311,7 @@ function EditEntryForm({ entry, assets, systems, classSystem, initialResp = null
     if (isFail && progressActive && !rText.trim()) {
       setErr(`This ${KIND_LABEL[progress]} needs a note — what was done or requested.`); return
     }
-    if (isFail && acknowledged && !isResolved && !aText.trim()) {
+    if (isFail && acknowledged && !aText.trim()) {
       setErr('The acknowledgement needs a note — what was raised / requested.'); return
     }
     setBusy(true); setErr('')
@@ -336,8 +336,8 @@ function EditEntryForm({ entry, assets, systems, classSystem, initialResp = null
       // 2) reconcile the failure's whole response state in one call
       if (isFail) {
         const body = {
-          acknowledged: acknowledged && !isResolved,
-          ack: (acknowledged && !isResolved) ? {
+          acknowledged,
+          ack: acknowledged ? {
             date: aDate, text: aText.trim(), attended_by: aTeam.trim() || null,
           } : null,
           progress,
@@ -456,18 +456,18 @@ function EditEntryForm({ entry, assets, systems, classSystem, initialResp = null
                           value={csEdit} onChange={setCsEdit} />
         )}
 
-        {/* a failure has TWO axes: an independent Acknowledged checkbox, and a
-            Progress dropdown (open / job card issued / rectified). Rectified is
-            terminal — it resolves the failure and mutes the acknowledgement. */}
+        {/* a failure has TWO independent axes, each its own log that coexists:
+            an Acknowledged checkbox (the acknowledgement log) and a Progress
+            dropdown (the job-card / rectification log). Acknowledging then
+            rectifying keeps BOTH logs — one never converts into the other. */}
         {isFail && (
           <section className="fg fg-fail">
             <span className="fg-lbl">Status</span>
             <div className="fg-fields">
-              <label className={`flag-check fg-span${isResolved ? ' muted' : ''}`}
-                     title={isResolved ? 'A rectified failure needs no acknowledgement' : undefined}>
-                <input type="checkbox" checked={acknowledged && !isResolved} disabled={isResolved}
+              <label className="flag-check fg-span">
+                <input type="checkbox" checked={acknowledged}
                        onChange={(e) => setAcknowledged(e.target.checked)} />
-                Acknowledged <span className="ef-opt">— noted (demand / mail), still to be rectified</span>
+                Acknowledged <span className="ef-opt">— noted (demand / mail); kept as its own log</span>
               </label>
               <label className="fg-span">Progress
                 <select value={progress} onChange={(e) => onSetProgress(e.target.value)}>
@@ -477,8 +477,8 @@ function EditEntryForm({ entry, assets, systems, classSystem, initialResp = null
                 </select>
               </label>
 
-              {/* acknowledgement note (independent of progress) */}
-              {acknowledged && !isResolved && <>
+              {/* acknowledgement note — its own log, independent of progress */}
+              {acknowledged && <>
                 <label>Acknowledged on
                   <input type="date" value={aDate} min={entry.log_date} onChange={(e) => setADate(e.target.value)} />
                 </label>

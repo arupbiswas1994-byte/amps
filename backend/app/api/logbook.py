@@ -567,27 +567,35 @@ def set_resolution(failure_id: int, body: ResolutionIn,
                 checksheet=_dump_checksheet(r.checksheet),
                 rectifies_id=fail.id, asset_id=fail.asset_id, line_id=fail.line_id))
 
+    # The three response logs are INDEPENDENT and coexist as history — a failure
+    # acknowledged then rectified keeps BOTH the acknowledgement and the fix. Each
+    # axis is reconciled on its own; the displayed state is by dominance
+    # (rectified > job_card > acknowledged > open). We never convert one log into
+    # another. Progress carries the JOB CARD and RECTIFICATION logs cumulatively:
+    #   open      → neither
+    #   job_card  → the job card (fix not yet done)
+    #   rectified → the rectification (a job card raised earlier is kept)
+    # Acknowledgement is fully independent of progress.
+    if body.acknowledged:
+        if not body.ack:
+            raise HTTPException(422, "an acknowledgement needs its note")
+        _upsert(LogEntryType.ACKNOWLEDGEMENT, body.ack)
+    else:
+        _clear(LogEntryType.ACKNOWLEDGEMENT)
+
     if body.progress == "rectified":
         if not body.detail:
             raise HTTPException(422, "a rectified failure needs the fix detail")
         _upsert(LogEntryType.RECTIFICATION, body.detail)
-        # terminal — the fix moots any acknowledgement / job card
-        _clear(LogEntryType.JOB_CARD)
-        _clear(LogEntryType.ACKNOWLEDGEMENT)
-    else:
+        # keep any job card raised earlier — it is real history, not superseded
+    elif body.progress == "job_card":
+        if not body.detail:
+            raise HTTPException(422, "a job card needs its detail")
+        _upsert(LogEntryType.JOB_CARD, body.detail)
         _clear(LogEntryType.RECTIFICATION)
-        if body.progress == "job_card":
-            if not body.detail:
-                raise HTTPException(422, "a job card needs its detail")
-            _upsert(LogEntryType.JOB_CARD, body.detail)
-        else:
-            _clear(LogEntryType.JOB_CARD)
-        if body.acknowledged:
-            if not body.ack:
-                raise HTTPException(422, "an acknowledgement needs its note")
-            _upsert(LogEntryType.ACKNOWLEDGEMENT, body.ack)
-        else:
-            _clear(LogEntryType.ACKNOWLEDGEMENT)
+    else:  # open — nothing progressed
+        _clear(LogEntryType.RECTIFICATION)
+        _clear(LogEntryType.JOB_CARD)
 
     db.flush()
     audit(db, "log_entry", fail.id, "response-set",

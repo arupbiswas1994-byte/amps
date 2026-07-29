@@ -454,7 +454,7 @@ function LiveDashboard({ go, initialLine = null }) {
                           onKeyDown={(e) => e.key === 'Enter' && go(`/asset/${a.code}`)}>
                         <td className="code" data-l="Code">{a.code}</td>
                         <td data-l="Asset">{a.name}
-                          {nOpen > 0 && <span className="fault-badge" title={`${nOpen} open breakdown${nOpen > 1 ? 's' : ''} — not yet acknowledged`}>⚠ {nOpen} open</span>}
+                          {nOpen > 0 && <span className="fault-badge" title={`${nOpen} open breakdown${nOpen > 1 ? 's' : ''} — unresolved, no response logged yet`}>⚠ {nOpen} open</span>}
                           {nAck > 0 && <span className="fault-badge amber" title={`${nAck} acknowledged — noted (demand/mail) but STILL to be rectified`}>{nAck} acknowledged · to rectify</span>}
                           {nJob > 0 && <span className="fault-badge yellow" title={`${nJob} job card${nJob > 1 ? 's' : ''} raised — STILL to be rectified`}>{nJob} job card · to rectify</span>}
                           {canWrite && nOut > 0 && (
@@ -629,17 +629,20 @@ function ChecksheetView({ cs }) {
 const FAIL_STATE_CHIP = { open: 'd-overdue', acknowledged: 'd-ack', job_card: 'd-job', resolved: 'd-ok' }
 const FAIL_STATE_LABEL = { open: 'open', acknowledged: 'acknowledged', job_card: 'job card issued', resolved: 'resolved' }
 
+const RESP_META = {
+  rectification: { cls: 'resolved', tag: '✓ Rectification' },
+  job_card: { cls: 'job', tag: '▤ Job card issued' },
+  acknowledgement: { cls: 'ack', tag: '◐ Acknowledged' },
+}
 function LogRow({ en, staff }) {
-  // a failure carries its response inline, by dominance: the rectification that
-  // resolved it, else the job card raised, else the acknowledgement noting it
-  const resp = en.type === 'failure' ? (en.resolved_by || en.job_card_by || en.acknowledged_by) : null
-  const respKind = en.resolved_by ? 'rectification' : en.job_card_by ? 'job_card' : en.acknowledged_by ? 'acknowledgement' : null
-  const RESP_META = {
-    rectification: { cls: 'resolved', tag: '✓ Rectification' },
-    job_card: { cls: 'job', tag: '▤ Job card issued' },
-    acknowledgement: { cls: 'ack', tag: '◐ Acknowledged' },
-  }
-  const rm = respKind ? RESP_META[respKind] : null
+  // a failure shows ALL its response logs as a timeline — acknowledged, job card
+  // and rectification are independent and coexist (an acknowledged-then-fixed
+  // failure keeps both). Ordered oldest-intent → fix.
+  const responses = en.type === 'failure' ? [
+    en.acknowledged_by && { kind: 'acknowledgement', ref: en.acknowledged_by },
+    en.job_card_by && { kind: 'job_card', ref: en.job_card_by },
+    en.resolved_by && { kind: 'rectification', ref: en.resolved_by },
+  ].filter(Boolean) : []
   // per-failure quick actions on the asset page — each outstanding failure is
   // actioned individually (handles the several-failures-on-one-asset case).
   // Acknowledge shows only for a not-yet-acknowledged (open) failure.
@@ -671,17 +674,20 @@ function LogRow({ en, staff }) {
           {en.attended_by && en.attended_by !== en.entered_by && <> · recorded by {en.entered_by}</>}
         </div>
       )}
-      {resp && rm && (
-        <div className={`fail-resp ${rm.cls}`}>
+      {responses.map(({ kind, ref }) => {
+        const rm = RESP_META[kind]
+        return (
+        <div key={kind} className={`fail-resp ${rm.cls}`}>
           <span className="fr-tag">{rm.tag}</span>
-          {resp.via_job_card && <span className="fr-via">▤ via job card</span>}
-          <span className="fr-date dt">{resp.log_date}</span>
-          <div className="fr-text">{tidyLog(resp.text)}</div>
-          {resp.consumables && <div className="le-consumables"><span className="lc-tag">Consumed</span> {resp.consumables}</div>}
-          {resp.checksheet && <ChecksheetView cs={resp.checksheet} />}
-          {resp.attended_by && <div className="sub">by <b>{resp.attended_by}</b></div>}
+          {ref.via_job_card && <span className="fr-via">▤ via job card</span>}
+          <span className="fr-date dt">{ref.log_date}</span>
+          <div className="fr-text">{tidyLog(ref.text)}</div>
+          {ref.consumables && <div className="le-consumables"><span className="lc-tag">Consumed</span> {ref.consumables}</div>}
+          {ref.checksheet && <ChecksheetView cs={ref.checksheet} />}
+          {ref.attended_by && <div className="sub">by <b>{ref.attended_by}</b></div>}
         </div>
-      )}
+        )
+      })}
     </div>
   )
 }
@@ -759,7 +765,7 @@ function AssetLogSections({ log, staff }) {
           {!staff && attnRows.length > 0 && <span className="dim"> · sign in for outstanding breakdowns</span>}
         </h3>
         {totalFail === 0 && <p className="dim">No failures recorded against this asset.</p>}
-        {staff && <SubGroup tone="open" label="Open — not yet actioned" rows={openFail} />}
+        {staff && <SubGroup tone="open" label="Open — unresolved, no response yet" rows={openFail} />}
         {staff && <SubGroup tone="ack" label="Acknowledged — noted, still to rectify" rows={ackFail} />}
         {staff && <SubGroup tone="job" label="Job card issued — awaiting close-out" rows={jobFail} />}
         <SubGroup tone="ok" label="Resolved" rows={resolvedFail} />
