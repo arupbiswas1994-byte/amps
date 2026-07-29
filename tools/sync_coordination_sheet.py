@@ -61,7 +61,7 @@ INSTRUCTIONS = {
     55: "• Put each depot's rows in its own depot sheet — one asset belongs to exactly one depot (no duplicates across sheets).",
     56: "• Your AMPS login is scoped to your depot: you see and edit only your depot's assets & logs. A line-wide login stays read-only for oversight.",
     57: "• Both the Assets register and the Log book have a Depot filter to narrow any view to one depot.",
-    58: "• Blue Line depots: SHY, KHG, MB, JPK, MSN, JOKA. Green Line: single depot CPD.",
+    58: "• Blue Line depots (6): SHY, JPK, NOA, MSN, BEL, KHG. Green Line: single depot CPD.",
 }
 
 # header column index (0-based) -> cell note, applied to every '· Logs' tab

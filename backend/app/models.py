@@ -36,7 +36,10 @@ class Location(Base):
 
     parent: Mapped["Location | None"] = relationship(remote_side=[id], back_populates="children")
     children: Mapped[list["Location"]] = relationship(back_populates="parent")
-    assets: Mapped[list["Asset"]] = relationship(back_populates="location")
+    # Asset has two FKs to locations (location_id, line_id) — this collection is
+    # the station→assets one, so pin the join to Asset.location_id.
+    assets: Mapped[list["Asset"]] = relationship(
+        back_populates="location", foreign_keys="Asset.location_id")
 
 
 class AssetClass(Base):
@@ -92,7 +95,8 @@ class Asset(Base):
     depot: Mapped[str | None] = mapped_column(String(40))
 
     asset_class: Mapped[AssetClass] = relationship()
-    location: Mapped[Location] = relationship(back_populates="assets")
+    location: Mapped[Location] = relationship(
+        back_populates="assets", foreign_keys=[location_id])
     pm_schedules: Mapped[list["PMSchedule"]] = relationship(back_populates="asset")
     work_orders: Mapped[list["WorkOrder"]] = relationship(back_populates="asset")
 
