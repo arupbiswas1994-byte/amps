@@ -11,6 +11,27 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Self-heal a stale cached bundle: after a deploy the hashed JS filename
+      // changes, so a browser holding an old index.html would request a chunk
+      // that no longer exists and the app would silently fail to mount. If a
+      // module script errors, reload ONCE (index.html is served no-cache, so the
+      // reload fetches the fresh index → current bundle). A sessionStorage guard
+      // prevents any reload loop.
+      window.addEventListener('error', function (e) {
+        var t = e.target;
+        if (t && t.tagName === 'SCRIPT' && !sessionStorage.getItem('amps_reloaded')) {
+          sessionStorage.setItem('amps_reloaded', '1');
+          location.reload();
+        }
+      }, true);
+      window.addEventListener('load', function () {
+        setTimeout(function () {
+          var root = document.getElementById('root');
+          if (root && root.children.length) sessionStorage.removeItem('amps_reloaded');
+        }, 4000);
+      });
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

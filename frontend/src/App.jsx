@@ -2335,11 +2335,17 @@ function LineDashboard({ go }) {
   const scheduled = total - bucket.none
   const compliance = scheduled ? Math.round((bucket.ok / scheduled) * 100) : 0
   // routine overdue broken up by the overdue cycle (Monthly / Quarterly / …)
+  // and by asset class — so the PCEE sees WHERE the backlog is concentrated
   const overdueByFreq = {}
+  const overdueBySystem = {}
   assets.forEach((a) => {
     const s = pm(a)
-    if (s?.state === 'overdue' && s.next_frequency) overdueByFreq[s.next_frequency] = (overdueByFreq[s.next_frequency] || 0) + 1
+    if (s?.state === 'overdue') {
+      if (s.next_frequency) overdueByFreq[s.next_frequency] = (overdueByFreq[s.next_frequency] || 0) + 1
+      const sy = a.sys || 'Unclassified'; overdueBySystem[sy] = (overdueBySystem[sy] || 0) + 1
+    }
   })
+  const topSystems = Object.entries(overdueBySystem).sort((a, b) => b[1] - a[1]).slice(0, 8)
   const exceeded = assets.filter(codalExceeded).length
   const stations = new Set(assets.map((a) => a.location)).size
   const depots = new Set(assets.map((a) => a.depot).filter(Boolean)).size
@@ -2433,15 +2439,34 @@ function LineDashboard({ go }) {
           <p className="viz-insight"><a className="crumb" href="#/assets">Open the register →</a></p>
         </section>
 
+        {/* overdue by system (HT · 33kV, LT · ECS, …) */}
+        <section className="card viz-card">
+          <h2 className="viz-h">Overdue by system <span className="viz-note">top {topSystems.length}</span></h2>
+          {topSystems.length === 0 ? <p className="dim">No routine PM overdue.</p> : (
+            <div className="breakup">
+              {topSystems.map(([c, n]) => {
+                const w = Math.round((n / topSystems[0][1]) * 100)
+                return (
+                  <div className="bk-row" key={c}>
+                    <span className="bk-lbl bk-cls" title={c}>{c}</span>
+                    <span className="bk-bar"><span className="bk-fill" style={{ width: `${Math.max(w, 3)}%` }} /></span>
+                    <span className="bk-n">{n}</span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+          <p className="viz-insight"><a className="crumb" href="#/assets">Open the register →</a></p>
+        </section>
+      </div>
+
+      <div className="dash-grid">
         {/* failures per month */}
         <section className="card viz-card">
           <h2 className="viz-h">Failures per month <span className="viz-note">last 6 months</span></h2>
           {trend.length ? <TrendChart data={trend} /> : <p className="dim">No failure data.</p>}
           <p className="viz-insight"><a className="crumb" href={failHref}>Open the failures dashboard →</a></p>
         </section>
-      </div>
-
-      <div className="dash-grid">
         <section className="card viz-card">
           <h2 className="viz-h">Recent logbook <span className="viz-note">latest entries</span></h2>
           {recent.length === 0 ? <p className="dim">No entries yet.</p> : (
