@@ -230,7 +230,9 @@ function LiveDashboard({ go, initialLine = null }) {
   if (fClass) base = base.filter((a) => a.cls === fClass)
   if (fLocation) base = base.filter((a) => a.location === fLocation)
   if (fStatus) base = base.filter((a) => a.status === fStatus)
-  if (fDepot) base = base.filter((a) => a.depot === fDepot)
+  // only apply a depot filter that actually belongs to the current line — a
+  // depot picked on another line (persisted) must not blank this line's register
+  if (fDepot && depotsList.includes(fDepot)) base = base.filter((a) => a.depot === fDepot)
   const overdue = base.filter((a) => stateOf(a) === 'overdue')
   const dueSoon = base.filter((a) => stateOf(a) === 'due_soon')
   const longOverdue = base.filter((a) => stateOf(a) === 'long_overdue')  // 5-Yearly overdue / never started
@@ -376,9 +378,9 @@ function LiveDashboard({ go, initialLine = null }) {
               <option value="">Any status</option>
               {statusesList.map((s) => <option key={s} value={s}>{STATUS_LABEL[s] || s}</option>)}
             </select>
-            {(fSystem || fClass || fLocation || fStatus || q || filter !== 'all' || sortKey) && (
+            {(fSystem || fClass || fLocation || fStatus || fDepot || q || filter !== 'all' || sortKey) && (
               <button type="button" className="btn ghost sm" onClick={() => {
-                setFSystem(''); setFClass(''); setFLocation(''); setFStatus(''); setQ(''); setFilter('all'); setSortKey(null)
+                setFSystem(''); setFClass(''); setFLocation(''); setFStatus(''); setFDepot(''); setQ(''); setFilter('all'); setSortKey(null)
               }}>Clear</button>
             )}
             <span className="asset-count">{shown.length} shown</span>
