@@ -90,22 +90,39 @@ def build_schedule(freqs, done, today=None):
     return rows
 
 
+# The 5-Yearly (and any longer) is a LONG-cycle overhaul. Most assets have never
+# had one — the section/system is only a few years old — so a lapsed 5-yearly is
+# a backlog item, not a live breakdown risk like a missed monthly/quarterly. It
+# is reported SEPARATELY so the headline "overdue" reflects the routine cycles
+# the PCEE actually acts on, not thousands of pending 5-yearly overhauls.
+LONG_CYCLE_DAYS = SCHEDULE_FREQ["5-Yearly"]   # 1825
+
+
 def summarize_schedule(rows):
     """One-line health for the register: the soonest next PM, the worst state,
-    and how many cycles are overdue (a never-done cycle counts as overdue)."""
+    and the overdue counts — split into routine (short-cycle) overdue and the
+    long-cycle (5-Yearly) overdue/never-started backlog."""
     if not rows:
         return None
-    overdue = [r for r in rows if r["state"] in ("overdue", "never")]
+    def _is_long(r):
+        return SCHEDULE_FREQ.get(r["frequency"], 0) >= LONG_CYCLE_DAYS
+    outstanding = [r for r in rows if r["state"] in ("overdue", "never")]
+    overdue = [r for r in outstanding if not _is_long(r)]       # routine overdue (the headline)
+    long_overdue = [r for r in outstanding if _is_long(r)]      # 5-Yearly overdue / never started
     due_soon = [r for r in rows if r["state"] == "due_soon"]
     dated = [r for r in rows if r["next_due"] is not None]
     nxt = min(dated, key=lambda r: r["next_due"]) if dated else None
-    state = "overdue" if overdue else "due_soon" if due_soon else "ok"
+    # routine overdue dominates; then due-soon; then long-cycle backlog; then ok
+    state = ("overdue" if overdue else "due_soon" if due_soon
+             else "long_overdue" if long_overdue else "ok")
     return {
-        "next_frequency": nxt["frequency"] if nxt else (overdue[0]["frequency"] if overdue else None),
+        "next_frequency": nxt["frequency"] if nxt else (
+            overdue[0]["frequency"] if overdue else long_overdue[0]["frequency"] if long_overdue else None),
         "next_due": nxt["next_due"] if nxt else None,
         "days_left": nxt["days_left"] if nxt else None,
         "state": state,
         "overdue_count": len(overdue),
+        "long_overdue_count": len(long_overdue),
     }
 
 

@@ -27,8 +27,9 @@ class AssetScheduleSummary(BaseModel):
     next_frequency: str | None
     next_due: date | None
     days_left: int | None
-    state: str              # ok | due_soon | overdue
-    overdue_count: int
+    state: str              # ok | due_soon | overdue | long_overdue
+    overdue_count: int      # routine (short-cycle) overdue only
+    long_overdue_count: int = 0   # 5-Yearly overdue / never started
 
 
 @router.get("/schedule", response_model=list[AssetScheduleSummary])

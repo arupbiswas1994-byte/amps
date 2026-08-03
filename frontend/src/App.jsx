@@ -140,7 +140,7 @@ const StageChip = ({ stage }) => (
 
 /* ---------- dashboard (live) ---------- */
 
-const SEV_RANK = { overdue: 0, due_soon: 1, ok: 2 }
+const SEV_RANK = { overdue: 0, due_soon: 1, long_overdue: 2, ok: 3 }
 
 /* filters that survive tab switches — parked in localStorage under a namespaced
    key so leaving a page and coming back keeps the view you set up. */
@@ -233,6 +233,7 @@ function LiveDashboard({ go, initialLine = null }) {
   if (fDepot) base = base.filter((a) => a.depot === fDepot)
   const overdue = base.filter((a) => stateOf(a) === 'overdue')
   const dueSoon = base.filter((a) => stateOf(a) === 'due_soon')
+  const longOverdue = base.filter((a) => stateOf(a) === 'long_overdue')  // 5-Yearly overdue / never started
   const faulty = base.filter((a) => attnOf(a) > 0)   // open OR acknowledged
   let shown = filter === 'all' ? base
     : filter === 'faulty' ? base.filter((a) => attnOf(a) > 0)
@@ -346,8 +347,8 @@ function LiveDashboard({ go, initialLine = null }) {
             <input className="asset-search" type="search" value={q} onChange={(e) => setQ(e.target.value)}
                    placeholder="Search code, asset, class or location…" aria-label="Search assets" />
             <div className="asset-filter" role="tablist" aria-label="PM state filter">
-              {[['all', `All ${base.length}`], ['faulty', `Faulty ${faulty.length}`], ['overdue', `Overdue ${overdue.length}`], ['due_soon', `Due soon ${dueSoon.length}`]]
-                .filter(([k]) => k !== 'faulty' || faulty.length)
+              {[['all', `All ${base.length}`], ['faulty', `Faulty ${faulty.length}`], ['overdue', `Overdue ${overdue.length}`], ['due_soon', `Due soon ${dueSoon.length}`], ['long_overdue', `5-Yearly ${longOverdue.length}`]]
+                .filter(([k]) => (k !== 'faulty' || faulty.length) && (k !== 'long_overdue' || longOverdue.length))
                 .map(([k, lbl]) => (
                 <button key={k} type="button" className={`btn preset ${filter === k ? 'active' : ''}${(k === 'overdue' && overdue.length) || (k === 'faulty' && faulty.length) ? ' has-od' : ''}`}
                         onClick={() => setFilter(k)}>{lbl}</button>
@@ -809,8 +810,8 @@ function AssetLogSections({ log, staff }) {
    (a Yearly service fulfils the Quarterly under it). Applicability comes from the
    asset's plan when set, else it's inferred from what the log already holds. */
 const SCHED_FREQS = ['Monthly', 'Quarterly', 'Half-Yearly', 'Yearly', '5-Yearly']
-const SCHED_LABEL = { overdue: 'Overdue', due_soon: 'Due soon', ok: 'On schedule', never: 'Never done' }
-const schedChip = (state) => `chip d-${state === 'never' ? 'overdue' : state}`
+const SCHED_LABEL = { overdue: 'Overdue', due_soon: 'Due soon', long_overdue: '5-Yearly due', ok: 'On schedule', never: 'Never done' }
+const schedChip = (state) => `chip d-${state === 'never' ? 'overdue' : state === 'long_overdue' ? 'long' : state}`
 
 function useAssetSchedule(code) {
   const [schedule, setSchedule] = useState(null)
@@ -2313,7 +2314,7 @@ function TagSheet() {
 /* ---------- home dashboard (signed-in landing) ---------- */
 
 function LineDashboard({ go }) {
-  const { assets, sched, loading } = useLiveAssets()
+  const { assets, sched, openFail, loading } = useLiveAssets()
   const { me } = useMe()
   const [stats, setStats] = useState(null)
   const [recent, setRecent] = useState([])
@@ -2322,40 +2323,125 @@ function LineDashboard({ go }) {
     getJSON('/api/logbook?limit=6').then(setRecent).catch(() => {})
   }, [])
   if (loading) return <p className="dim">Loading the dashboard…</p>
-  const stateOf = (a) => sched[assetKey(a)]?.state
-  const overdue = assets.filter((a) => stateOf(a) === 'overdue').length
-  const dueSoon = assets.filter((a) => stateOf(a) === 'due_soon').length
+  const pm = (a) => sched[assetKey(a)]
+  const stateOf = (a) => pm(a)?.state
+  // PM-compliance breakdown across every asset. Routine (short-cycle) overdue is
+  // the actionable headline; the 5-Yearly overhaul backlog is counted apart so
+  // it does not swamp the number the PCEE acts on. Un-scheduled assets (no plan,
+  // no logged maintenance) are their own bucket.
+  const total = assets.length
+  const bucket = { ok: 0, due_soon: 0, overdue: 0, long_overdue: 0, none: 0 }
+  assets.forEach((a) => { bucket[stateOf(a) || 'none'] += 1 })
+  const scheduled = total - bucket.none
+  const compliance = scheduled ? Math.round((bucket.ok / scheduled) * 100) : 0
+  // routine overdue broken up by the overdue cycle (Monthly / Quarterly / …)
+  const overdueByFreq = {}
+  assets.forEach((a) => {
+    const s = pm(a)
+    if (s?.state === 'overdue' && s.next_frequency) overdueByFreq[s.next_frequency] = (overdueByFreq[s.next_frequency] || 0) + 1
+  })
   const exceeded = assets.filter(codalExceeded).length
   const stations = new Set(assets.map((a) => a.location)).size
+  const depots = new Set(assets.map((a) => a.depot).filter(Boolean)).size
+  const openF = assets.reduce((n, a) => n + (openFail[assetKey(a)]?.open || 0) + (openFail[assetKey(a)]?.ack || 0) + (openFail[assetKey(a)]?.jobcard || 0), 0)
   const trend = stats ? stats.per_month.map((m) => ({ label: new Date(`${m.month}-01T00:00:00`).toLocaleString(undefined, { month: 'short' }), count: m.count })) : []
   const line = me?.line || ORG
-  // failures now live per line: a coordinator lands on their own line's board;
-  // a line-less admin defaults to the first line and can switch from there.
   const failLine = me?.line || (assets[0] && assets[0].line)
   const failHref = failLine ? `#/line/${encodeURIComponent(failLine)}/failures` : '#/'
-  const tile = (v, k, cls, to) => (
+
+  // stacked compliance bar segments (ordered best → worst)
+  const segs = [
+    ['ok', 'On schedule', bucket.ok, 'seg-ok'],
+    ['due_soon', 'Due soon', bucket.due_soon, 'seg-due'],
+    ['overdue', 'Overdue', bucket.overdue, 'seg-od'],
+    ['long_overdue', '5-Yearly due', bucket.long_overdue, 'seg-long'],
+    ['none', 'Not scheduled', bucket.none, 'seg-none'],
+  ].filter(([, , n]) => n > 0)
+
+  const tile = (v, k, cls, to, sub) => (
     <a className={`tile dash-tile${cls ? ' ' + cls : ''}`} href={to} role="button">
-      <div className="v">{v}</div><div className="k">{k}</div>
+      <div className="v">{v}</div><div className="k">{k}</div>{sub && <div className="note">{sub}</div>}
     </a>
   )
   return (
     <>
-      <div className="page-head"><h1>{line} · overview</h1></div>
+      <div className="page-head dash-head">
+        <h1>{line} · Maintenance Overview</h1>
+        <span className="dash-asof">as of {new Date().toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+      </div>
+
+      {/* headline compliance summary */}
+      <section className="card compliance-card">
+        <div className="cc-top">
+          <div className="cc-hero">
+            <div className={`cc-pct ${compliance >= 90 ? 'good' : compliance >= 70 ? 'warn' : 'bad'}`}>{compliance}%</div>
+            <div className="cc-hero-k">PM compliance<span className="dim"> · {bucket.ok.toLocaleString()} of {scheduled.toLocaleString()} scheduled on schedule</span></div>
+          </div>
+          <div className="cc-figures">
+            <div className="cc-fig"><b>{total.toLocaleString()}</b><span>Total assets</span></div>
+            <div className="cc-fig"><b className="good">{bucket.ok.toLocaleString()}</b><span>On schedule</span></div>
+            <div className="cc-fig"><b className="bad">{(bucket.overdue + bucket.long_overdue).toLocaleString()}</b><span>Total overdue</span></div>
+          </div>
+        </div>
+        <div className="cc-bar" role="img" aria-label="PM compliance breakdown">
+          {segs.map(([k, , n, cls]) => (
+            <div key={k} className={`cc-seg ${cls}`} style={{ flexGrow: n }} title={`${n} ${SCHED_LABEL[k] || k}`} />
+          ))}
+        </div>
+        <div className="cc-legend">
+          {segs.map(([k, label, n, cls]) => (
+            <span key={k} className="cc-leg"><span className={`cc-dot ${cls}`} />{label} <b>{n.toLocaleString()}</b></span>
+          ))}
+        </div>
+      </section>
+
+      {/* KPI tiles — overdue split routine vs 5-yearly */}
       <div className="kpis dash-kpis">
-        {tile(assets.length.toLocaleString(), 'Assets', '', '#/assets')}
-        {tile(stations, 'Locations', '', '#/assets')}
-        {tile(dueSoon, 'PM due soon', dueSoon ? 'warn' : '', '#/assets')}
-        {tile(overdue, 'PM overdue', overdue ? 'alert' : '', '#/assets')}
-        {tile(stats ? stats.open : '—', 'Open failures', stats && stats.open ? 'alert' : '', failHref)}
-        {tile(exceeded, 'Exceeded life', exceeded ? 'warn' : '', '#/assets')}
+        {tile(total.toLocaleString(), 'Assets', '', '#/assets', `${stations} locations · ${depots || 1} depot${depots > 1 ? 's' : ''}`)}
+        {tile(bucket.ok.toLocaleString(), 'On schedule', bucket.ok ? 'ok' : '', '#/assets', `${compliance}% of scheduled`)}
+        {tile(bucket.due_soon.toLocaleString(), 'Due soon', bucket.due_soon ? 'warn' : '', '#/assets', 'within 30 days')}
+        {tile(bucket.overdue.toLocaleString(), 'Overdue', bucket.overdue ? 'alert' : '', '#/assets', 'routine cycles')}
+        {tile(bucket.long_overdue.toLocaleString(), '5-Yearly overdue', bucket.long_overdue ? 'warn' : '', '#/assets', 'overhaul / never started')}
+        {tile(openF.toLocaleString(), 'Open failures', openF ? 'alert' : '', failHref, 'awaiting rectification')}
       </div>
 
       <div className="dash-grid">
+        {/* overdue breakup by cycle */}
+        <section className="card viz-card">
+          <h2 className="viz-h">Overdue breakup <span className="viz-note">routine cycles</span></h2>
+          {bucket.overdue === 0 ? <p className="dim">No routine PM overdue — all short-cycle maintenance is up to date. 👍</p> : (
+            <div className="breakup">
+              {SCHED_FREQS.filter((f) => overdueByFreq[f]).map((f) => {
+                const n = overdueByFreq[f]; const w = Math.round((n / bucket.overdue) * 100)
+                return (
+                  <div className="bk-row" key={f}>
+                    <span className="bk-lbl">{f}</span>
+                    <span className="bk-bar"><span className="bk-fill" style={{ width: `${Math.max(w, 3)}%` }} /></span>
+                    <span className="bk-n">{n}</span>
+                  </div>
+                )
+              })}
+              {bucket.long_overdue > 0 && (
+                <div className="bk-row bk-long">
+                  <span className="bk-lbl">5-Yearly <span className="dim">(separate)</span></span>
+                  <span className="bk-bar"><span className="bk-fill long" style={{ width: '100%' }} /></span>
+                  <span className="bk-n">{bucket.long_overdue}</span>
+                </div>
+              )}
+            </div>
+          )}
+          <p className="viz-insight"><a className="crumb" href="#/assets">Open the register →</a></p>
+        </section>
+
+        {/* failures per month */}
         <section className="card viz-card">
           <h2 className="viz-h">Failures per month <span className="viz-note">last 6 months</span></h2>
           {trend.length ? <TrendChart data={trend} /> : <p className="dim">No failure data.</p>}
           <p className="viz-insight"><a className="crumb" href={failHref}>Open the failures dashboard →</a></p>
         </section>
+      </div>
+
+      <div className="dash-grid">
         <section className="card viz-card">
           <h2 className="viz-h">Recent logbook <span className="viz-note">latest entries</span></h2>
           {recent.length === 0 ? <p className="dim">No entries yet.</p> : (
@@ -2370,6 +2456,16 @@ function LineDashboard({ go }) {
             </div>
           )}
           <p className="viz-insight"><a className="crumb" href="#/log">Open the log book →</a></p>
+        </section>
+        <section className="card viz-card asset-health">
+          <h2 className="viz-h">Asset health <span className="viz-note">condition flags</span></h2>
+          <div className="ah-list">
+            <a className="ah-row" href="#/assets"><span className="ah-dot bad" />Exceeded codal life<span className="ah-n">{exceeded}</span></a>
+            <a className="ah-row" href={failHref}><span className="ah-dot bad" />Open failures<span className="ah-n">{openF}</span></a>
+            <a className="ah-row" href="#/assets"><span className="ah-dot warn" />5-Yearly overhaul due<span className="ah-n">{bucket.long_overdue}</span></a>
+            <a className="ah-row" href="#/assets"><span className="ah-dot none" />Not yet scheduled<span className="ah-n">{bucket.none}</span></a>
+          </div>
+          <p className="viz-insight"><a className="crumb" href="#/assets">Open the register →</a></p>
         </section>
       </div>
 
