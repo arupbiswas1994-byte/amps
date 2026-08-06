@@ -510,6 +510,19 @@ function EditEntryForm({ entry, assets, systems, classSystem, initialResp = null
                   <option value="rectified">Rectified — fixed</option>
                 </select>
               </label>
+              {/* when rectifying a job-carded failure, keep the ISSUED job card
+                  visible as read-only context so it never appears to vanish —
+                  the rectification below is the second part that closes it */}
+              {jobIssued && progress === 'rectified' && (
+                <div className="master-fail fg-span">
+                  <span className="mf-tag">▤ Job card issued</span>
+                  <span className="mf-body">
+                    <b className="dt">{entry.job_card_by.log_date}</b>
+                    {entry.job_card_by.attended_by && <> · to <b>{entry.job_card_by.attended_by}</b></>}
+                    <div className="mf-text">{bodyText(entry.job_card_by.text)}</div>
+                  </span>
+                </div>
+              )}
               {progressActive && <>
                 <label>{isResolved ? 'Rectified on' : 'Job card dated'}
                   <input type="date" value={rDate} min={entry.log_date} readOnly={rectLocked} onChange={(e) => setRDate(e.target.value)} />
