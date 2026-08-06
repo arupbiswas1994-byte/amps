@@ -653,7 +653,8 @@ function LogRow({ en, staff }) {
   // a failure shows ALL its response logs as a timeline — acknowledged, job card
   // and rectification are independent and coexist (an acknowledged-then-fixed
   // failure keeps both). Ordered oldest-intent → fix.
-  // a job card that was rectified by US (not via the agency) was ignored/delayed
+  // a job card raised to an agency but rectified by US (not via the agency) is
+  // UNFULFILLED — a penalty against the agency (they were tasked, we did the fix)
   const jobIgnored = !!(en.job_card_by && en.resolved_by && !en.resolved_by.via_job_card)
   const responses = en.type === 'failure' ? [
     en.acknowledged_by && { kind: 'acknowledgement', ref: en.acknowledged_by },
@@ -699,7 +700,7 @@ function LogRow({ en, staff }) {
         <div key={retracted ? `rt-${ref.id}` : kind} className={`fail-resp ${rm.cls}${retracted ? ' retracted' : ''}${ignored ? ' ignored' : ''}`}>
           <span className="fr-tag">{rm.tag}</span>
           {retracted && <span className="fr-retracted">retracted</span>}
-          {ignored && <span className="fr-ignored" title="Rectified by us — the job-card agency was delayed">ignored / delayed</span>}
+          {ignored && <span className="fr-ignored" title="Job card raised to the agency but we did the fix — penalty against the agency">⚠ unfulfilled · penalty</span>}
           {ref.via_job_card && <span className="fr-via">▤ via job card</span>}
           <span className="fr-date dt">{ref.log_date}</span>
           <div className="fr-text">{tidyLog(ref.text)}</div>

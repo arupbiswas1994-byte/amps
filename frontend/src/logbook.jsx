@@ -311,6 +311,11 @@ function EditEntryForm({ entry, assets, systems, classSystem, initialResp = null
   const ackLocked = !!entry.acknowledged_by || !!entry.resolved_by
   const rectLocked = !!entry.resolved_by
   const jobIssued = !!entry.job_card_by
+  // Issuing a job card IS an acknowledgement (it is raised to the OEM/dept), so
+  // once a job card is in play the separate Acknowledged flag is redundant —
+  // hide it, UNLESS a real acknowledgement was logged before the card.
+  const jobInPlay = progress === 'job_card' || jobIssued
+  const showAck = !jobInPlay || !!entry.acknowledged_by
 
   const save = async () => {
     if (!text.trim() || busy) return
@@ -466,7 +471,7 @@ function EditEntryForm({ entry, assets, systems, classSystem, initialResp = null
             (1) the Acknowledgement — a tick plus its note; (2) the Progress —
             the job-card / rectification. Both are kept; one never becomes the
             other. */}
-        {isFail && (
+        {isFail && showAck && (
           <section className="fg fg-fail resp-group">
             <span className="fg-lbl">Acknowledgement <span className="ef-opt">— its own log{ackLocked && acknowledged ? ' · logged, locked' : ''}</span></span>
             <div className="fg-fields">
@@ -523,11 +528,14 @@ function EditEntryForm({ entry, assets, systems, classSystem, initialResp = null
                   <label className="flag-check fg-span">
                     <input type="checkbox" checked={rViaJobCard} disabled={rectLocked}
                            onChange={(e) => setRViaJobCard(e.target.checked)} />
-                    Rectified by the job-card agency
+                    Closed by the job-card agency
                     <span className="ef-opt">{rViaJobCard
-                      ? ' — the agency/OEM closed the card'
-                      : ' — we rectified it (agency delayed); the job card will show ignored/delayed'}</span>
+                      ? ' — the agency/OEM carried out the fix under the card'
+                      : ' — WE rectified it; the job card is UNFULFILLED by the agency → penalty'}</span>
                   </label>
+                )}
+                {isResolved && jobIssued && !rViaJobCard && (
+                  <p className="ef-hint fg-span-2" style={{ color: '#a32e2e' }}>⚠ Penalty flagged against the job-card agency — the card was raised but we had to do the fix ourselves.</p>
                 )}
                 {isResolved && (
                   <label className="fg-span">Consumables / consumed
