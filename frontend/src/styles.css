@@ -228,6 +228,11 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
   color: #1a7a3a; background: color-mix(in srgb, var(--good) 12%, #fff); border: 1px solid color-mix(in srgb, var(--good) 30%, transparent); }
 .jc-age.warm { color: #8a6100; background: #fdf3d9; border-color: #f0dca8; }
 .jc-age.hot { color: var(--critical); background: #fdecec; border-color: #f2d4d4; }
+/* job-card status pills — open (yellow) · closed by agency (green) · penalty (red) */
+.jc-pill { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 99px; white-space: nowrap; border: 1px solid; }
+.jc-pill.jc-open { color: #6b6000; background: #fbf7d0; border-color: #ece08a; }
+.jc-pill.jc-closed { color: #1a7a3a; background: color-mix(in srgb, var(--good) 12%, #fff); border-color: color-mix(in srgb, var(--good) 30%, transparent); }
+.jc-pill.jc-penalty { color: var(--critical); background: #fdecec; border-color: #f2d4d4; }
 
 /* unified failure sub-groups (open / acknowledged / job card / resolved) */
 .logsub { margin: 10px 0 4px; padding-left: 12px; border-left: 3px solid var(--sg, #d9d2c2); }

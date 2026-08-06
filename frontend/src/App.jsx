@@ -2514,6 +2514,7 @@ function JobCardsView({ line = '' }) {
   const { me, canWrite } = useMe()
   const [rows, setRows] = useState(null)
   const [error, setError] = useState(null)
+  const [tab, setTab] = useState('open')   // open | closed | penalty | all
   useEffect(() => {
     const lq = line ? `&line=${encodeURIComponent(line)}` : ''
     getJSON(`/api/logbook?entry_type=failure&limit=1000${lq}`)
@@ -2521,37 +2522,70 @@ function JobCardsView({ line = '' }) {
   }, [line])
   if (error) return <div className="card offline-note">Backend unreachable — {error}.</div>
   if (rows === null) return <p className="dim">Loading job cards…</p>
-  // a job card is outstanding while the failure sits at state 'job_card'
-  const daysPending = (d) => Math.max(0, Math.round((Date.now() - new Date(`${d}T00:00:00`)) / 86400000))
-  const cards = rows.filter((f) => f.state === 'job_card' && f.job_card_by)
-    .map((f) => ({ f, jc: f.job_card_by, days: daysPending(f.job_card_by.log_date) }))
-    .sort((a, b) => b.days - a.days)
+  const days = (a, b) => Math.max(0, Math.round(((b ? new Date(`${b}T00:00:00`) : Date.now()) - new Date(`${a}T00:00:00`)) / 86400000))
+  // Every failure that EVER had a job card raised (the card is kept even after
+  // rectification). Two parts tracked per card: ISSUED (job_card_by) and CLOSED
+  // (resolved_by, if any). Closure is by the agency (via_job_card) or by us — the
+  // latter meaning the card went UNFULFILLED → a penalty against the agency.
+  const cards = rows.filter((f) => f.job_card_by).map((f) => {
+    const jc = f.job_card_by, rb = f.resolved_by
+    const status = !rb ? 'open' : (rb.via_job_card ? 'closed' : 'penalty')
+    return { f, jc, rb, status, age: days(jc.log_date, rb ? rb.log_date : null) }
+  })
+  const open = cards.filter((c) => c.status === 'open')
+  const closed = cards.filter((c) => c.status === 'closed')
+  const penalty = cards.filter((c) => c.status === 'penalty')
+  const TABS = [['open', 'Open', open], ['penalty', 'Penalty', penalty], ['closed', 'Closed', closed], ['all', 'All', cards]]
+  const shown = (TABS.find(([k]) => k === tab)?.[2] || cards)
+    .slice().sort((a, b) => tab === 'open' ? b.age - a.age : (b.jc.log_date < a.jc.log_date ? -1 : 1))
+  // avg turnaround of closed cards (raised→closed), for the chase metric
+  const doneCards = [...closed, ...penalty]
+  const avgTurn = doneCards.length ? Math.round(doneCards.reduce((s, c) => s + c.age, 0) / doneCards.length) : null
   const line_ = me?.line || ''
+  const STL = { open: ['jc-open', 'Open'], closed: ['jc-closed', 'Closed by agency'], penalty: ['jc-penalty', 'Penalty — we fixed it'] }
   return (
     <>
       <div className="page-head"><h1>Job cards {line_ && <span className="dim">· {line_}</span>}</h1></div>
-      <p className="dim" style={{ marginTop: -6 }}>Failures with a job card raised to an agency/department, still awaiting close-out — oldest first.</p>
-      {cards.length === 0 ? (
-        <div className="card"><p className="dim" style={{ margin: 0 }}>No open job cards — nothing to chase. 👍</p></div>
+      <p className="dim" style={{ marginTop: -6 }}>Job cards raised to an agency/department, tracked from issue to close-out.</p>
+
+      <div className="kpis dash-kpis" style={{ marginBottom: 14 }}>
+        <div className={`tile${open.length ? ' alert' : ''}`}><div className="v">{open.length}</div><div className="k">Open</div><div className="note">awaiting close-out</div></div>
+        <div className={`tile${penalty.length ? ' warn' : ''}`}><div className="v">{penalty.length}</div><div className="k">Penalty</div><div className="note">we fixed — agency default</div></div>
+        <div className="tile ok"><div className="v">{closed.length}</div><div className="k">Closed by agency</div><div className="note">fulfilled</div></div>
+        <div className="tile"><div className="v">{avgTurn != null ? `${avgTurn}d` : '—'}</div><div className="k">Avg turnaround</div><div className="note">raised → closed</div></div>
+      </div>
+
+      <div className="asset-filter" role="tablist" aria-label="Job card status" style={{ marginBottom: 10 }}>
+        {TABS.map(([k, lbl, list]) => (
+          <button key={k} type="button" className={`btn preset ${tab === k ? 'active' : ''}${k === 'open' && open.length ? ' has-od' : ''}`}
+                  onClick={() => setTab(k)}>{lbl} {list.length}</button>
+        ))}
+      </div>
+
+      {shown.length === 0 ? (
+        <div className="card"><p className="dim" style={{ margin: 0 }}>{tab === 'open' ? 'No open job cards — nothing to chase. 👍' : 'None in this view.'}</p></div>
       ) : (
         <div className="card tbl-wrap">
           <table>
-            <thead><tr><th>Pending</th><th>Asset</th><th>Fault</th><th>Issued to</th><th>Raised</th><th>Job card detail</th>{canWrite && <th aria-label="Action"></th>}</tr></thead>
+            <thead><tr><th>{tab === 'open' ? 'Pending' : 'Turnaround'}</th><th>Status</th><th>Asset</th><th>Fault</th><th>Issued to</th><th>Raised</th><th>Closed</th><th>Job card detail</th>{canWrite && <th aria-label="Action"></th>}</tr></thead>
             <tbody>
-              {cards.map(({ f, jc, days }) => (
+              {shown.map(({ f, jc, rb, status, age }) => (
                 <tr key={f.id} tabIndex={0}
                     onClick={() => f.asset_code && (location.hash = `/asset/${f.asset_code}`)}
                     onKeyDown={(e) => e.key === 'Enter' && f.asset_code && (location.hash = `/asset/${f.asset_code}`)}>
-                  <td data-l="Pending"><span className={`jc-age${days >= 30 ? ' hot' : days >= 14 ? ' warm' : ''}`}>{days}d</span></td>
+                  <td data-l="Age"><span className={`jc-age${status === 'open' && age >= 30 ? ' hot' : status === 'open' && age >= 14 ? ' warm' : ''}`}>{age}d</span></td>
+                  <td data-l="Status"><span className={`jc-pill ${STL[status][0]}`}>{STL[status][1]}</span></td>
                   <td className="code" data-l="Asset">{f.asset_code || '—'}</td>
-                  <td className="wrap-cell" data-l="Fault">{f.fault_type ? <b>{f.fault_type}</b> : tidyLog(f.text).slice(0, 50)}</td>
+                  <td className="wrap-cell" data-l="Fault">{f.fault_type ? <b>{f.fault_type}</b> : tidyLog(f.text).slice(0, 44)}</td>
                   <td className="dim" data-l="Issued to">{jc.attended_by || '—'}</td>
                   <td className="dim dt" data-l="Raised">{jc.log_date}</td>
+                  <td className="dim dt" data-l="Closed">{rb ? rb.log_date : '—'}</td>
                   <td className="wrap-cell" data-l="Detail">{tidyLog(jc.text)}</td>
                   {canWrite && (
                     <td className="td-edit" data-l="Action">
-                      <a className="fa-btn fa-rect" href={`#/log?d=${f.log_date}&edit=${f.id}&resp=rectification`}
-                         onClick={(e) => e.stopPropagation()}>✓ Rectify / close</a>
+                      {status === 'open'
+                        ? <a className="fa-btn fa-rect" href={`#/log?d=${f.log_date}&edit=${f.id}&resp=rectification`} onClick={(e) => e.stopPropagation()}>✓ Rectify / close</a>
+                        : <EditLink id={f.id} date={f.log_date} label="Open in log book" />}
                     </td>
                   )}
                 </tr>
