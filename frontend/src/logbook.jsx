@@ -757,13 +757,15 @@ export default function LogBook({ editId = null, focusDate = null, initialResp =
   const [tim, setTim] = useState('')               // optional HH:MM
   const [faultType, setFaultType] = useState('')   // failures: fault class
   const [team, setTeam] = useState('')             // crew that did the work
-  // A failure is logged either still-open or already-rectified. Rectified
-  // expands a second row that becomes its own log entry — the fix keeps its
-  // own date, time and shift, because a night breakdown fixed next morning
-  // belongs to the morning shift that fixed it, not to the night that broke.
-  // Defaults to OPEN on purpose: a form that assumes the fix has happened
-  // invites logging work that hasn't.
-  const [rectified, setRectified] = useState(false)
+  // ONE failure form spans the whole lifecycle so the separate acknowledgement /
+  // job-card / rectification logs need not be filed by hand. Two independent axes,
+  // exactly like the edit screen: an acknowledged flag+note, and a fix `aProgress`
+  // (open · job_card · rectified) with its own dated log. All chosen here are
+  // filed together via the resolution endpoint. Defaults to OPEN on purpose: a
+  // form that assumes the fix has happened invites logging work that hasn't.
+  const [aProgress, setAProgress] = useState('open')   // open | job_card | rectified
+  const [acked, setAcked] = useState(false)            // acknowledged flag
+  const [ackText, setAckText] = useState('')           // acknowledgement note
   const [rDate, setRDate] = useState('')
   const [rTim, setRTim] = useState('')
   const [rShift, setRShift] = useState('G')
@@ -933,6 +935,8 @@ export default function LogBook({ editId = null, focusDate = null, initialResp =
   const add = async (e) => {
     e.preventDefault()
     if (!text.trim() || busy) return
+    // combined failure form: an acknowledgement needs its note
+    if (type === 'failure' && acked && !ackText.trim()) { setErr('Add the acknowledgement note (or untick Acknowledged).'); return }
     setBusy(true)
     setErr('')
     try {
@@ -956,41 +960,57 @@ export default function LogBook({ editId = null, focusDate = null, initialResp =
           // a response (rectification / acknowledgement / job card) links to a
           // specific open failure of the asset
           rectifies_id: RESPONSE_TYPES.includes(type) && rectifiesId ? Number(rectifiesId) : null,
-          // one submit, two immutable entries — the backend commits them together.
-          // the rectification carries its own fault, consumables and narrative.
-          rectification: type === 'failure' && rectified ? {
-            log_date: rDate || logDate,
-            time: rTim || null,
-            shift: rShift,
-            type: 'rectification',
-            system: system || null,
-            category: category || null,
-            asset_code: assetCode.trim() || null,
-            fault_type: (rFaultType.trim() || faultType.trim() || null),
-            consumables: rConsumables.trim() || null,
-            text: (rText.trim() || 'Rectified'),
-            entered_by: author.trim() || 'demo.visitor',
-            attended_by: rTeam.trim() || team.trim() || null,
-          } : null,
+          // the failure's response (ack / job card / rectification) is reconciled
+          // in a SECOND call below via the resolution endpoint — not nested here
+          rectification: null,
         }),
       })
       if (!res.ok) {
         const body = await res.json().catch(() => null)
         throw new Error(body?.detail || `HTTP ${res.status}`)
       }
-      // upload any staged checksheet scans/photos to the freshly-created entry
-      if (attachFiles.length) {
-        const created = await res.json().catch(() => null)
-        if (created?.id) {
-          for (const f of attachFiles) {
-            const fd = new FormData(); fd.append('file', f)
-            await fetch(`${API}/api/logbook/${created.id}/attachments`, { method: 'POST', body: fd }).catch(() => {})
-          }
+      const created = await res.json().catch(() => null)
+      // Combined failure form → file the acknowledgement and/or fix as linked
+      // logs in one reconciling call. The scan then attaches to the response
+      // it belongs to (job card / rectification) so it shows on those boards.
+      let attachTarget = created?.id
+      if (type === 'failure' && created?.id && (acked || aProgress !== 'open')) {
+        const rr = await fetch(`${API}/api/logbook/${created.id}/resolution`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            acknowledged: acked,
+            ack: acked ? { date: logDate, time: tim || null, text: ackText.trim(),
+                           attended_by: team.trim() || null } : null,
+            progress: aProgress,
+            detail: aProgress !== 'open' ? {
+              date: rDate || logDate, time: rTim || null,
+              text: rText.trim() || (aProgress === 'rectified' ? 'Rectified' : 'Job card issued'),
+              fault_type: rFaultType.trim() || faultType.trim() || null,
+              attended_by: rTeam.trim() || team.trim() || null,
+              consumables: aProgress === 'rectified' ? (rConsumables.trim() || null) : null,
+            } : null,
+          }),
+        })
+        if (!rr.ok) {
+          const body = await rr.json().catch(() => null)
+          throw new Error(body?.detail || `response HTTP ${rr.status}`)
+        }
+        const failOut = await rr.json().catch(() => null)
+        const resp = aProgress === 'rectified' ? failOut?.resolved_by
+          : aProgress === 'job_card' ? failOut?.job_card_by : null
+        if (resp?.id) attachTarget = resp.id
+      }
+      // upload any staged checksheet scans/photos to the right entry
+      if (attachFiles.length && attachTarget) {
+        for (const f of attachFiles) {
+          const fd = new FormData(); fd.append('file', f)
+          await fetch(`${API}/api/logbook/${attachTarget}/attachments`, { method: 'POST', body: fd }).catch(() => {})
         }
       }
       setText(''); setConsumables(''); setAttachFiles([]); setAssetCode(''); setTim(''); setFaultType(''); setSystem('')
       setRectifiesId(''); setOpenFails([])
-      setRectified(false); setRDate(''); setRTim(''); setRText(''); setRTeam(''); setRConsumables(''); setRFaultType('')
+      setAProgress('open'); setAcked(false); setAckText('')
+      setRDate(''); setRTim(''); setRText(''); setRTeam(''); setRConsumables(''); setRFaultType('')
       setTeam('')
       setAllDates(false)  // show the day just written to
       await load()
@@ -1130,10 +1150,14 @@ export default function LogBook({ editId = null, focusDate = null, initialResp =
                     {ENTRY_SHIFTS.map((s) => <option key={s} value={s}>{s} — {SHIFT_LABEL[s]}</option>)}
                   </select>
                 </label>
+                {/* the failure form now spans the whole lifecycle, so the standalone
+                    acknowledgement / job-card / rectification types are gone from the
+                    add form — a new failure's response is filed right here; an
+                    existing failure's response is filed by editing that failure. */}
                 <label>Type
                   <select value={type}
                           onChange={(e) => { setType(e.target.value); if (e.target.value === 'maintenance') setShift('N') }}>
-                    {ENTRY_TYPES.map((t) => <option key={t} value={t}>{TYPE_LABEL[t] || t}</option>)}
+                    {['maintenance', 'failure', 'general'].map((t) => <option key={t} value={t}>{TYPE_LABEL[t] || t}</option>)}
                   </select>
                 </label>
                 {type === 'maintenance' && (
@@ -1144,10 +1168,11 @@ export default function LogBook({ editId = null, focusDate = null, initialResp =
                   </label>
                 )}
                 {type === 'failure' && (
-                  <label>State
-                    <select value={rectified ? 'rectified' : 'open'}
-                            onChange={(e) => { const on = e.target.value === 'rectified'; setRectified(on); if (on && !rDate) setRDate(logDate) }}>
+                  <label>Progress
+                    <select value={aProgress}
+                            onChange={(e) => { const v = e.target.value; setAProgress(v); if (v !== 'open' && !rDate) setRDate(logDate) }}>
                       <option value="open">Still open</option>
+                      <option value="job_card">Job card issued</option>
                       <option value="rectified">Rectified</option>
                     </select>
                   </label>
@@ -1241,46 +1266,52 @@ export default function LogBook({ editId = null, focusDate = null, initialResp =
             )}
           </div>
 
-          {/* rectification, filed as its own entry — shown when a failure is logged
-              already-fixed. A full rectification entry (own date/time/crew, the
-              fault it addressed, what was done, and the consumables it used). */}
-          {type === 'failure' && rectified && (
+          {/* combined failure response: acknowledgement (independent flag) and the
+              fix progress (job card / rectification), each filed as its own linked
+              log via the resolution endpoint — no separate entry types to juggle. */}
+          {type === 'failure' && (
             <div className="ef-rect">
-              <span className="ef-sublbl">Rectification — the fix, filed as a second entry that closes this failure</span>
+              <span className="ef-sublbl">Response <span className="ef-opt">— acknowledgement &amp; fix, each filed as its own linked log</span></span>
               <div className="fg-fields">
-                <label>Rectified on
-                  <input type="date" value={rDate} onChange={(e) => setRDate(e.target.value)} />
+                <label className="fg-span ef-check">
+                  <input type="checkbox" checked={acked} onChange={(e) => setAcked(e.target.checked)} />
+                  Acknowledged — demand raised / noted (does not resolve the failure)
                 </label>
-                <label>Rectified at
-                  <TimeInput value={rTim} onChange={setRTim} label="Rectified at" />
-                </label>
-                <label>Shift
-                  <select value={rShift} onChange={(e) => setRShift(e.target.value)}>
-                    {ENTRY_SHIFTS.map((s) => <option key={s} value={s}>{s} — {SHIFT_LABEL[s]}</option>)}
-                  </select>
-                </label>
-                <label>Team
-                  <input value={rTeam} onChange={(e) => setRTeam(e.target.value)} placeholder="crew" />
-                </label>
-                <label className="fg-span-2">Fault addressed <span className="ef-opt">(optional)</span>
-                  <input value={rFaultType} onChange={(e) => setRFaultType(e.target.value)}
-                         placeholder={faultType || 'e.g. DC earth fault'} />
-                </label>
-                <label className="fg-span">Consumables / consumed <span className="ef-opt">(optional)</span>
-                  <input value={rConsumables} onChange={(e) => setRConsumables(e.target.value)}
-                         placeholder="spares / materials used in the fix — e.g. 2× PT fuse" />
-                </label>
-                <label className="fg-span">What was done
-                  <input value={rText} onChange={(e) => setRText(e.target.value)}
-                         placeholder="what was done to rectify it…" />
-                </label>
+                {acked && (
+                  <label className="fg-span">Acknowledgement note
+                    <input value={ackText} onChange={(e) => setAckText(e.target.value)}
+                           placeholder="e.g. spare not in stock; demand raised to stores, mail sent" />
+                  </label>
+                )}
+                {aProgress !== 'open' && (<>
+                  <label>{aProgress === 'rectified' ? 'Rectified on' : 'Job card date'}
+                    <input type="date" value={rDate} onChange={(e) => setRDate(e.target.value)} />
+                  </label>
+                  <label>{aProgress === 'rectified' ? 'Rectified at' : 'Issued at'} <span className="ef-opt">(optional)</span>
+                    <TimeInput value={rTim} onChange={setRTim} label={aProgress === 'rectified' ? 'Rectified at' : 'Issued at'} />
+                  </label>
+                  <label>{aProgress === 'rectified' ? 'Team' : 'Issued to'}
+                    <input value={rTeam} onChange={(e) => setRTeam(e.target.value)}
+                           placeholder={aProgress === 'rectified' ? 'crew that fixed it' : 'agency / department'} />
+                  </label>
+                  {aProgress === 'rectified' && (
+                    <label className="fg-span-2">Consumables / consumed <span className="ef-opt">(optional)</span>
+                      <input value={rConsumables} onChange={(e) => setRConsumables(e.target.value)}
+                             placeholder="spares / materials used in the fix — e.g. 2× PT fuse" />
+                    </label>
+                  )}
+                  <label className="fg-span">{aProgress === 'rectified' ? 'What was done' : 'Job card detail'}
+                    <input value={rText} onChange={(e) => setRText(e.target.value)}
+                           placeholder={aProgress === 'rectified' ? 'what was done to rectify it…' : 'e.g. issued to M/s Siemens to replace the comm card'} />
+                  </label>
+                </>)}
               </div>
             </div>
           )}
 
           <div className="ef-actions">
             <button className="btn" type="submit" disabled={busy || apiOk === false || !text.trim()}>
-              {busy ? 'Adding…' : rectified && type === 'failure' ? 'Add both entries' : 'Add entry'}
+              {busy ? 'Adding…' : type === 'failure' && (acked || aProgress !== 'open') ? 'Add failure + response' : 'Add entry'}
             </button>
             {err && <span className="import-msg err">{err}</span>}
           </div>
