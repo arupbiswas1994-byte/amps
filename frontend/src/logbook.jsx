@@ -1209,13 +1209,16 @@ export default function LogBook({ editId = null, focusDate = null, initialResp =
                       : <select value={rectifiesId} onChange={(e) => setRectifiesId(e.target.value)}>
                           <option value="">{openFails.length
                             ? (type === 'rectification' ? '— select the breakdown this fixes —' : '— select the breakdown this responds to —')
-                            : 'no open failures on this asset'}</option>
+                            : (type === 'job_card' ? '— none open · a failure will be auto-raised —' : 'no open failures on this asset')}</option>
                           {openFails.map((f) => (
                             <option key={f.id} value={f.id}>
                               {f.log_date}{f.fault_type ? ` · ${f.fault_type}` : ''} — {bodyText(f.text).slice(0, 60)}
                             </option>
                           ))}
                         </select>}
+                    {type === 'job_card' && assetCode.trim() && !openFails.length && (
+                      <span className="ef-hint">No open failure on this asset — issuing the job card raises one automatically and tags the card to it.</span>
+                    )}
                   </label>
                 )}
                 {/* a failure/acknowledgement/job-card consumes nothing — the

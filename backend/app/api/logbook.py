@@ -338,9 +338,63 @@ def _system_of(asset) -> str | None:
     return (asset.system[:80] if asset and asset.system else None)
 
 
+def _latest_open_failure(db: Session, asset_id: int, user) -> LogEntry | None:
+    """The asset's most recent still-open failure (current head, not resolved),
+    line-scoped — the failure a freshly-issued job card should attach to."""
+    q = select(LogEntry).where(LogEntry.type == LogEntryType.FAILURE,
+                               LogEntry.asset_id == asset_id)
+    if user.line_id is not None:
+        q = q.where((LogEntry.line_id == user.line_id) | (LogEntry.line_id.is_(None)))
+    heads = _drop_superseded(db, db.scalars(q).all())
+    rec = _recovery_map(db, heads)
+    opens = [e for e in heads if e.ended_at is None and e.id not in rec]
+    return max(opens, key=lambda e: (e.log_date, e.at, e.id)) if opens else None
+
+
+def _auto_failure_in(jc: LogEntryIn) -> LogEntryIn:
+    """The failure implicitly raised when a job card is issued on an asset that
+    has none open — same asset/date, the job card's fault class carried over."""
+    fault = (jc.fault_type or "").strip() or "Reported on job card"
+    return LogEntryIn(
+        log_date=jc.log_date, time=jc.time, shift=jc.shift, type="failure",
+        asset_code=jc.asset_code, system=jc.system, category=jc.category,
+        fault_type=fault, attended_by=jc.attended_by,
+        text=f"Failure auto-raised on job-card issue — {fault}",
+    )
+
+
 @router.post("", response_model=LogEntryOut, status_code=201)
 def add_entry(entry: LogEntryIn, db: Session = Depends(get_db), user=Depends(current_writer)):
-    obj = _create_entry(db, entry, user)
+    etype = LogEntryType(entry.type)
+    # A job card is always tracked against a failure. Issued directly on an asset,
+    # it attaches to that asset's open failure; when none is open the failure is
+    # raised automatically and the card tagged to it — so a job card never floats
+    # free of a failure (it would then be invisible to the failure/job-card boards).
+    link_failure = auto_failure = None
+    create_in = entry
+    if etype == LogEntryType.JOB_CARD and entry.asset_code:
+        asset = visible_asset(db, entry.asset_code, user)
+        if entry.rectifies_id is not None:
+            link_failure = db.get(LogEntry, entry.rectifies_id)
+            if not link_failure or link_failure.type != LogEntryType.FAILURE:
+                raise HTTPException(422, "job card target must be a failure")
+        else:
+            link_failure = _latest_open_failure(db, asset.id, user)
+            if link_failure is None:
+                auto_failure = _create_entry(db, _auto_failure_in(entry), user)
+                link_failure = auto_failure
+        # the link is set below by hand — a job card can't ride _create_entry's
+        # rectifies path (that's rectification-only)
+        create_in = entry.model_copy(update={"rectifies_id": None, "rectification": None})
+
+    obj = _create_entry(db, create_in, user)
+    if link_failure is not None:
+        obj.rectifies_id = link_failure.id
+        db.flush()
+        audit(db, "log_entry", obj.id, "linked",
+              detail=(f"job_card->failure {link_failure.id}"
+                      + (" (auto-raised)" if auto_failure else "")), actor=user.username)
+
     # A failure logged as already-rectified files BOTH rows in one transaction:
     # a half-written breakdown (failure with no fix, or a fix with no failure)
     # is worse than either outcome, so they commit together or not at all.
