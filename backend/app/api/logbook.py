@@ -351,40 +351,47 @@ def _latest_open_failure(db: Session, asset_id: int, user) -> LogEntry | None:
     return max(opens, key=lambda e: (e.log_date, e.at, e.id)) if opens else None
 
 
-def _auto_failure_in(jc: LogEntryIn) -> LogEntryIn:
-    """The failure implicitly raised when a job card is issued on an asset that
-    has none open — same asset/date, the job card's fault class carried over."""
-    fault = (jc.fault_type or "").strip() or "Reported on job card"
+def _auto_failure_in(resp: LogEntryIn) -> LogEntryIn:
+    """The failure implicitly raised when a job card or a rectification is filed
+    on an asset that has none open — same asset/date, the response's fault class
+    carried over. A rectification then closes it immediately (failure + its fix)."""
+    kind = "rectification" if resp.type == "rectification" else "job-card issue"
+    fault = (resp.fault_type or "").strip() or "Reported on " + (
+        "rectification" if resp.type == "rectification" else "job card")
     return LogEntryIn(
-        log_date=jc.log_date, time=jc.time, shift=jc.shift, type="failure",
-        asset_code=jc.asset_code, system=jc.system, category=jc.category,
-        fault_type=fault, attended_by=jc.attended_by,
-        text=f"Failure auto-raised on job-card issue — {fault}",
+        log_date=resp.log_date, time=resp.time, shift=resp.shift, type="failure",
+        asset_code=resp.asset_code, system=resp.system, category=resp.category,
+        fault_type=fault, attended_by=resp.attended_by,
+        text=f"Failure auto-raised on {kind} — {fault}",
     )
+
+
+# responses filed directly that must always hang off a tracked failure
+_AUTO_FAILURE_KINDS = (LogEntryType.JOB_CARD, LogEntryType.RECTIFICATION)
 
 
 @router.post("", response_model=LogEntryOut, status_code=201)
 def add_entry(entry: LogEntryIn, db: Session = Depends(get_db), user=Depends(current_writer)):
     etype = LogEntryType(entry.type)
-    # A job card is always tracked against a failure. Issued directly on an asset,
-    # it attaches to that asset's open failure; when none is open the failure is
-    # raised automatically and the card tagged to it — so a job card never floats
-    # free of a failure (it would then be invisible to the failure/job-card boards).
+    # A job card or a rectification is always tracked against a failure. Filed
+    # directly on an asset, it attaches to that asset's open failure; when none is
+    # open the failure is raised automatically and the response tagged to it — so
+    # neither ever floats free of a failure (invisible to the failure/job-card
+    # boards). A rectification with no open failure thus files failure + fix together.
     link_failure = auto_failure = None
     create_in = entry
-    if etype == LogEntryType.JOB_CARD and entry.asset_code:
+    if etype in _AUTO_FAILURE_KINDS and entry.asset_code:
         asset = visible_asset(db, entry.asset_code, user)
         if entry.rectifies_id is not None:
             link_failure = db.get(LogEntry, entry.rectifies_id)
             if not link_failure or link_failure.type != LogEntryType.FAILURE:
-                raise HTTPException(422, "job card target must be a failure")
+                raise HTTPException(422, "response target must be a failure")
         else:
             link_failure = _latest_open_failure(db, asset.id, user)
             if link_failure is None:
                 auto_failure = _create_entry(db, _auto_failure_in(entry), user)
                 link_failure = auto_failure
-        # the link is set below by hand — a job card can't ride _create_entry's
-        # rectifies path (that's rectification-only)
+        # the link is set below by hand so both kinds go through one path
         create_in = entry.model_copy(update={"rectifies_id": None, "rectification": None})
 
     obj = _create_entry(db, create_in, user)
@@ -392,7 +399,7 @@ def add_entry(entry: LogEntryIn, db: Session = Depends(get_db), user=Depends(cur
         obj.rectifies_id = link_failure.id
         db.flush()
         audit(db, "log_entry", obj.id, "linked",
-              detail=(f"job_card->failure {link_failure.id}"
+              detail=(f"{etype.value}->failure {link_failure.id}"
                       + (" (auto-raised)" if auto_failure else "")), actor=user.username)
 
     # A failure logged as already-rectified files BOTH rows in one transaction:
