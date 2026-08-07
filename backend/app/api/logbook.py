@@ -353,16 +353,16 @@ def _latest_open_failure(db: Session, asset_id: int, user) -> LogEntry | None:
 
 def _auto_failure_in(resp: LogEntryIn) -> LogEntryIn:
     """The failure implicitly raised when a job card or a rectification is filed
-    on an asset that has none open — same asset/date, the response's fault class
-    carried over. A rectification then closes it immediately (failure + its fix)."""
-    kind = "rectification" if resp.type == "rectification" else "job-card issue"
-    fault = (resp.fault_type or "").strip() or "Reported on " + (
-        "rectification" if resp.type == "rectification" else "job card")
+    on an asset that has none open. It INHERITS the response's own details — fault
+    class, narrative, crew, date — so the failure carries the real description
+    rather than a placeholder. A rectification then closes it at once (failure +
+    its fix). The details come straight from the log entry being written."""
     return LogEntryIn(
         log_date=resp.log_date, time=resp.time, shift=resp.shift, type="failure",
         asset_code=resp.asset_code, system=resp.system, category=resp.category,
-        fault_type=fault, attended_by=resp.attended_by,
-        text=f"Failure auto-raised on {kind} — {fault}",
+        fault_type=(resp.fault_type or "").strip() or None,
+        attended_by=resp.attended_by,
+        text=resp.text,
     )
 
 
