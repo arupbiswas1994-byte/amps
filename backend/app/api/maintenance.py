@@ -15,8 +15,8 @@ from app.api.auth import current_user, optional_user, scope_location_ids
 from app.db import audit, get_db
 from app.engine import (SCHEDULE_FREQ, build_schedule, next_due, overdue_days,
                         priority_score, summarize_schedule)
-from app.models import (Asset, LogEntry, LogEntryType, PMPlan, PMSchedule,
-                        WorkOrder, WorkOrderStatus, WorkOrderType)
+from app.models import (Asset, AssetStatus, LogEntry, LogEntryType, PMPlan,
+                        PMSchedule, WorkOrder, WorkOrderStatus, WorkOrderType)
 
 router = APIRouter()
 
@@ -56,9 +56,14 @@ def schedule_all(db: Session = Depends(get_db), user=Depends(optional_user)):
     ids = set(log_by) | set(plan_freqs)
     code_by, line_by = {}, {}
     if ids:
+        # Decommissioned assets are out of service for good — they must not count
+        # as overdue/due in the schedule statistics, even with historical logs.
         for a in db.scalars(select(Asset).where(Asset.id.in_(ids))).all():
+            if a.status == AssetStatus.DECOMMISSIONED:
+                continue
             code_by[a.id] = a.code
             line_by[a.id] = a.location.parent.name if a.location and a.location.parent else None
+        ids &= set(code_by)
     out = []
     for aid in ids:
         log_dates, seeds = log_by.get(aid, {}), plan_seeds.get(aid, {})

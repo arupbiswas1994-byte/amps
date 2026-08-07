@@ -2337,7 +2337,8 @@ function TagSheet() {
 /* ---------- home dashboard (signed-in landing) ---------- */
 
 function LineDashboard({ go }) {
-  const { assets, sched, openFail, loading } = useLiveAssets()
+  const { assets: allAssets, sched, openFail, loading } = useLiveAssets()
+  const assets = allAssets.filter((a) => a.status !== 'decommissioned') // out of service for good — not counted
   const { me } = useMe()
   const [stats, setStats] = useState(null)
   const [recent, setRecent] = useState([])
@@ -2754,7 +2755,8 @@ const Ribbon = ({ lines }) => {
    Everything here is an aggregate figure — no fault text, no crew — so it needs
    no sign-in. */
 function useNetworkGlance() {
-  const { assets, sched, loading } = useLiveAssets()
+  const { assets: allAssets, sched, loading } = useLiveAssets()
+  const assets = allAssets.filter((a) => a.status !== 'decommissioned') // out of service for good — not counted
   const [fail, setFail] = useState(null)
   useEffect(() => {
     getJSON('/api/logbook/failure-stats?days=180&months=6').then(setFail).catch(() => setFail({}))
