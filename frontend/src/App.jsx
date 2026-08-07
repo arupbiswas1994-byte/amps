@@ -12,7 +12,7 @@ import {
 import { LIVE, ORG, getJSON, useLiveAssets, useLiveAsset, useMe, apiLogin, apiLogout } from './api.js'
 import QR, { assetUrl } from './qr.jsx'
 import DutyRoster from './roster.jsx'
-import LogBook from './logbook.jsx'
+import LogBook, { AttachmentUpload } from './logbook.jsx'
 
 const STATUS_LABEL = {
   in_service: 'In service',
@@ -2600,7 +2600,20 @@ function JobCardsView({ line = '' }) {
                   <td className="dim" data-l="Issued to">{jc.attended_by || '—'}</td>
                   <td className="dim dt" data-l="Raised">{jc.log_date}</td>
                   <td className="dim dt" data-l="Closed">{rb ? rb.log_date : '—'}</td>
-                  <td className="wrap-cell" data-l="Detail">{tidyLog(jc.text)}</td>
+                  <td className="wrap-cell" data-l="Detail">
+                    {tidyLog(jc.text)}
+                    <div className="jc-scan" onClick={(e) => e.stopPropagation()}>
+                      {canWrite
+                        ? <AttachmentUpload entryId={jc.id} existing={jc.attachments || []} label="Job card scan — photo or PDF" />
+                        : <AttachmentView items={jc.attachments} />}
+                    </div>
+                    {rb && (rb.attachments?.length > 0) && (
+                      <div className="jc-scan jc-scan-close" onClick={(e) => e.stopPropagation()}>
+                        <span className="fg-lbl">Closure proof</span>
+                        <AttachmentView items={rb.attachments} />
+                      </div>
+                    )}
+                  </td>
                   {canWrite && (
                     <td className="td-edit" data-l="Action">
                       {status === 'open'

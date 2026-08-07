@@ -50,7 +50,7 @@ const attUrl = (id) => `${API}/api/logbook/attachments/${id}`
    - entryId given (edit form): uploads immediately to that entry.
    - no entryId (add form): stages the (already-compressed) files; the parent
      uploads them after the entry is created, via `staged`/`onStaged`. */
-function AttachmentUpload({ entryId, existing = [], staged = [], onStaged, label = 'Checksheet — photo or PDF' }) {
+export function AttachmentUpload({ entryId, existing = [], staged = [], onStaged, label = 'Checksheet — photo or PDF' }) {
   const [items, setItems] = useState(existing)   // uploaded AttachmentRefs (edit mode)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')

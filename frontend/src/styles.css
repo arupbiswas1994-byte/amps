@@ -234,6 +234,12 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 .jc-pill.jc-closed { color: #1a7a3a; background: color-mix(in srgb, var(--good) 12%, #fff); border-color: color-mix(in srgb, var(--good) 30%, transparent); }
 .jc-pill.jc-penalty { color: var(--critical); background: #fdecec; border-color: #f2d4d4; }
 
+/* job-card board: inline scan uploader / closure proof inside the detail cell */
+.jc-scan { margin-top: 8px; }
+.jc-scan .att-fill { margin: 0; }
+.jc-scan .fg-lbl { font-size: 11px; }
+.jc-scan-close { padding-top: 6px; border-top: 1px dashed var(--line, #e4ddcd); }
+
 /* unified failure sub-groups (open / acknowledged / job card / resolved) */
 .logsub { margin: 10px 0 4px; padding-left: 12px; border-left: 3px solid var(--sg, #d9d2c2); }
 .logsub-open { --sg: var(--critical); }
