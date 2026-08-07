@@ -611,6 +611,24 @@ const tidyLog = (t = '') => t
 
 /* One entry row, shared by both history sections. The asset class is constant
    for this asset (it's in the facts grid), so it's not repeated on every row. */
+/* uploaded checksheet scans / photos / PDFs on a log entry — thumbnails/links */
+const ATT_URL = (id) => `${import.meta.env.VITE_AMPS_API ?? ''}/api/logbook/attachments/${id}`
+function AttachmentView({ items }) {
+  if (!items?.length) return null
+  return (
+    <div className="att-view" onClick={(e) => e.stopPropagation()}>
+      {items.map((a) => (
+        <a key={a.id} href={ATT_URL(a.id)} target="_blank" rel="noreferrer" className="att-chip" title={a.filename}>
+          {(a.mime || '').startsWith('image/')
+            ? <img src={ATT_URL(a.id)} alt={a.filename} loading="lazy" />
+            : <span className="att-chip-pdf">PDF</span>}
+          <span className="att-chip-name">▤ {a.filename}</span>
+        </a>
+      ))}
+    </div>
+  )
+}
+
 /* a filled structured checksheet, shown collapsed with a pass/total summary */
 const CS_GLYPH = { pass: '✓', fail: '✕', na: '–' }
 function ChecksheetView({ cs }) {
@@ -689,6 +707,7 @@ function LogRow({ en, staff }) {
       <div className="findings">{tidyLog(en.text)}</div>
       {en.consumables && <div className="le-consumables"><span className="lc-tag">Consumed</span> {en.consumables}</div>}
       {en.checksheet && <ChecksheetView cs={en.checksheet} />}
+      <AttachmentView items={en.attachments} />
       {(en.attended_by || en.entered_by) && (
         <div className="sub">by <b>{en.attended_by || en.entered_by}</b>
           {en.attended_by && en.attended_by !== en.entered_by && <> · recorded by {en.entered_by}</>}
@@ -706,6 +725,7 @@ function LogRow({ en, staff }) {
           <div className="fr-text">{tidyLog(ref.text)}</div>
           {ref.consumables && <div className="le-consumables"><span className="lc-tag">Consumed</span> {ref.consumables}</div>}
           {ref.checksheet && <ChecksheetView cs={ref.checksheet} />}
+          <AttachmentView items={ref.attachments} />
           {ref.attended_by && <div className="sub">by <b>{ref.attended_by}</b></div>}
         </div>
         )

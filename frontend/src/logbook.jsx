@@ -22,6 +22,101 @@ function TimeInput({ value, onChange, className = '', label = 'Time (optional)' 
 
 const API = import.meta.env.VITE_AMPS_API ?? ''
 
+/* Compress a photo before upload: downscale to maxDim, grayscale, JPEG q — a
+   legible A4 checksheet drops from ~3 MB to ~150 KB, so the free off-box backup
+   holds years of scans. PDFs pass through (already a document). */
+async function compressImage(file, maxDim = 1700, quality = 0.72) {
+  if (!file.type.startsWith('image/')) return file
+  try {
+    const img = await createImageBitmap(file)
+    const scale = Math.min(1, maxDim / Math.max(img.width, img.height))
+    const w = Math.round(img.width * scale), h = Math.round(img.height * scale)
+    const canvas = document.createElement('canvas')
+    canvas.width = w; canvas.height = h
+    const ctx = canvas.getContext('2d')
+    ctx.filter = 'grayscale(1)'
+    ctx.drawImage(img, 0, 0, w, h)
+    const blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', quality))
+    if (!blob || blob.size >= file.size) return file   // no gain → keep original
+    return new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' })
+  } catch { return file }
+}
+
+const humanSize = (n) => n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(0)} KB` : `${(n / 1048576).toFixed(1)} MB`
+const attUrl = (id) => `${API}/api/logbook/attachments/${id}`
+
+/* Checksheet uploads — photos / PDFs attached to a log entry (maintenance, job
+   card, rectification). Two modes:
+   - entryId given (edit form): uploads immediately to that entry.
+   - no entryId (add form): stages the (already-compressed) files; the parent
+     uploads them after the entry is created, via `staged`/`onStaged`. */
+function AttachmentUpload({ entryId, existing = [], staged = [], onStaged, label = 'Checksheet — photo or PDF' }) {
+  const [items, setItems] = useState(existing)   // uploaded AttachmentRefs (edit mode)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const fileRef = useRef(null)
+
+  const pick = async (e) => {
+    const files = [...e.target.files]; e.target.value = ''
+    if (!files.length) return
+    setErr(''); setBusy(true)
+    try {
+      const prepared = []
+      for (const f of files) {
+        if (!/^image\/|application\/pdf$/.test(f.type)) { setErr('Only photos (JPEG/PNG) or PDF.'); continue }
+        const c = await compressImage(f)
+        if (c.size > 8 * 1024 * 1024) { setErr(`${f.name} is too large even compressed — photograph the sheet instead.`); continue }
+        prepared.push(c)
+      }
+      if (entryId) {
+        for (const c of prepared) {
+          const fd = new FormData(); fd.append('file', c)
+          const r = await fetch(`${API}/api/logbook/${entryId}/attachments`, { method: 'POST', body: fd })
+          if (!r.ok) { setErr((await r.json().catch(() => ({})))?.detail || `upload failed (${r.status})`); continue }
+          const ref = await r.json(); setItems((xs) => [ref, ...xs])
+        }
+      } else {
+        onStaged?.([...staged, ...prepared])
+      }
+    } finally { setBusy(false) }
+  }
+  const removeUploaded = async (id) => {
+    if (!window.confirm('Remove this checksheet scan?')) return
+    const r = await fetch(`${API}/api/logbook/attachments/${id}`, { method: 'DELETE' })
+    if (r.ok || r.status === 204) setItems((xs) => xs.filter((x) => x.id !== id))
+  }
+  const isImg = (m) => (m || '').startsWith('image/')
+
+  return (
+    <section className="fg att-fill">
+      <span className="fg-lbl">{label}</span>
+      <div className="att-list">
+        {items.map((a) => (
+          <div className="att-item" key={a.id}>
+            <a href={attUrl(a.id)} target="_blank" rel="noreferrer" className="att-thumb" title={a.filename}>
+              {isImg(a.mime) ? <img src={attUrl(a.id)} alt={a.filename} /> : <span className="att-pdf">PDF</span>}
+            </a>
+            <span className="att-meta">{a.filename}<br /><span className="dim">{humanSize(a.size)}</span></span>
+            <button type="button" className="att-x" onClick={() => removeUploaded(a.id)} aria-label="Remove">×</button>
+          </div>
+        ))}
+        {staged.map((f, i) => (
+          <div className="att-item staged" key={`s${i}`}>
+            <span className="att-thumb"><span className="att-pdf">{f.type === 'application/pdf' ? 'PDF' : 'IMG'}</span></span>
+            <span className="att-meta">{f.name}<br /><span className="dim">{humanSize(f.size)} · will upload on save</span></span>
+            <button type="button" className="att-x" onClick={() => onStaged?.(staged.filter((_, j) => j !== i))} aria-label="Remove">×</button>
+          </div>
+        ))}
+      </div>
+      <label className="btn ghost sm att-add">
+        {busy ? 'Uploading…' : '＋ Add photo / PDF'}
+        <input ref={fileRef} type="file" accept="image/*,application/pdf" capture="environment" multiple hidden onChange={pick} disabled={busy} />
+      </label>
+      {err && <span className="import-msg err">{err}</span>}
+    </section>
+  )
+}
+
 /* Structured checksheet — pick a predefined template (per asset class) and tick
    each item pass / fail / N-A with an optional reading. The filled result rides
    on the log entry (checksheet field). Templates come from the backend registry;
@@ -460,11 +555,10 @@ function EditEntryForm({ entry, assets, systems, classSystem, initialResp = null
           </div>
         </section>
 
-        {/* the entry's own checksheet — maintenance & job-card/rectification work */}
+        {/* checksheet scans/photos — maintenance, job card, rectification.
+            Uploads straight to this entry (it already exists). */}
         {CS_KINDS.includes(entry.type) && (
-          <ChecksheetFill appliesTo={CS_APPLIES[entry.type]} assetClass={category}
-                          subtype={entry.type === 'maintenance' ? entry.subtype : null}
-                          value={csEdit} onChange={setCsEdit} />
+          <AttachmentUpload entryId={entry.id} existing={entry.attachments || []} />
         )}
 
         {/* a failure has TWO independent logs, each in its OWN grouped block:
@@ -563,9 +657,15 @@ function EditEntryForm({ entry, assets, systems, classSystem, initialResp = null
                            : 'e.g. Job card issued to M/s Siemens to replace WAGO'} />
                 </label>
                 {progress === 'job_card' && <p className="ef-hint fg-span-2">A job card keeps the failure open (yellow). Set Progress to <b>Rectified</b> once the fix is done — by the agency, or by us if they are delayed.</p>}
-                <div className="fg-span">
-                  <ChecksheetFill appliesTo="job_card" assetClass={category} value={rCs} onChange={setRCs} />
-                </div>
+                {/* checksheet scans on the job card / rectification entry. It has
+                    to exist first, so attach once the response is saved. */}
+                {(() => {
+                  const resp = isResolved ? entry.resolved_by : entry.job_card_by
+                  return resp
+                    ? <div className="fg-span"><AttachmentUpload entryId={resp.id} existing={resp.attachments || []}
+                          label={`${isResolved ? 'Rectification' : 'Job card'} — photo or PDF`} /></div>
+                    : <p className="ef-hint fg-span-2">Save this {isResolved ? 'rectification' : 'job card'} first, then re-open to attach its checksheet / photo.</p>
+                })()}
               </>}
             </div>
           </section>
@@ -644,7 +744,7 @@ export default function LogBook({ editId = null, focusDate = null, initialResp =
   // add-entry form
   const [text, setText] = useState('')
   const [consumables, setConsumables] = useState('')
-  const [checksheet, setChecksheet] = useState(null)   // filled structured checksheet
+  const [attachFiles, setAttachFiles] = useState([])   // staged checksheet scans/photos (uploaded after create)
   const [openFails, setOpenFails] = useState([])   // asset's open failures (for rectification)
   const [rectifiesId, setRectifiesId] = useState('')  // the failure this rectification closes
   const [shift, setShift] = useState('M')
@@ -851,8 +951,6 @@ export default function LogBook({ editId = null, focusDate = null, initialResp =
           // failure, acknowledgement or job card does not
           consumables: (type === 'failure' || type === 'acknowledgement' || type === 'job_card')
             ? null : (consumables.trim() || null),
-          // a structured checksheet rides on maintenance / job-card / rectification work
-          checksheet: CS_KINDS.includes(type) ? (checksheet || null) : null,
           // a response (rectification / acknowledgement / job card) links to a
           // specific open failure of the asset
           rectifies_id: RESPONSE_TYPES.includes(type) && rectifiesId ? Number(rectifiesId) : null,
@@ -878,7 +976,17 @@ export default function LogBook({ editId = null, focusDate = null, initialResp =
         const body = await res.json().catch(() => null)
         throw new Error(body?.detail || `HTTP ${res.status}`)
       }
-      setText(''); setConsumables(''); setChecksheet(null); setAssetCode(''); setTim(''); setFaultType(''); setSystem('')
+      // upload any staged checksheet scans/photos to the freshly-created entry
+      if (attachFiles.length) {
+        const created = await res.json().catch(() => null)
+        if (created?.id) {
+          for (const f of attachFiles) {
+            const fd = new FormData(); fd.append('file', f)
+            await fetch(`${API}/api/logbook/${created.id}/attachments`, { method: 'POST', body: fd }).catch(() => {})
+          }
+        }
+      }
+      setText(''); setConsumables(''); setAttachFiles([]); setAssetCode(''); setTim(''); setFaultType(''); setSystem('')
       setRectifiesId(''); setOpenFails([])
       setRectified(false); setRDate(''); setRTim(''); setRText(''); setRTeam(''); setRConsumables(''); setRFaultType('')
       setTeam('')
@@ -1122,10 +1230,9 @@ export default function LogBook({ editId = null, focusDate = null, initialResp =
                 </label>
               </div>
             </section>
-            {/* structured checksheet — maintenance & job-card/rectification work */}
+            {/* checksheet scans/photos — staged now, uploaded after the entry is created */}
             {CS_KINDS.includes(type) && (
-              <ChecksheetFill appliesTo={CS_APPLIES[type]} assetClass={category} subtype={type === 'maintenance' ? subtype : null}
-                              value={checksheet} onChange={setChecksheet} />
+              <AttachmentUpload staged={attachFiles} onStaged={setAttachFiles} />
             )}
           </div>
 

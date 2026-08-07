@@ -342,6 +342,26 @@ class Failure(Base):
     asset: Mapped[Asset] = relationship()
 
 
+class Attachment(Base):
+    """A scanned checksheet / photo / PDF attached to a log entry. The bytes
+    live on the deployment's local media disk (a Docker volume), served through
+    the backend behind auth — an off-box backup is an ops concern, not the app's.
+    Files are compressed client-side before upload; sha256 dedups re-uploads."""
+    __tablename__ = "attachments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entry_id: Mapped[int] = mapped_column(ForeignKey("log_entries.id"), index=True)
+    filename: Mapped[str] = mapped_column(String(200))       # original name, for download
+    stored_name: Mapped[str] = mapped_column(String(80))     # <uuid>.<ext> on the media disk
+    mime: Mapped[str] = mapped_column(String(80))
+    size: Mapped[int]                                        # bytes on disk (post-compression)
+    sha256: Mapped[str] = mapped_column(String(64), index=True)
+    uploaded_by: Mapped[str] = mapped_column(String(120), default="unknown")
+    uploaded_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    # audit-safe removal: kept on disk + row retained, flagged out of the view
+    retracted: Mapped[bool | None] = mapped_column(default=None)
+
+
 class AuditLog(Base):
     """Append-only trail of every mutation: the register is only 'the truth'
     if every change is attributable. Written via app.db.audit()."""

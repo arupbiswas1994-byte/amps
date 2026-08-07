@@ -37,6 +37,9 @@ services:
       AMPS_AUTH: ${AMPS_AUTH:-0}
       AMPS_SECRET: ${AMPS_SECRET:-}            # set to keep sessions across restarts
       AMPS_ADMIN_PASSWORD: ${AMPS_ADMIN_PASSWORD:-admin}  # first-boot admin
+      AMPS_MEDIA_DIR: /app/media
+    volumes:
+      - media:/app/media          # checksheet scans/photos/PDFs (backed up off-box)
     depends_on:
       db:
         condition: service_healthy
@@ -57,3 +60,4 @@ services:
 
 volumes:
   pgdata:
+  media:

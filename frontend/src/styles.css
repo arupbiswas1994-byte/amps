@@ -258,6 +258,24 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 .cs-btn.cs-na.on { background: #f1f0ee; border-color: #cfc9bd; color: var(--ink-2); }
 .cs-reading { flex: 0 0 130px; font: inherit; font-size: 12.5px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; }
 /* checksheet — view (log rows) */
+/* checksheet attachments — upload (forms) + view (log rows) */
+.att-fill { }
+.att-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0; }
+.att-item { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; background: #fafafa; max-width: 260px; }
+.att-item.staged { opacity: .8; border-style: dashed; }
+.att-thumb { flex: none; width: 40px; height: 40px; border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #eef0f2; text-decoration: none; }
+.att-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.att-pdf, .att-chip-pdf { font-size: 10px; font-weight: 800; color: #b0402e; }
+.att-meta { font-size: 12px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.att-x { flex: none; border: none; background: none; font-size: 18px; line-height: 1; color: var(--ink-3); cursor: pointer; padding: 0 2px; }
+.att-x:hover { color: var(--critical); }
+.att-add { display: inline-flex; align-items: center; cursor: pointer; }
+.att-view { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 2px; }
+.att-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 8px; padding: 3px 8px 3px 3px; background: #fff; text-decoration: none; color: var(--ink); font-size: 12px; }
+.att-chip:hover { border-color: var(--accent); }
+.att-chip img { width: 30px; height: 30px; object-fit: cover; border-radius: 5px; }
+.att-chip-pdf { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; background: #fdecec; border-radius: 5px; }
+.att-chip-name { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cs-view { margin: 6px 0 2px; }
 .cs-head { display: inline-flex; align-items: center; gap: 8px; background: #F3F8FB; border: 1px solid #DDE7EE;
   border-radius: 8px; padding: 4px 11px; cursor: pointer; font: inherit; }

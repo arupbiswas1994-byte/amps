@@ -12,10 +12,14 @@ Design rules:
   * Optionally tied to an asset (by code), so scanning a QR tag can show
     everything ever logged against that equipment.
 """
+import hashlib
 import json
+import os
+import uuid
 from datetime import date, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -24,7 +28,14 @@ from app.api.assets import visible_asset
 from app.api.auth import AUTH_ON, current_user, current_writer, is_anonymous, optional_user
 from app.db import audit, get_db
 from app.checksheet_templates import templates_for
-from app.models import Asset, LogEntry, LogEntryType, Location, LocationKind, ShiftCode
+from app.models import (Asset, Attachment, LogEntry, LogEntryType, Location,
+                        LocationKind, ShiftCode)
+
+# ---- checksheet attachments: scanned sheets / photos / PDFs on local media ----
+MEDIA_DIR = os.environ.get("AMPS_MEDIA_DIR", "/app/media")
+ATTACH_MAX_BYTES = 8 * 1024 * 1024   # 8 MB post-compression ceiling (client compresses first)
+ATTACH_MIME_EXT = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp",
+                   "application/pdf": "pdf"}
 
 router = APIRouter()
 
@@ -94,8 +105,19 @@ class LogEntryOut(BaseModel):
     consumables: str | None
     # a filled structured checksheet attached to this entry, if any
     checksheet: dict | None = None
+    # uploaded checksheet scans / photos / PDFs on this entry
+    attachments: "list[AttachmentRef]" = []
     depot: str | None = None       # the asset's maintenance depot (SHY/KHG/CPD)
     down_hours: float | None
+
+
+class AttachmentRef(BaseModel):
+    id: int
+    filename: str
+    mime: str
+    size: int
+    uploaded_by: str
+    uploaded_at: datetime
 
 
 class EntryRef(BaseModel):
@@ -111,6 +133,24 @@ class EntryRef(BaseModel):
     checksheet: dict | None = None
     type: str | None = None       # the response kind (acknowledgement/job_card/rectification)
     retracted: bool = False       # a withdrawn response, kept for the audit trail
+    attachments: "list[AttachmentRef]" = []   # scans/photos on this response (e.g. a job card)
+
+
+def _attach_map(db: Session, entry_ids) -> dict[int, list["AttachmentRef"]]:
+    """entry id -> its active (non-retracted) attachments, newest first."""
+    ids = [i for i in entry_ids if i]
+    if not ids:
+        return {}
+    rows = db.scalars(
+        select(Attachment).where(Attachment.entry_id.in_(ids),
+                                 Attachment.retracted.isnot(True))
+        .order_by(Attachment.uploaded_at.desc())).all()
+    out: dict[int, list[AttachmentRef]] = {}
+    for a in rows:
+        out.setdefault(a.entry_id, []).append(AttachmentRef(
+            id=a.id, filename=a.filename, mime=a.mime, size=a.size,
+            uploaded_by=a.uploaded_by, uploaded_at=a.uploaded_at))
+    return out
 
 
 def _failure_id_to_head(db: Session, entries: list[LogEntry]) -> dict[int, int]:
@@ -237,7 +277,7 @@ def _dump_checksheet(cs: dict | None) -> str | None:
                        "results": results}, ensure_ascii=False)
 
 
-def _ref(x: LogEntry | None) -> "EntryRef | None":
+def _ref(x: LogEntry | None, attach: dict | None = None) -> "EntryRef | None":
     if x is None:
         return None
     return EntryRef(id=x.id, log_date=x.log_date, at=x.at, fault_type=x.fault_type,
@@ -245,14 +285,16 @@ def _ref(x: LogEntry | None) -> "EntryRef | None":
                     attended_by=x.attended_by, consumables=x.consumables,
                     via_job_card=bool(x.via_job_card),
                     checksheet=_load_checksheet(x.checksheet),
-                    type=x.type.value, retracted=bool(x.retracted))
+                    type=x.type.value, retracted=bool(x.retracted),
+                    attachments=(attach or {}).get(x.id, []))
 
 
 def _to_out(e: LogEntry, resolver: LogEntry | None = None,
             master: LogEntry | None = None,
             acker: LogEntry | None = None,
             jobcard: LogEntry | None = None,
-            retracted: list | None = None) -> LogEntryOut:
+            retracted: list | None = None,
+            attach: dict | None = None) -> LogEntryOut:
     recovered = resolver.at if resolver else None
     # lifecycle only applies to a failure head, by dominance of the response:
     # rectification (resolved) > job card (job_card) > acknowledgement > open
@@ -267,16 +309,17 @@ def _to_out(e: LogEntry, resolver: LogEntry | None = None,
         asset_code=e.asset.code if e.asset else None,
         asset_name=e.asset.name if e.asset else None, corrects_id=e.corrects_id,
         rectifies_id=e.rectifies_id,
-        rectifies=_ref(master),        # response → its master failure
-        resolved_by=_ref(resolver),    # failure → the rectification that closed it
-        acknowledged_by=_ref(acker),   # failure → the acknowledgement noting it
-        job_card_by=_ref(jobcard),     # failure → the job card raised for it
-        retracted_responses=[_ref(x) for x in (retracted or [])],
+        rectifies=_ref(master, attach),        # response → its master failure
+        resolved_by=_ref(resolver, attach),    # failure → the rectification that closed it
+        acknowledged_by=_ref(acker, attach),   # failure → the acknowledgement noting it
+        job_card_by=_ref(jobcard, attach),     # failure → the job card raised for it
+        retracted_responses=[_ref(x, attach) for x in (retracted or [])],
         state=state,
         # ONLY a rectification ends a failure; ack/job-card leave it open
         ended_at=e.ended_at or recovered, fault_type=e.fault_type,
         consumables=e.consumables,
         checksheet=_load_checksheet(e.checksheet),
+        attachments=(attach or {}).get(e.id, []),
         depot=(e.asset.depot if e.asset else None),
         down_hours=_down_hours(e, recovered),
     )
@@ -478,7 +521,13 @@ def list_entries(log_date: date | None = None, shift: str | None = None,
     if master_ids:
         masters = {m.id: m for m in db.scalars(
             select(LogEntry).where(LogEntry.id.in_(master_ids))).all()}
-    return [_to_out(e, rec.get(e.id), masters.get(e.rectifies_id), ack.get(e.id), jc.get(e.id), rt.get(e.id)) for e in rows]
+    # attachments for the entries AND for every linked response shown on them
+    att_ids = {e.id for e in rows}
+    for m in (rec, ack, jc):
+        att_ids |= {v.id for v in m.values()}
+    att_ids |= {x.id for lst in rt.values() for x in lst}
+    attach = _attach_map(db, att_ids)
+    return [_to_out(e, rec.get(e.id), masters.get(e.rectifies_id), ack.get(e.id), jc.get(e.id), rt.get(e.id), attach) for e in rows]
 
 
 @router.get("/{entry_id}/versions", response_model=list[LogEntryOut])
@@ -894,6 +943,83 @@ def checksheet_templates(applies_to: str | None = None, asset_class: str | None 
     A writer picks one when logging maintenance / a job card, then ticks its
     items; the filled result is stored on the entry. Public read (no records)."""
     return templates_for(applies_to, asset_class, subtype)
+
+
+# ---- checksheet attachments (scanned sheets / photos / PDFs) ----------------
+
+@router.post("/{entry_id}/attachments", response_model=AttachmentRef, status_code=201)
+async def upload_attachment(entry_id: int, file: UploadFile,
+                            db: Session = Depends(get_db), user=Depends(current_writer)):
+    """Attach a scanned checksheet / photo / PDF to a log entry (maintenance,
+    job card, rectification …). The file is compressed client-side; we store the
+    bytes on the local media disk and record metadata. sha256 dedups a re-upload
+    of the same file to the same entry."""
+    entry = db.get(LogEntry, entry_id)
+    if not entry or (user.line_id is not None and entry.line_id not in (user.line_id, None)):
+        raise HTTPException(404, "entry not found")
+    ext = ATTACH_MIME_EXT.get(file.content_type or "")
+    if not ext:
+        raise HTTPException(422, "only JPEG / PNG / WebP images or PDF are accepted")
+    data = await file.read()
+    if not data:
+        raise HTTPException(422, "empty file")
+    if len(data) > ATTACH_MAX_BYTES:
+        raise HTTPException(413, f"file too large ({len(data)//1024} KB) — compress or photograph the sheet instead")
+    digest = hashlib.sha256(data).hexdigest()
+    dup = db.scalar(select(Attachment).where(
+        Attachment.entry_id == entry_id, Attachment.sha256 == digest,
+        Attachment.retracted.isnot(True)))
+    if dup:   # same file already on this entry — return the existing record
+        return AttachmentRef(id=dup.id, filename=dup.filename, mime=dup.mime,
+                             size=dup.size, uploaded_by=dup.uploaded_by, uploaded_at=dup.uploaded_at)
+    sub = datetime.utcnow().strftime("%Y%m")
+    os.makedirs(os.path.join(MEDIA_DIR, sub), exist_ok=True)
+    stored = f"{sub}/{uuid.uuid4().hex}.{ext}"
+    with open(os.path.join(MEDIA_DIR, stored), "wb") as f:
+        f.write(data)
+    att = Attachment(
+        entry_id=entry_id, filename=(file.filename or f"checksheet.{ext}")[:200],
+        stored_name=stored, mime=file.content_type, size=len(data),
+        sha256=digest, uploaded_by=user.username)
+    db.add(att); db.flush()
+    audit(db, "attachment", att.id, "uploaded",
+          detail=f"entry={entry_id} {att.filename} {att.size}B", actor=user.username)
+    db.commit(); db.refresh(att)
+    return AttachmentRef(id=att.id, filename=att.filename, mime=att.mime,
+                         size=att.size, uploaded_by=att.uploaded_by, uploaded_at=att.uploaded_at)
+
+
+@router.get("/attachments/{att_id}")
+def get_attachment(att_id: int, db: Session = Depends(get_db), user=Depends(optional_user)):
+    """Stream an attachment's bytes. Login-gated (operational) and line-scoped;
+    a single-asset QR walk-up may still view its own asset's attachments."""
+    att = db.get(Attachment, att_id)
+    if not att or att.retracted:
+        raise HTTPException(404, "attachment not found")
+    entry = db.get(LogEntry, att.entry_id)
+    if is_anonymous(user) and not (entry and entry.asset_id):
+        raise HTTPException(401, "login required")
+    if user.line_id is not None and entry and entry.line_id not in (user.line_id, None):
+        raise HTTPException(404, "attachment not found")
+    path = os.path.join(MEDIA_DIR, att.stored_name)
+    if not os.path.exists(path):
+        raise HTTPException(410, "file missing from media store")
+    return FileResponse(path, media_type=att.mime, filename=att.filename)
+
+
+@router.delete("/attachments/{att_id}", status_code=204)
+def delete_attachment(att_id: int, db: Session = Depends(get_db), user=Depends(current_writer)):
+    """Withdraw an attachment — audit-safe: the row + file are kept, flagged out."""
+    att = db.get(Attachment, att_id)
+    if not att or att.retracted:
+        raise HTTPException(404, "attachment not found")
+    entry = db.get(LogEntry, att.entry_id)
+    if user.line_id is not None and entry and entry.line_id not in (user.line_id, None):
+        raise HTTPException(404, "attachment not found")
+    att.retracted = True
+    audit(db, "attachment", att.id, "retracted", detail=f"entry={att.entry_id}", actor=user.username)
+    db.commit()
+    return Response(status_code=204)
 
 
 # the logbook 'kind' cell → entry type; blank/unknown defaults to maintenance
