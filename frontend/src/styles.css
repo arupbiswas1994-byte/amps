@@ -239,6 +239,12 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 .jc-scan .att-fill { margin: 0; }
 .jc-scan .fg-lbl { font-size: 11px; }
 .jc-scan-close { padding-top: 6px; border-top: 1px dashed var(--line, #e4ddcd); }
+/* in the job-card table the scan itself should be readable, not a tiny chip */
+.jc-scan .att-item, .jc-scan .att-chip { align-items: flex-start; }
+.jc-scan .att-thumb { width: 150px; height: 200px; border-radius: 8px; }
+.jc-scan .att-chip { padding: 4px; }
+.jc-scan .att-chip img, .jc-scan .att-chip-pdf { width: 150px; height: 200px; border-radius: 6px; object-fit: cover; }
+.jc-scan .att-view { gap: 8px; }
 
 /* unified failure sub-groups (open / acknowledged / job card / resolved) */
 .logsub { margin: 10px 0 4px; padding-left: 12px; border-left: 3px solid var(--sg, #d9d2c2); }
@@ -271,7 +277,10 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 .att-item.staged { opacity: .8; border-style: dashed; }
 .att-thumb { flex: none; width: 40px; height: 40px; border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #eef0f2; text-decoration: none; }
 .att-thumb img { width: 100%; height: 100%; object-fit: cover; }
-.att-pdf, .att-chip-pdf { font-size: 10px; font-weight: 800; color: #b0402e; }
+/* PDF previews render the first page via <embed>; pointer-events:none lets the
+   surrounding link take the click and open the PDF inline in a new tab. */
+.att-pdf-prev { width: 100%; height: 100%; border: 0; background: #fff; pointer-events: none; }
+.att-chip-pdf { border: 0; background: #fff; pointer-events: none; }
 .att-meta { font-size: 12px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .att-x { flex: none; border: none; background: none; font-size: 18px; line-height: 1; color: var(--ink-3); cursor: pointer; padding: 0 2px; }
 .att-x:hover { color: var(--critical); }

@@ -1004,7 +1004,11 @@ def get_attachment(att_id: int, db: Session = Depends(get_db), user=Depends(opti
     path = os.path.join(MEDIA_DIR, att.stored_name)
     if not os.path.exists(path):
         raise HTTPException(410, "file missing from media store")
-    return FileResponse(path, media_type=att.mime, filename=att.filename)
+    # Photos and PDFs open in the browser (inline) so a job-card scan is visible
+    # right where it's linked; anything else downloads.
+    disp = "inline" if (att.mime.startswith("image/") or att.mime == "application/pdf") else "attachment"
+    return FileResponse(path, media_type=att.mime, filename=att.filename,
+                        content_disposition_type=disp)
 
 
 @router.delete("/attachments/{att_id}", status_code=204)

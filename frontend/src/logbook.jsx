@@ -94,7 +94,9 @@ export function AttachmentUpload({ entryId, existing = [], staged = [], onStaged
         {items.map((a) => (
           <div className="att-item" key={a.id}>
             <a href={attUrl(a.id)} target="_blank" rel="noreferrer" className="att-thumb" title={a.filename}>
-              {isImg(a.mime) ? <img src={attUrl(a.id)} alt={a.filename} /> : <span className="att-pdf">PDF</span>}
+              {isImg(a.mime)
+                ? <img src={attUrl(a.id)} alt={a.filename} />
+                : <embed className="att-pdf-prev" src={`${attUrl(a.id)}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`} type="application/pdf" />}
             </a>
             <span className="att-meta">{a.filename}<br /><span className="dim">{humanSize(a.size)}</span></span>
             <button type="button" className="att-x" onClick={() => removeUploaded(a.id)} aria-label="Remove">×</button>
