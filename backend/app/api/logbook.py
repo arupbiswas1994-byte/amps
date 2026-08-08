@@ -528,12 +528,16 @@ def list_entries(log_date: date | None = None, shift: str | None = None,
     filters.append(LogEntry.id.not_in(superseded))
     if user.line_id is not None:
         filters.append((LogEntry.line_id == user.line_id) | (LogEntry.line_id.is_(None)))
-    # depot scope/filter: a depot-scoped account is locked to its own depot; any
-    # user may also narrow by the ?depot= dropdown. Matches the entry's asset.
-    depot_pick = (getattr(user, "depot", None) or (depot.strip() if depot else None)) or None
-    if depot_pick:
+    # depot scope: a depot-scoped account sees its own depot's assets PLUS
+    # asset-less line-wide entries (e.g. imported job cards with no matched asset,
+    # department notes) — those belong to no depot, so they must not vanish for a
+    # depot user. The explicit ?depot= dropdown narrows strictly to that depot.
+    if getattr(user, "depot", None):
+        filters.append(LogEntry.asset_id.is_(None) | LogEntry.asset_id.in_(
+            select(Asset.id).where(Asset.depot == user.depot)))
+    if depot and depot.strip():
         filters.append(LogEntry.asset_id.in_(
-            select(Asset.id).where(Asset.depot == depot_pick)))
+            select(Asset.id).where(Asset.depot == depot.strip())))
     if line and line.strip():
         site = db.scalar(select(Location).where(Location.kind == LocationKind.SITE,
                                                 func.lower(Location.name) == line.strip().lower()))
@@ -814,8 +818,9 @@ def failure_stats(days: int = 90, months: int = 6, line: str | None = None,
     q = select(LogEntry).where(LogEntry.type == LogEntryType.FAILURE)
     if user.line_id is not None:
         q = q.where((LogEntry.line_id == user.line_id) | (LogEntry.line_id.is_(None)))
-    if getattr(user, "depot", None):   # a depot-scoped account sees only its depot
-        q = q.where(LogEntry.asset_id.in_(select(Asset.id).where(Asset.depot == user.depot)))
+    if getattr(user, "depot", None):   # depot's assets + asset-less line-wide entries
+        q = q.where(LogEntry.asset_id.is_(None) | LogEntry.asset_id.in_(
+            select(Asset.id).where(Asset.depot == user.depot)))
     # optional public line filter: the walk-up failures board scopes to one line
     # so each line shows its own KPIs instead of the network total. Ignored when
     # it names a line the caller isn't already scoped to nothing.
