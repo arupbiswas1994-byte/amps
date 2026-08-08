@@ -786,9 +786,17 @@ export default function LogBook({ editId = null, focusDate = null, initialResp =
     fetch(`${API}/api/assets`).then((r) => (r.ok ? r.json() : []))
       .then(setAssets).catch(() => {})
   }, [])
-  // distinct asset classes, sorted — the category dropdown's options
+  // distinct asset classes, sorted — the entry-form's class options (unfiltered)
   const classes = [...new Set(assets.map((a) => a.asset_class).filter(Boolean))].sort()
   const depots = [...new Set(assets.map((a) => a.depot).filter(Boolean))].sort()
+  // CASCADING toolbar filters: the class list narrows to the chosen depot and the
+  // depot list to the chosen class, each keeping its own current selection.
+  const filterClasses = [...new Set([...assets
+    .filter((a) => !fDepot || a.depot === fDepot).map((a) => a.asset_class).filter(Boolean),
+    ...(fCat ? [fCat] : [])])].sort()
+  const filterDepots = [...new Set([...assets
+    .filter((a) => !fCat || a.asset_class === fCat).map((a) => a.depot).filter(Boolean),
+    ...(fDepot ? [fDepot] : [])])].sort()
   // the systems (short) and, per system, the classes under it — so the class
   // picker only ever shows what belongs to the chosen system
   const systems = [...new Set(assets.map((a) => a.system).filter(Boolean))].sort()
@@ -1082,7 +1090,7 @@ export default function LogBook({ editId = null, focusDate = null, initialResp =
           {depots.length > 0 && !me?.depot && (
             <select value={fDepot} onChange={(e) => setFDepot(e.target.value)} aria-label="Filter by depot">
               <option value="">All depots</option>
-              {depots.map((d) => <option key={d} value={d}>{d}</option>)}
+              {filterDepots.map((d) => <option key={d} value={d}>{d}</option>)}
             </select>
           )}
           <select value={fType} onChange={(e) => setFType(e.target.value)} aria-label="Filter by type">
@@ -1091,7 +1099,7 @@ export default function LogBook({ editId = null, focusDate = null, initialResp =
           </select>
           <select value={fCat} onChange={(e) => setFCat(e.target.value)} aria-label="Filter by class">
             <option value="">All classes</option>
-            {classes.map((c) => <option key={c} value={c}>{c}</option>)}
+            {filterClasses.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
           {(search || fCat || fType || !allDates) && (
             <button type="button" className="btn ghost sm" onClick={() => {

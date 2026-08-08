@@ -213,11 +213,27 @@ function LiveDashboard({ go, initialLine = null }) {
   const attnRank = (a) => (openN(a) ? 3 : ackN(a) ? 2 : jobN(a) ? 1 : 0)
   const failId = (a) => faultOf(a)?.failure_id
   const failDate = (a) => faultOf(a)?.failure_date
-  const uniq = (k) => [...new Set(assets.map((a) => a[k]).filter(Boolean))].sort()
-  const systemsList = uniq('sys'); const classesList = uniq('cls')
-  const locationsList = uniq('location'); const statusesList = uniq('status')
-  const depotsList = uniq('depot')   // maintenance depots present on this line
   const ql = q.trim().toLowerCase()
+  const matchQ = (a) => !ql || [a.code, a.name, a.location, a.cls, a.sys].some((v) => (v || '').toLowerCase().includes(ql))
+  // all depots on this line, ignoring the other filters — used only to guard a
+  // stale depot filter persisted from another line (below)
+  const lineDepots = [...new Set(assets.map((a) => a.depot).filter(Boolean))].sort()
+  // CASCADING filters: each dropdown offers only the values still present once the
+  // OTHER active filters are applied — pick a depot and the class/location/system
+  // lists narrow to that depot. A dropdown never constrains itself, and always
+  // keeps its own current value so a selection stays visible.
+  const FILTER_FIELDS = [['sys', fSystem], ['cls', fClass], ['location', fLocation],
+                         ['status', fStatus], ['depot', fDepot]]
+  const passesExcept = (a, exceptKey) => FILTER_FIELDS.every(
+    ([k, v]) => !v || k === exceptKey || (k === 'depot' && !lineDepots.includes(v)) || a[k] === v)
+  const optsFor = (k, cur) => {
+    const s = new Set(assets.filter((a) => matchQ(a) && passesExcept(a, k)).map((a) => a[k]).filter(Boolean))
+    if (cur) s.add(cur)
+    return [...s].sort()
+  }
+  const systemsList = optsFor('sys', fSystem); const classesList = optsFor('cls', fClass)
+  const locationsList = optsFor('location', fLocation); const statusesList = optsFor('status', fStatus)
+  const depotsList = optsFor('depot', fDepot)   // maintenance depots present in the narrowed view
   // the sort accessor per column; PM columns read the derived schedule
   const sortVal = (a, k) => k === 'next_due' ? (sched[assetKey(a)]?.next_due || '9999')
     : k === 'pm' ? (SEV_RANK[stateOf(a)] ?? 3)
@@ -232,7 +248,7 @@ function LiveDashboard({ go, initialLine = null }) {
   if (fStatus) base = base.filter((a) => a.status === fStatus)
   // only apply a depot filter that actually belongs to the current line — a
   // depot picked on another line (persisted) must not blank this line's register
-  if (fDepot && depotsList.includes(fDepot)) base = base.filter((a) => a.depot === fDepot)
+  if (fDepot && lineDepots.includes(fDepot)) base = base.filter((a) => a.depot === fDepot)
   const overdue = base.filter((a) => stateOf(a) === 'overdue')
   const dueSoon = base.filter((a) => stateOf(a) === 'due_soon')
   const longOverdue = base.filter((a) => stateOf(a) === 'long_overdue')  // 5-Yearly overdue / never started
@@ -2276,7 +2292,6 @@ function TagSheet() {
   // same filters as the register (System / Class / Location / Status), so it
   // generalises across lines. No default — the last-used filter is retained
   // (persisted), so you return to the set you were printing.
-  const systems = [...new Set(all.map((a) => a.sys).filter(Boolean))].sort()
   const [fSystem, setFSystem] = usePersistedState('tags.system', '')
   const [q, setQ] = useState('')
   const [fClass, setFClass] = usePersistedState('tags.class', '')
@@ -2288,13 +2303,23 @@ function TagSheet() {
     setVars(); window.addEventListener('resize', setVars); return () => window.removeEventListener('resize', setVars)
   })
 
-  const uniq = (k, base) => [...new Set((base || all).map((a) => a[k]).filter(Boolean))].sort()
-  const classes = uniq('cls'); const locations = uniq('location'); const statuses = uniq('status')
   const ql = q.trim().toLowerCase()
+  const matchQ = (a) => !ql || [a.code, a.name, a.location, a.cls].some((v) => (v || '').toLowerCase().includes(ql))
+  // CASCADING filters — each dropdown lists only values still present under the
+  // other active filters, and keeps its own current value.
+  const TAG_FIELDS = [['sys', fSystem], ['cls', fClass], ['location', fLocation], ['status', fStatus]]
+  const passesExcept = (a, exceptKey) => TAG_FIELDS.every(([k, v]) => !v || k === exceptKey || a[k] === v)
+  const optsFor = (k, cur) => {
+    const s = new Set(all.filter((a) => matchQ(a) && passesExcept(a, k)).map((a) => a[k]).filter(Boolean))
+    if (cur) s.add(cur)
+    return [...s].sort()
+  }
+  const systems = optsFor('sys', fSystem); const classes = optsFor('cls', fClass)
+  const locations = optsFor('location', fLocation); const statuses = optsFor('status', fStatus)
   const shown = all.filter((a) =>
     (!fSystem || a.sys === fSystem) && (!fClass || a.cls === fClass)
     && (!fLocation || a.location === fLocation) && (!fStatus || a.status === fStatus)
-    && (!ql || [a.code, a.name, a.location, a.cls].some((v) => (v || '').toLowerCase().includes(ql))))
+    && matchQ(a))
 
   if (LIVE && live.loading) return <p className="dim">Loading the asset register…</p>
   if (all.length === 0) return <div className="card"><p className="dim" style={{ margin: 0 }}>No assets in the register yet — tags appear as assets are added.</p></div>
