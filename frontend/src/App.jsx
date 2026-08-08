@@ -2287,22 +2287,40 @@ function AboutPage() {
   )
 }
 
-/* Printables — one place for everything a coordinator prints: QR asset tags and
-   blank maintenance checksheets. Two sub-tabs so the top nav stays lean. */
+/* Printables lives under a nav dropdown (QR tags / Checksheets), so the page
+   itself just renders the chosen surface — no in-page tab bar. */
 function Printables({ initial = 'qr' }) {
-  const [tab, setTab] = useState(initial === 'checksheets' ? 'checksheets' : 'qr')
-  useEffect(() => { setTab(initial === 'checksheets' ? 'checksheets' : 'qr') }, [initial])
+  const tab = initial === 'checksheets' ? 'checksheets' : 'qr'
+  return tab === 'qr' ? <TagSheet /> : <ChecksheetFormats />
+}
+
+/* the Printables nav item: a dropdown submenu instead of a page-level tab bar */
+function PrintablesNav({ active }) {
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    if (!open) return undefined
+    const close = () => setOpen(false)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [open])
+  const go = (t) => { location.hash = `/printables?t=${t}`; setOpen(false) }
   return (
-    <>
-      <div className="page-head no-print"><h1>Printables</h1></div>
-      <div className="asset-filter no-print" role="tablist" aria-label="Printables" style={{ marginBottom: 12 }}>
-        <button type="button" className={`btn preset ${tab === 'qr' ? 'active' : ''}`}
-                onClick={() => { setTab('qr'); location.hash = '/printables?t=qr' }}>QR asset tags</button>
-        <button type="button" className={`btn preset ${tab === 'checksheets' ? 'active' : ''}`}
-                onClick={() => { setTab('checksheets'); location.hash = '/printables?t=checksheets' }}>Checksheets</button>
-      </div>
-      {tab === 'qr' ? <TagSheet /> : <ChecksheetFormats />}
-    </>
+    <span className="showcase" onClick={(e) => e.stopPropagation()}>
+      <button type="button" className={`nav-drop${active ? ' active' : ''}${open ? ' open' : ''}`}
+              onClick={() => setOpen(!open)} aria-expanded={open} aria-haspopup="true">
+        Printables <span className="caret">▾</span>
+      </button>
+      {open && (
+        <div className="showcase-menu" role="menu">
+          <a className="sc-item" role="menuitem" href="#/printables?t=qr" onClick={() => go('qr')}>
+            <span className="sc-name">QR asset tags</span><span className="sc-sub">printable QR labels for every asset</span>
+          </a>
+          <a className="sc-item" role="menuitem" href="#/printables?t=checksheets" onClick={() => go('checksheets')}>
+            <span className="sc-name">Checksheets</span><span className="sc-sub">maintenance checksheet formats — print & manage</span>
+          </a>
+        </div>
+      )}
+    </span>
   )
 }
 
@@ -2358,7 +2376,9 @@ function ChecksheetFormats() {
 function ChecksheetPrint({ published }) {
   const [sel, setSel] = useState(published[0]?.id ?? published[0]?.key ?? '')
   const [copies, setCopies] = useState(1)
+  const [printFreq, setPrintFreq] = useState('')   // '' = full matrix; else one frequency
   const fmt = published.find((f) => (f.id ?? f.key) === sel) || published[0]
+  useEffect(() => { setPrintFreq('') }, [sel])     // reset the frequency when the format changes
   if (!fmt) return <div className="card"><p className="dim" style={{ margin: 0 }}>No published checksheet formats yet.</p></div>
   const sheets = Array.from({ length: Math.min(Math.max(copies, 1), 20) }, (_, i) => i)
   return (
@@ -2375,6 +2395,14 @@ function ChecksheetPrint({ published }) {
             </li>
           ))}
         </ul>
+        {(fmt.frequencies?.length > 0) && (
+          <label className="cs-copies cs-freq-print">Print for frequency
+            <select value={printFreq} onChange={(e) => setPrintFreq(e.target.value)}>
+              <option value="">All (full matrix)</option>
+              {fmt.frequencies.map((c) => <option key={c} value={c}>{c} only</option>)}
+            </select>
+          </label>
+        )}
         <div className="cs-picker-actions">
           <label className="cs-copies">Copies
             <input type="number" min="1" max="20" value={copies} onChange={(e) => setCopies(Number(e.target.value) || 1)} />
@@ -2384,7 +2412,7 @@ function ChecksheetPrint({ published }) {
         <p className="dim cs-hint">Print a blank, fill it by hand during maintenance, then upload the scan against the log entry.</p>
       </aside>
       <div className="cs-print-area">
-        {sheets.map((i) => <ChecksheetSheet key={i} fmt={fmt} />)}
+        {sheets.map((i) => <ChecksheetSheet key={i} fmt={fmt} printFreq={printFreq} />)}
       </div>
     </div>
   )
@@ -2392,8 +2420,10 @@ function ChecksheetPrint({ published }) {
 
 /* one AMPS-branded A4 blank: metro logo + emblem, QR to the format, prescribed
    value column beside the actual-reading column, signatures. */
-function ChecksheetSheet({ fmt }) {
+function ChecksheetSheet({ fmt, printFreq = '' }) {
   const qrVal = `${location.origin}/#/printables?t=checksheets&f=${fmt.id ?? ''}`
+  // when printing for ONE frequency, keep only its activities and drop the matrix
+  const items = printFreq ? fmt.items.filter((it) => (it.freqs || []).includes(printFreq)) : fmt.items
   return (
     <article className="cs-sheet">
       <header className="cs-sheet-head">
@@ -2410,10 +2440,10 @@ function ChecksheetSheet({ fmt }) {
         <span>Asset name / ID: <u>&nbsp;</u></span>
         <span>Sheet no: <u>&nbsp;</u></span>
         <span>Date: <u>&nbsp;</u></span>
-        {fmt.frequency ? <span>Frequency: <b>{fmt.frequency}</b></span> : null}
+        {(printFreq || fmt.frequency) ? <span>Frequency: <b>{printFreq || fmt.frequency}</b></span> : null}
       </div>
       {(() => {
-        const cols = fmt.frequencies || []
+        const cols = printFreq ? [] : (fmt.frequencies || [])   // single-frequency print = no matrix
         const hasMatrix = cols.length > 0
         return (
           <table className="cs-table">
@@ -2434,7 +2464,7 @@ function ChecksheetSheet({ fmt }) {
               </tr>
             </thead>
             <tbody>
-              {fmt.items.map((it, j) => (
+              {items.map((it, j) => (
                 <tr key={j}>
                   <td className="cs-sn">{j + 1}</td>
                   <td>{it.activity}</td>
@@ -3390,6 +3420,7 @@ export default function App() {
               const href = fl ? `#/line/${encodeURIComponent(fl)}/failures` : '#/failures'
               return <a key={path} href={href} className={lineFailMatch ? 'active' : ''}>{label}</a>
             }
+            if (path === '/printables') return <PrintablesNav key={path} active={routePath === '/printables'} />
             return <a key={path} href={`#${path}`} className={routePath === path ? 'active' : ''}>{label}</a>
           })}
           {!LIVE && <ShowcaseDropdown />}

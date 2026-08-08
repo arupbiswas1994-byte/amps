@@ -87,6 +87,18 @@ a { color: inherit; text-decoration: none; }
 }
 .nav a:hover { color: var(--ink); background: #f5f5f4; }
 .nav a.active { color: var(--accent); background: var(--accent-soft); font-weight: 650; }
+/* Printables nav dropdown trigger — styled like a nav link, with a caret */
+.nav-drop {
+  font: inherit; font-size: 13.5px; font-weight: 550; color: var(--ink-2); padding: 4px 11px;
+  border-radius: 99px; border: none; background: none; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
+}
+.nav-drop:hover, .nav-drop.open { color: var(--ink); background: #f5f5f4; }
+.nav-drop.active { color: var(--accent); background: var(--accent-soft); font-weight: 650; }
+.nav-drop .caret { font-size: 9px; transition: transform .15s; }
+.nav-drop.open .caret { transform: rotate(180deg); }
+.nav .showcase .showcase-menu { left: 0; right: auto; }
+.cs-freq-print { min-width: 130px; }
+.cs-freq-print select { padding: 5px; border: 1px solid var(--border); border-radius: 7px; }
 
 /* showcase dropdown (demo only) — points to the real AMPS deployments */
 .showcase { position: relative; display: inline-block; }
