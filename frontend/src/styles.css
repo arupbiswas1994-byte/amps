@@ -562,6 +562,11 @@ td .chip.d-none { color: var(--ink-3); }
 .cs-table .cs-freqcell { width: 30px; }
 .cs-table .cs-freq-on { background: #fff; }
 .cs-table .cs-freq-off { background: #bcbcbc; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+/* grouped-by-frequency sections */
+.cs-group { margin-bottom: 10px; break-inside: avoid; }
+.cs-group-h { font-size: 12px; font-weight: 700; background: #eef4f8; border: 1px solid #bbb; border-bottom: none;
+  padding: 4px 8px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.cs-group .cs-table { margin-top: 0; }
 .cs-remarks { margin-top: 10px; font-size: 12px; }
 .cs-remark-box { height: 48px; border: 1px solid #bbb; border-radius: 4px; margin-top: 4px; }
 .cs-sign { display: flex; justify-content: space-between; gap: 24px; margin-top: 14px; font-size: 12px; }

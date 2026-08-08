@@ -2376,7 +2376,8 @@ function ChecksheetFormats() {
 function ChecksheetPrint({ published }) {
   const [sel, setSel] = useState(published[0]?.id ?? published[0]?.key ?? '')
   const [copies, setCopies] = useState(1)
-  const [printFreq, setPrintFreq] = useState('')   // '' = full matrix; else one frequency
+  const [printFreq, setPrintFreq] = useState('')   // '' = all; else one frequency
+  const [layout, setLayout] = useState('grouped')  // grouped by frequency | matrix grid
   const fmt = published.find((f) => (f.id ?? f.key) === sel) || published[0]
   useEffect(() => { setPrintFreq('') }, [sel])     // reset the frequency when the format changes
   if (!fmt) return <div className="card"><p className="dim" style={{ margin: 0 }}>No published checksheet formats yet.</p></div>
@@ -2395,14 +2396,20 @@ function ChecksheetPrint({ published }) {
             </li>
           ))}
         </ul>
-        {(fmt.frequencies?.length > 0) && (
-          <label className="cs-copies cs-freq-print">Print for frequency
+        {(fmt.frequencies?.length > 0) && (<>
+          <label className="cs-copies cs-freq-print">Layout
+            <select value={layout} onChange={(e) => setLayout(e.target.value)}>
+              <option value="grouped">Grouped by frequency</option>
+              <option value="matrix">Frequency matrix grid</option>
+            </select>
+          </label>
+          <label className="cs-copies cs-freq-print">Frequency
             <select value={printFreq} onChange={(e) => setPrintFreq(e.target.value)}>
-              <option value="">All (full matrix)</option>
+              <option value="">All frequencies</option>
               {fmt.frequencies.map((c) => <option key={c} value={c}>{c} only</option>)}
             </select>
           </label>
-        )}
+        </>)}
         <div className="cs-picker-actions">
           <label className="cs-copies">Copies
             <input type="number" min="1" max="20" value={copies} onChange={(e) => setCopies(Number(e.target.value) || 1)} />
@@ -2412,18 +2419,42 @@ function ChecksheetPrint({ published }) {
         <p className="dim cs-hint">Print a blank, fill it by hand during maintenance, then upload the scan against the log entry.</p>
       </aside>
       <div className="cs-print-area">
-        {sheets.map((i) => <ChecksheetSheet key={i} fmt={fmt} printFreq={printFreq} />)}
+        {sheets.map((i) => <ChecksheetSheet key={i} fmt={fmt} printFreq={printFreq} layout={layout} />)}
       </div>
     </div>
   )
 }
 
-/* one AMPS-branded A4 blank: metro logo + emblem, QR to the format, prescribed
-   value column beside the actual-reading column, signatures. */
-function ChecksheetSheet({ fmt, printFreq = '' }) {
+/* a plain activity table (S.N · activity · prescribed · actual reading) */
+function CsFlatTable({ items }) {
+  return (
+    <table className="cs-table">
+      <thead><tr>
+        <th className="cs-sn">S.N</th><th>Maintenance activity</th>
+        <th className="cs-presc">Prescribed / acceptance limit</th>
+        <th className="cs-done">Actual reading / ✓</th>
+      </tr></thead>
+      <tbody>
+        {items.map((it, j) => (
+          <tr key={j}><td className="cs-sn">{j + 1}</td><td>{it.activity}</td>
+            <td className="cs-presc">{it.prescribed || ''}</td><td className="cs-done"></td></tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+/* one AMPS-branded A4 blank: metro logo, QR to the format, then the activities —
+   either GROUPED into frequency sections (default), a flat matrix grid, or a
+   single frequency's list. Prescribed-value + actual-reading columns; signatures. */
+function ChecksheetSheet({ fmt, printFreq = '', layout = 'grouped' }) {
   const qrVal = `${location.origin}/#/printables?t=checksheets&f=${fmt.id ?? ''}`
-  // when printing for ONE frequency, keep only its activities and drop the matrix
-  const items = printFreq ? fmt.items.filter((it) => (it.freqs || []).includes(printFreq)) : fmt.items
+  const cols = fmt.frequencies || []
+  const hasFreq = cols.length > 0
+  // which frequency sections to render (all, or just the picked one)
+  const sections = printFreq ? [printFreq] : cols
+  const grouped = hasFreq && layout === 'grouped'
+  const matrix = hasFreq && layout === 'matrix' && !printFreq
   return (
     <article className="cs-sheet">
       <header className="cs-sheet-head">
@@ -2442,43 +2473,47 @@ function ChecksheetSheet({ fmt, printFreq = '' }) {
         <span>Date: <u>&nbsp;</u></span>
         {(printFreq || fmt.frequency) ? <span>Frequency: <b>{printFreq || fmt.frequency}</b></span> : null}
       </div>
-      {(() => {
-        const cols = printFreq ? [] : (fmt.frequencies || [])   // single-frequency print = no matrix
-        const hasMatrix = cols.length > 0
-        return (
-          <table className="cs-table">
-            <thead>
-              {hasMatrix && (
-                <tr>
-                  <th className="cs-sn" rowSpan={2}>S.N</th>
-                  <th rowSpan={2}>Maintenance activity</th>
-                  <th className="cs-presc" rowSpan={2}>Prescribed / acceptance limit</th>
-                  <th className="cs-freqgrp" colSpan={cols.length}>Frequency</th>
-                  <th className="cs-done" rowSpan={2}>Actual reading / ✓</th>
-                </tr>
-              )}
-              <tr>
-                {!hasMatrix && <><th className="cs-sn">S.N</th><th>Maintenance activity</th><th className="cs-presc">Prescribed / acceptance limit</th></>}
-                {cols.map((c) => <th key={c} className="cs-freqcol">{c}</th>)}
-                {!hasMatrix && <th className="cs-done">Actual reading / ✓</th>}
+
+      {grouped ? (
+        // activities grouped under each frequency heading
+        sections.map((c) => {
+          const gi = fmt.items.filter((it) => (it.freqs || []).includes(c))
+          if (!gi.length) return null
+          return (
+            <div className="cs-group" key={c}>
+              <div className="cs-group-h">{c}<span className="dim"> · {gi.length} {gi.length === 1 ? 'activity' : 'activities'}</span></div>
+              <CsFlatTable items={gi} />
+            </div>
+          )
+        })
+      ) : matrix ? (
+        // flat list with the white/grey frequency grid
+        <table className="cs-table">
+          <thead>
+            <tr>
+              <th className="cs-sn" rowSpan={2}>S.N</th><th rowSpan={2}>Maintenance activity</th>
+              <th className="cs-presc" rowSpan={2}>Prescribed / acceptance limit</th>
+              <th className="cs-freqgrp" colSpan={cols.length}>Frequency</th>
+              <th className="cs-done" rowSpan={2}>Actual reading / ✓</th>
+            </tr>
+            <tr>{cols.map((c) => <th key={c} className="cs-freqcol">{c}</th>)}</tr>
+          </thead>
+          <tbody>
+            {fmt.items.map((it, j) => (
+              <tr key={j}>
+                <td className="cs-sn">{j + 1}</td><td>{it.activity}</td>
+                <td className="cs-presc">{it.prescribed || ''}</td>
+                {cols.map((c) => <td key={c} className={`cs-freqcell ${(it.freqs || []).includes(c) ? 'cs-freq-on' : 'cs-freq-off'}`}></td>)}
+                <td className="cs-done"></td>
               </tr>
-            </thead>
-            <tbody>
-              {items.map((it, j) => (
-                <tr key={j}>
-                  <td className="cs-sn">{j + 1}</td>
-                  <td>{it.activity}</td>
-                  <td className="cs-presc">{it.prescribed || ''}</td>
-                  {cols.map((c) => (
-                    <td key={c} className={`cs-freqcell ${(it.freqs || []).includes(c) ? 'cs-freq-on' : 'cs-freq-off'}`}></td>
-                  ))}
-                  <td className="cs-done"></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )
-      })()}
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        // no frequencies (or single-frequency print) → a plain list
+        <CsFlatTable items={printFreq ? fmt.items.filter((it) => (it.freqs || []).includes(printFreq)) : fmt.items} />
+      )}
+
       <div className="cs-remarks"><span>Maintenance remarks:</span><div className="cs-remark-box"></div></div>
       <footer className="cs-sign">
         <div>Staff (name &amp; signature):<br /><span className="cs-sign-line"></span></div>
