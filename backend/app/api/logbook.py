@@ -570,7 +570,7 @@ def list_entries(log_date: date | None = None, shift: str | None = None,
 
     q = (select(LogEntry).where(*filters)
          .order_by(LogEntry.log_date.desc(), LogEntry.at.desc(), LogEntry.id.desc())
-         .offset(max(offset, 0)).limit(min(limit, 1000)))
+         .offset(max(offset, 0)).limit(min(limit, 6000)))
     rows = db.scalars(q).all()
     rec = _recovery_map(db, rows)
     ack = _ack_map(db, rows)
