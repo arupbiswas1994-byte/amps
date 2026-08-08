@@ -1631,7 +1631,7 @@ function LiveFailures({ line = '' }) {
     const lq = line ? `&line=${encodeURIComponent(line)}` : ''
     // stats are public; the row-level list is signed-in only
     const jobs = [getJSON(`/api/logbook/failure-stats?days=${days}&months=${months}${lq}`)]
-    if (!anon) jobs.push(getJSON(`/api/logbook?entry_type=failure&limit=1000${lq}`))
+    if (!anon) jobs.push(getJSON(`/api/logbook?entry_type=failure&limit=5000${lq}`))
     Promise.all(jobs)
       .then(([s, l]) => { if (alive) { setStats(s); setRows(l || []) } })
       .catch((e) => alive && setError(String(e)))
@@ -2582,7 +2582,7 @@ function JobCardsView({ line = '' }) {
   const [tab, setTab] = useState('open')   // open | closed | penalty | all
   useEffect(() => {
     const lq = line ? `&line=${encodeURIComponent(line)}` : ''
-    getJSON(`/api/logbook?entry_type=failure&limit=1000${lq}`)
+    getJSON(`/api/logbook?entry_type=failure&limit=5000${lq}`)
       .then((r) => setRows(r || [])).catch((e) => setError(String(e)))
   }, [line])
   if (error) return <div className="card offline-note">Backend unreachable — {error}.</div>
