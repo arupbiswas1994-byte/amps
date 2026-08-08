@@ -173,12 +173,6 @@ def _create_one(db: Session, asset: AssetIn, user) -> Asset:
         if asset.line and asset.line != my_line:
             raise HTTPException(403, f"your account manages {my_line} only")
         asset.line = my_line  # scoped users always register into their own line
-    # codes are unique PER LINE — the same code may exist on another line
-    site = _line_site(db, asset.line)
-    dup = select(Asset).where(Asset.code == asset.code)
-    dup = dup.where(Asset.line_id == site.id) if site else dup.where(Asset.line_id.is_(None))
-    if db.scalar(dup):
-        raise HTTPException(409, f"asset code {asset.code} already exists on {asset.line or 'this line'}")
     # a depot-scoped account always registers into its own depot
     depot = (user.depot if getattr(user, "depot", None) else asset.depot) or None
     try:
@@ -186,7 +180,15 @@ def _create_one(db: Session, asset: AssetIn, user) -> Asset:
         status = AssetStatus(asset.status)
     except ValueError as e:
         raise HTTPException(422, str(e))
+    site = _line_site(db, asset.line)
     loc = _get_or_create_location(db, asset.location, asset.line)
+    # codes are unique PER LOCATION — a depot spans several substations and the
+    # metro reuses generic codes (BAT CH-1, ACDB-1 …) at EACH one, so the same
+    # code legitimately repeats across stations; only a true same-location
+    # duplicate is a conflict.
+    if db.scalar(select(Asset).where(Asset.code == asset.code,
+                                     Asset.location_id == loc.id)):
+        raise HTTPException(409, f"asset code {asset.code} already exists at {asset.location}")
     obj = Asset(
         code=asset.code, name=asset.name, make_model=asset.make_model,
         criticality=crit, system=asset.system, status=status,
@@ -398,10 +400,10 @@ def update_asset(code: str, patch: AssetUpdate, db: Session = Depends(get_db),
         changes.append(f"{field}: {old or '—'}→{new or '—'}")
 
     if patch.code is not None and patch.code != a.code:
-        # codes are unique per line, so the clash check is scoped to this line
+        # codes are unique per location, so the clash check is scoped to it
         if db.scalar(select(Asset).where(Asset.code == patch.code,
-                                         Asset.line_id == a.line_id)):
-            raise HTTPException(409, f"asset code {patch.code} already exists on this line")
+                                         Asset.location_id == a.location_id)):
+            raise HTTPException(409, f"asset code {patch.code} already exists at this location")
         note("code", a.code, patch.code)
         a.code = patch.code
     if patch.name is not None and patch.name != a.name:

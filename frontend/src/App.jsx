@@ -297,6 +297,18 @@ function LiveDashboard({ go, initialLine = null }) {
       })
       const body = await r.json().catch(() => null)
       setImpResult(r.ok ? body : { error: body?.detail || `HTTP ${r.status}` })
+      // Any row that didn't import must be impossible to miss — pop a summary so
+      // a coordinator never assumes "all imported" when some were skipped/failed.
+      if (r.ok && body && (body.skipped > 0 || body.failed > 0)) {
+        const lines = [
+          `Import finished: ${body.created} added` +
+          (body.skipped ? `, ${body.skipped} skipped (already in the register at that location)` : '') +
+          (body.failed ? `, ${body.failed} failed` : '') + '.',
+        ]
+        if (body.errors?.length) lines.push('', 'First issues:', ...body.errors.slice(0, 8))
+        if (body.failed) lines.push('', 'Fix the flagged rows in the sheet and re-import — repeats are safe.')
+        alert(lines.join('\n'))
+      }
     } catch (err) {
       setImpResult({ error: String(err) })
     }
@@ -330,7 +342,11 @@ function LiveDashboard({ go, initialLine = null }) {
             <input ref={fileRef} type="file" accept=".csv,text/csv" hidden onChange={onImportFile} />
             {impResult && (impResult.error
               ? <span className="import-msg err">{impResult.error}</span>
-              : <span className="import-msg">{impResult.created} created · {impResult.skipped} skipped · {impResult.failed} failed{impResult.created > 0 && <button type="button" className="mini-btn" onClick={() => location.reload()}>Reload</button>}</span>)}
+              : <span className={`import-msg${(impResult.skipped > 0 || impResult.failed > 0) ? ' warn' : ''}`}>
+                  {(impResult.skipped > 0 || impResult.failed > 0) && '⚠ '}
+                  {impResult.created} created · {impResult.skipped} skipped · {impResult.failed} failed
+                  {impResult.created > 0 && <button type="button" className="mini-btn" onClick={() => location.reload()}>Reload</button>}
+                </span>)}
           </div>
         )}
         </div>
@@ -430,7 +446,8 @@ function LiveDashboard({ go, initialLine = null }) {
             <div className="import-status">
               {impBusy ? <span className="dim">Importing…</span>
                 : impResult.error ? <span className="import-msg err">{impResult.error}</span>
-                : <span className="import-msg">
+                : <span className={`import-msg${(impResult.skipped > 0 || impResult.failed > 0) ? ' warn' : ''}`}>
+                    {(impResult.skipped > 0 || impResult.failed > 0) && '⚠ '}
                     {impResult.created} created · {impResult.skipped} skipped · {impResult.failed} failed
                     {impResult.errors?.length ? ` — ${impResult.errors[0]}` : ''}
                     {impResult.created > 0 && <button type="button" className="mini-btn" onClick={() => location.reload()}>Reload register</button>}

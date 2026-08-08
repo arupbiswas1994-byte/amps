@@ -101,14 +101,19 @@ def _migrate(engine):
         conn.execute(text("DROP INDEX IF EXISTS ix_assets_code"))
         # a plain (non-unique) index on code for lookups
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_assets_code ON assets (code)"))
-        # per-line uniqueness (only when it can be created cleanly — i.e. no dup
-        # (code,line) rows already exist; a data-quality dup would raise, so guard)
+        # Uniqueness is PER LOCATION, not per line. A depot spans several
+        # substations (RSS/TSS/ASS) and the metro reuses generic equipment codes
+        # (BAT CH-1, ACDB-1, DCDB-1 …) at EACH substation — physically distinct
+        # assets that share a code. So the natural key is (location_id, code):
+        # the same code may repeat across stations/depots/lines, never within one
+        # location. Migrate the old per-line index to the per-location one.
+        conn.execute(text("DROP INDEX IF EXISTS ux_assets_code_line"))
         try:
             conn.execute(text(
-                "CREATE UNIQUE INDEX IF NOT EXISTS ux_assets_code_line "
-                "ON assets (code, line_id)"))
+                "CREATE UNIQUE INDEX IF NOT EXISTS ux_assets_code_location "
+                "ON assets (location_id, code)"))
         except Exception:
-            pass  # existing (code,line) duplicates: leave it to a data cleanup
+            pass  # existing (location,code) duplicates: leave to a data cleanup
 
 
 def get_db():
