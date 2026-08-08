@@ -240,12 +240,22 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 .jc-scan .att-fill { margin: 0; }
 .jc-scan .fg-lbl { font-size: 11px; }
 .jc-scan-close { padding-top: 6px; border-top: 1px dashed var(--line, #e4ddcd); }
-/* in the job-card table the scan itself should be readable, not a tiny chip */
+/* in the job-card table keep the scan preview modest so it doesn't blow up the
+   row height; click opens the full image/PDF/link */
 .jc-scan .att-item, .jc-scan .att-chip { align-items: flex-start; }
-.jc-scan .att-thumb { width: 150px; height: 200px; border-radius: 8px; }
-.jc-scan .att-chip { padding: 4px; }
-.jc-scan .att-chip img, .jc-scan .att-chip-pdf { width: 150px; height: 200px; border-radius: 6px; object-fit: cover; }
-.jc-scan .att-view { gap: 8px; }
+.jc-scan .att-thumb { width: 84px; height: 108px; border-radius: 6px; }
+.jc-scan .att-chip { padding: 3px; }
+.jc-scan .att-chip img, .jc-scan .att-chip-pdf { width: 84px; height: 108px; border-radius: 5px; object-fit: cover; }
+.jc-scan .att-view { gap: 6px; }
+/* the add/link buttons stack tight under the (narrow) column */
+.jc-scan .att-actions .btn { padding: 3px 8px; font-size: 11px; }
+
+/* Job-cards table: fixed column layout so Asset/Fault get real width instead of
+   being crushed by the attachment-heavy detail cell. Scrolls-x on narrow. */
+.jc-table { table-layout: fixed; min-width: 1120px; }
+.jc-table td { vertical-align: top; }
+.jc-table td.code { max-width: none; white-space: normal; overflow-wrap: anywhere; }
+.jc-table td[data-l="Fault"] { white-space: normal; }
 
 /* unified failure sub-groups (open / acknowledged / job card / resolved) */
 .logsub { margin: 10px 0 4px; padding-left: 12px; border-left: 3px solid var(--sg, #d9d2c2); }

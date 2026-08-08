@@ -2631,7 +2631,13 @@ function JobCardsView({ line = '' }) {
         <div className="card"><p className="dim" style={{ margin: 0 }}>{tab === 'open' ? 'No open job cards — nothing to chase. 👍' : 'None in this view.'}</p></div>
       ) : (
         <div className="card tbl-wrap">
-          <table>
+          <table className="jc-table">
+            <colgroup>
+              <col style={{ width: 68 }} /><col style={{ width: 116 }} />
+              <col style={{ width: 190 }} /><col style={{ width: 210 }} />
+              <col style={{ width: 150 }} /><col style={{ width: 96 }} />
+              <col style={{ width: 96 }} /><col />{canWrite && <col style={{ width: 120 }} />}
+            </colgroup>
             <thead><tr><th>{tab === 'open' ? 'Pending' : 'Turnaround'}</th><th>Status</th><th>Asset</th><th>Fault</th><th>Issued to</th><th>Raised</th><th>Closed</th><th>Job card detail</th>{canWrite && <th aria-label="Action"></th>}</tr></thead>
             <tbody>
               {shown.map(({ f, jc, rb, status, age }) => (
@@ -2641,7 +2647,7 @@ function JobCardsView({ line = '' }) {
                   <td data-l="Age"><span className={`jc-age${status === 'open' && age >= 30 ? ' hot' : status === 'open' && age >= 14 ? ' warm' : ''}`}>{age}d</span></td>
                   <td data-l="Status"><span className={`jc-pill ${STL[status][0]}`}>{STL[status][1]}</span></td>
                   <td className="code" data-l="Asset">{f.asset_code || '—'}</td>
-                  <td className="wrap-cell" data-l="Fault">{f.fault_type ? <b>{f.fault_type}</b> : tidyLog(f.text).slice(0, 44)}</td>
+                  <td className="wrap-cell" data-l="Fault">{f.fault_type ? <b>{f.fault_type}</b> : tidyLog(f.text)}</td>
                   <td className="dim" data-l="Issued to">{jc.attended_by || '—'}</td>
                   <td className="dim dt" data-l="Raised">{jc.log_date}</td>
                   <td className="dim dt" data-l="Closed">{rb ? rb.log_date : '—'}</td>
