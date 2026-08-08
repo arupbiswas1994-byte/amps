@@ -2541,22 +2541,56 @@ function ChecksheetManage({ formats, isApprover, onEdit, reload, setErr }) {
     if (r.ok || r.status === 204) reload(); else setErr('Could not delete')
   }
   const reject = (id) => { const reason = window.prompt('Reason for rejection (sent back to the author):'); if (reason && reason.trim()) act(id, 'reject', { reason: reason.trim() }) }
+  const [q, setQ] = useState('')
+  const [fStatus, setFStatus] = useState('')
+  const [fGroup, setFGroup] = useState('')
   const order = { pending: 0, draft: 1, published: 2, archived: 3 }
-  const rows = [...formats].sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9) || a.label.localeCompare(b.label))
+  const groups = [...new Set(formats.map((f) => f.grp).filter(Boolean))].sort()
+  const counts = formats.reduce((m, f) => { m[f.status] = (m[f.status] || 0) + 1; return m }, {})
+  const ql = q.trim().toLowerCase()
+  const rows = [...formats]
+    .filter((f) => !fStatus || f.status === fStatus)
+    .filter((f) => !fGroup || f.grp === fGroup)
+    .filter((f) => !ql || [f.label, f.title, f.grp, ...f.items.map((i) => i.activity)].some((v) => (v || '').toLowerCase().includes(ql)))
+    .sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9) || a.label.localeCompare(b.label))
+  const STAT_TABS = [['', `All ${formats.length}`], ['pending', `Pending ${counts.pending || 0}`], ['draft', `Draft ${counts.draft || 0}`], ['published', `Published ${counts.published || 0}`]]
   return (
     <div>
-      <div className="cs-manage-head no-print">
-        <button className="btn" type="button" onClick={() => onEdit({ label: '', title: '', grp: 'HT', items: [{ activity: '', prescribed: '' }] })}>＋ New format</button>
-        <p className="dim">Author a draft, submit it, and an IC (in-charge) approves it. Only published formats print. Every step is audit-logged.</p>
+      <div className="asset-toolbar no-print">
+        <input className="asset-search" type="search" value={q} onChange={(e) => setQ(e.target.value)}
+               placeholder="Search formats — name, group, activity…" aria-label="Search checksheet formats" />
+        <div className="asset-filter" role="tablist" aria-label="Status filter">
+          {STAT_TABS.filter(([k]) => k !== 'pending' || counts.pending).map(([k, lbl]) => (
+            <button key={k} type="button" className={`btn preset ${fStatus === k ? 'active' : ''}${k === 'pending' && counts.pending ? ' has-od' : ''}`}
+                    onClick={() => setFStatus(k)}>{lbl}</button>
+          ))}
+        </div>
+        {groups.length > 1 && (
+          <select value={fGroup} onChange={(e) => setFGroup(e.target.value)} aria-label="Filter by group">
+            <option value="">All groups</option>
+            {groups.map((g) => <option key={g} value={g}>{g}</option>)}
+          </select>
+        )}
+        {(q || fStatus || fGroup) && <button type="button" className="btn ghost sm" onClick={() => { setQ(''); setFStatus(''); setFGroup('') }}>Clear</button>}
+        <span className="asset-count">{rows.length} shown</span>
+        <div className="asset-actions">
+          <button type="button" className="icon-btn" title="New checksheet format" aria-label="New format"
+                  onClick={() => onEdit({ label: '', title: '', grp: 'HT', frequencies: [], items: [{ activity: '', prescribed: '', freqs: [] }] })}>
+            <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M8 3.2v9.6M3.2 8h9.6" /></svg>
+          </button>
+        </div>
       </div>
       <div className="card tbl-wrap">
-        <table>
-          <thead><tr><th>Format</th><th>Group</th><th>Ver</th><th>Items</th><th>Status</th><th>By</th><th aria-label="Actions"></th></tr></thead>
+        <table className="cs-manage-tbl">
+          <thead><tr><th>Format</th><th>Group</th><th>Freq</th><th>Ver</th><th>Items</th><th>Status</th><th>By</th><th aria-label="Actions"></th></tr></thead>
           <tbody>
-            {rows.map((f) => (
+            {rows.length === 0 ? (
+              <tr><td colSpan={8} className="dim" style={{ textAlign: 'center', padding: 20 }}>No formats match.</td></tr>
+            ) : rows.map((f) => (
               <tr key={f.id}>
                 <td><b>{f.label}</b>{f.reject_reason && f.status === 'draft' ? <div className="cs-reject">✗ {f.reject_reason}</div> : null}</td>
                 <td className="dim">{f.grp}</td>
+                <td className="dim">{f.frequencies?.length ? f.frequencies.join(' ') : '—'}</td>
                 <td className="dim">v{f.version}</td>
                 <td className="dim">{f.items.length}</td>
                 <td><span className={`cs-badge cs-b-${f.status}`}>{CS_STATUS_LABEL[f.status] || f.status}</span></td>
