@@ -13,6 +13,7 @@ import { LIVE, ORG, getJSON, useLiveAssets, useLiveAsset, useMe, apiLogin, apiLo
 import QR, { assetUrl } from './qr.jsx'
 import DutyRoster from './roster.jsx'
 import LogBook, { AttachmentUpload } from './logbook.jsx'
+import { CHECKSHEET_FORMATS } from './checksheets.js'
 
 const STATUS_LABEL = {
   in_service: 'In service',
@@ -2286,6 +2287,91 @@ function AboutPage() {
   )
 }
 
+/* Printables — one place for everything a coordinator prints: QR asset tags and
+   blank maintenance checksheets. Two sub-tabs so the top nav stays lean. */
+function Printables({ initial = 'qr' }) {
+  const [tab, setTab] = useState(initial === 'checksheets' ? 'checksheets' : 'qr')
+  useEffect(() => { setTab(initial === 'checksheets' ? 'checksheets' : 'qr') }, [initial])
+  return (
+    <>
+      <div className="page-head no-print"><h1>Printables</h1></div>
+      <div className="asset-filter no-print" role="tablist" aria-label="Printables" style={{ marginBottom: 12 }}>
+        <button type="button" className={`btn preset ${tab === 'qr' ? 'active' : ''}`}
+                onClick={() => { setTab('qr'); location.hash = '/printables?t=qr' }}>QR asset tags</button>
+        <button type="button" className={`btn preset ${tab === 'checksheets' ? 'active' : ''}`}
+                onClick={() => { setTab('checksheets'); location.hash = '/printables?t=checksheets' }}>Checksheets</button>
+      </div>
+      {tab === 'qr' ? <TagSheet /> : <ChecksheetFormats />}
+    </>
+  )
+}
+
+/* Blank HT maintenance checksheets, AMPS-branded and print-ready. Coordinators
+   can't keep predefined DIGITAL checksheets, so they print the right blank
+   format, fill it by hand, then scan/upload it back against the log entry. */
+function ChecksheetFormats() {
+  const [sel, setSel] = useState(CHECKSHEET_FORMATS[0]?.key || '')
+  const [copies, setCopies] = useState(1)
+  const fmt = CHECKSHEET_FORMATS.find((f) => f.key === sel) || CHECKSHEET_FORMATS[0]
+  if (!fmt) return <div className="card"><p className="dim" style={{ margin: 0 }}>No checksheet formats loaded.</p></div>
+  const sheets = Array.from({ length: Math.min(Math.max(copies, 1), 20) }, (_, i) => i)
+  return (
+    <div className="cs-formats">
+      <aside className="cs-picker no-print card">
+        <div className="cs-picker-h">HT formats <span className="dim">· {CHECKSHEET_FORMATS.length}</span></div>
+        <ul>
+          {CHECKSHEET_FORMATS.map((f) => (
+            <li key={f.key}>
+              <button type="button" className={f.key === sel ? 'active' : ''} onClick={() => setSel(f.key)}>
+                <span className="cs-pick-label">{f.label}</span>
+                <span className="cs-pick-n">{f.items.length}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+        <div className="cs-picker-actions">
+          <label className="cs-copies">Copies
+            <input type="number" min="1" max="20" value={copies}
+                   onChange={(e) => setCopies(Number(e.target.value) || 1)} />
+          </label>
+          <button className="btn" type="button" onClick={() => window.print()}>Print</button>
+        </div>
+        <p className="dim cs-hint">Print a blank format, fill it by hand during maintenance, then upload the scan against the log entry.</p>
+      </aside>
+
+      <div className="cs-print-area">
+        {sheets.map((i) => (
+          <article className="cs-sheet" key={i}>
+            <header className="cs-sheet-head">
+              <div className="cs-brand"><b>{ORG}</b><span>AMPS · Maintenance Checksheet</span></div>
+              <div className="cs-title">{fmt.title || fmt.label}</div>
+            </header>
+            <div className="cs-meta">
+              <span>Location: <u>&nbsp;</u></span>
+              <span>Asset name / ID: <u>&nbsp;</u></span>
+              <span>Sheet no: <u>&nbsp;</u></span>
+              <span>Date: <u>&nbsp;</u></span>
+            </div>
+            <table className="cs-table">
+              <thead><tr><th className="cs-sn">S.N</th><th>Maintenance activity</th><th className="cs-done">Done ✓ / reading</th></tr></thead>
+              <tbody>
+                {fmt.items.map((it, j) => (
+                  <tr key={j}><td className="cs-sn">{j + 1}</td><td>{it}</td><td className="cs-done"></td></tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="cs-remarks"><span>Maintenance remarks:</span><div className="cs-remark-box"></div></div>
+            <footer className="cs-sign">
+              <div>Staff (name &amp; signature):<br /><span className="cs-sign-line"></span></div>
+              <div>Supervisor (name &amp; signature):<br /><span className="cs-sign-line"></span></div>
+            </footer>
+          </article>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 const TAG_CAP = 500   // cap the QRs rendered at once — keeps the page responsive
 
 function TagSheet() {
@@ -2694,7 +2780,7 @@ const NAV = LIVE ? [
   ['/log', 'Log book'],
   ['/failures', 'Failures'],
   ['/job-cards', 'Job cards'],
-  ['/tags', 'QR tags'],
+  ['/printables', 'Printables'],
 ] : [
   ['/', 'Assets'],
   ['/planner', 'Planner'],
@@ -2703,7 +2789,7 @@ const NAV = LIVE ? [
   ['/failures', 'Failures'],
   ['/spares', 'Spares'],
   ['/procurement', 'Procurement'],
-  ['/tags', 'QR tags'],
+  ['/printables', 'Printables'],
 ]
 
 const NotYet = () => (
@@ -3081,7 +3167,8 @@ export default function App() {
         : routePath === '/job-cards' ? (LIVE ? <JobCardsView line={signedIn && me.line ? me.line : ''} /> : <NotYet />)
         : routePath === '/spares' ? (LIVE ? <NotYet /> : <Spares />)
         : routePath === '/procurement' ? (LIVE ? <NotYet /> : <Procurement />)
-        : routePath === '/tags' ? <TagSheet />
+        : routePath === '/printables' ? <Printables initial={routeQuery.get('t') || 'qr'} />
+        : routePath === '/tags' ? <Printables initial="qr" />
         : routePath === '/about' ? <AboutPage />
         : routePath === '/assets' ? (LIVE ? <LiveDashboard go={go} /> : <Dashboard go={go} />)
         : (LIVE ? <LineDashboard go={go} /> : <Dashboard go={go} />)}
