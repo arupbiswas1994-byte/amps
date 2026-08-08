@@ -2522,7 +2522,7 @@ function ChecksheetManage({ formats, isApprover, onEdit, reload, setErr }) {
   const rows = [...formats]
     .filter((f) => !fStatus || f.status === fStatus)
     .filter((f) => !fGroup || f.grp === fGroup)
-    .filter((f) => !ql || [f.label, f.title, f.grp, ...f.items.map((i) => i.activity)].some((v) => (v || '').toLowerCase().includes(ql)))
+    .filter((f) => !ql || [f.label, f.title, f.grp, f.asset_code, f.asset_class, ...f.items.map((i) => i.activity)].some((v) => (v || '').toLowerCase().includes(ql)))
     .sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9) || a.label.localeCompare(b.label))
   const STAT_TABS = [['', `All ${formats.length}`], ['pending', `Pending ${counts.pending || 0}`], ['draft', `Draft ${counts.draft || 0}`], ['published', `Published ${counts.published || 0}`]]
   return (
@@ -2553,15 +2553,16 @@ function ChecksheetManage({ formats, isApprover, onEdit, reload, setErr }) {
       </div>
       <div className="card tbl-wrap">
         <table className="cs-manage-tbl">
-          <thead><tr><th>Format</th><th>Group</th><th>Freq</th><th>Ver</th><th>Items</th><th>Status</th><th>By</th><th aria-label="Actions"></th></tr></thead>
+          <thead><tr><th>Format</th><th>Asset / class</th><th>Group</th><th>Cycles</th><th>Ver</th><th>Items</th><th>Status</th><th>By</th><th aria-label="Actions"></th></tr></thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={8} className="dim" style={{ textAlign: 'center', padding: 20 }}>No formats match.</td></tr>
+              <tr><td colSpan={9} className="dim" style={{ textAlign: 'center', padding: 20 }}>No formats match.</td></tr>
             ) : rows.map((f) => (
               <tr key={f.id}>
                 <td><b>{f.label}</b>{f.reject_reason && f.status === 'draft' ? <div className="cs-reject">✗ {f.reject_reason}</div> : null}</td>
+                <td className="dim">{f.asset_code || f.asset_class || '—'}</td>
                 <td className="dim">{f.grp}</td>
-                <td className="dim">{f.frequencies?.length ? f.frequencies.join(' ') : '—'}</td>
+                <td className="dim">{f.frequencies?.length ? f.frequencies.join(' · ') : '—'}</td>
                 <td className="dim">v{f.version}</td>
                 <td className="dim">{f.items.length}</td>
                 <td><span className={`cs-badge cs-b-${f.status}`}>{CS_STATUS_LABEL[f.status] || f.status}</span></td>
@@ -2612,6 +2613,7 @@ function ChecksheetEditor({ initial, onClose, onSaved, setErr }) {
   const [title, setTitle] = useState(initial.title || '')
   const [grp, setGrp] = useState(initial.grp || 'HT')
   const [freq, setFreq] = useState(initial.frequency || '')
+  const [assetCode, setAssetCode] = useState(initial.asset_code || '')
   const [cls, setCls] = useState(initial.asset_class || '')
   const [cols, setCols] = useState(initial.frequencies || [])   // frequency-matrix columns
   const [newCol, setNewCol] = useState('')
@@ -2630,7 +2632,7 @@ function ChecksheetEditor({ initial, onClose, onSaved, setErr }) {
     if (!label.trim() || !clean.length) { setErr('A format needs a name and at least one activity.'); return }
     setBusy(true); setErr('')
     try {
-      const body = { label: label.trim(), title: title.trim(), grp: grp.trim() || 'HT', frequency: freq.trim() || null, asset_class: cls.trim() || null, frequencies: cols, items: clean }
+      const body = { label: label.trim(), title: title.trim(), grp: grp.trim() || 'HT', frequency: freq.trim() || null, asset_code: assetCode.trim() || null, asset_class: cls.trim() || null, frequencies: cols, items: clean }
       const base = import.meta.env.VITE_AMPS_API ?? ''
       // new (no id) → POST; existing → PUT (a published one forks a new draft)
       const r = initial.id
@@ -2652,7 +2654,8 @@ function ChecksheetEditor({ initial, onClose, onSaved, setErr }) {
         <label>Group<input value={grp} onChange={(e) => setGrp(e.target.value)} placeholder="HT / LT / ECS" /></label>
         <label>Frequency <span className="ef-opt">(opt)</span><input value={freq} onChange={(e) => setFreq(e.target.value)} placeholder="e.g. Yearly" /></label>
         <label className="fg-span-2">Printed title<input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="METRO RAILWAY, KOLKATA — 33KV VCB MAINTENANCE" /></label>
-        <label className="fg-span-2">Applies to class <span className="ef-opt">(opt)</span><input value={cls} onChange={(e) => setCls(e.target.value)} placeholder="asset class this format matches" /></label>
+        <label>Asset / equipment <span className="ef-opt">(opt)</span><input value={assetCode} onChange={(e) => setAssetCode(e.target.value)} placeholder="e.g. Third Rail, BET, VCB" /></label>
+        <label>Asset class <span className="ef-opt">(opt)</span><input value={cls} onChange={(e) => setCls(e.target.value)} placeholder="class this format matches" /></label>
       </div>
       <div className="cs-freq-manage">
         <span className="fg-lbl">Frequency groups <span className="ef-opt">(the maintenance cycles this checksheet covers — tick each activity below under the cycles it's due at)</span></span>

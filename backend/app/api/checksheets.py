@@ -36,9 +36,10 @@ class FormatIn(BaseModel):
     label: str = Field(min_length=1)
     title: str = ""
     grp: str = "HT"
+    asset_code: str | None = None
     asset_class: str | None = None
     frequency: str | None = None
-    frequencies: list[str] = []   # the matrix columns, e.g. ["M1","M3","M6","Y1"]
+    frequencies: list[str] = []   # cycle groups, e.g. ["Monthly","Yearly"]
     items: list[ChecksheetItem] = []
 
 
@@ -48,6 +49,7 @@ class FormatOut(BaseModel):
     grp: str
     label: str
     title: str
+    asset_code: str | None
     asset_class: str | None
     frequency: str | None
     frequencies: list[str]
@@ -100,7 +102,7 @@ def _items(f: ChecksheetFormat) -> list[ChecksheetItem]:
 def _to_out(f: ChecksheetFormat) -> FormatOut:
     return FormatOut(
         id=f.id, slug=f.slug, grp=f.grp, label=f.label, title=f.title,
-        asset_class=f.asset_class, frequency=f.frequency, frequencies=_freqs(f),
+        asset_code=f.asset_code, asset_class=f.asset_class, frequency=f.frequency, frequencies=_freqs(f),
         items=_items(f), version=f.version, status=f.status.value, supersedes_id=f.supersedes_id,
         reject_reason=f.reject_reason, created_by=f.created_by, created_at=f.created_at,
         updated_at=f.updated_at, approved_by=f.approved_by, approved_at=f.approved_at)
@@ -191,7 +193,8 @@ def create_format(body: FormatIn, db: Session = Depends(get_db), user=Depends(cu
     f = ChecksheetFormat(
         slug=_slugify(body.label), grp=(body.grp or "HT").strip()[:40],
         label=body.label.strip()[:120], title=body.title.strip()[:240] or body.label.strip()[:240],
-        asset_class=(body.asset_class or None), frequency=(body.frequency or None),
+        asset_code=(body.asset_code or None), asset_class=(body.asset_class or None),
+        frequency=(body.frequency or None),
         frequencies_json=_dump_freqs(cols), items_json=_dump_items(body.items, cols),
         version=1, status=ChecksheetStatus.DRAFT,
         line_id=getattr(user, "line_id", None),   # scoped to the author's line
@@ -215,6 +218,7 @@ def edit_format(fid: int, body: FormatIn, db: Session = Depends(get_db), user=De
         f.label = body.label.strip()[:120]
         f.title = body.title.strip()[:240] or f.label
         f.grp = (body.grp or f.grp).strip()[:40]
+        f.asset_code = body.asset_code or None
         f.asset_class = body.asset_class or None
         f.frequency = body.frequency or None
         f.frequencies_json = _dump_freqs(cols)
@@ -232,7 +236,8 @@ def edit_format(fid: int, body: FormatIn, db: Session = Depends(get_db), user=De
     nf = ChecksheetFormat(
         slug=f.slug, grp=(body.grp or f.grp).strip()[:40], label=body.label.strip()[:120],
         title=body.title.strip()[:240] or body.label.strip()[:240],
-        asset_class=body.asset_class or None, frequency=body.frequency or None,
+        asset_code=body.asset_code or None, asset_class=body.asset_class or None,
+        frequency=body.frequency or None,
         frequencies_json=_dump_freqs(cols), items_json=_dump_items(body.items, cols),
         version=latest + 1, status=ChecksheetStatus.DRAFT, supersedes_id=f.id, line_id=f.line_id,
         created_by=user.username)

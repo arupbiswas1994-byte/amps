@@ -403,7 +403,10 @@ class ChecksheetFormat(Base):
     grp: Mapped[str] = mapped_column(String(40), default="HT")  # HT / LT / ECS …
     label: Mapped[str] = mapped_column(String(120))
     title: Mapped[str] = mapped_column(String(240))
-    # applicability hints (optional) — surface the right format when logging
+    # what the format applies to. `asset_code` names the specific equipment/asset
+    # it's for (e.g. "Third Rail", "BET", "VCB"); `asset_class` is the broader
+    # class fallback. Either surfaces the right checksheet when logging.
+    asset_code: Mapped[str | None] = mapped_column(String(120))
     asset_class: Mapped[str | None] = mapped_column(String(120))
     frequency: Mapped[str | None] = mapped_column(String(40))
     # frequency-matrix columns (e.g. ["M1","M3","M6","Y1"]); each item marks which
