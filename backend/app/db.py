@@ -62,6 +62,13 @@ def _migrate(engine):
             with engine.begin() as conn:
                 conn.execute(text(
                     f"ALTER TYPE logentrytype ADD VALUE IF NOT EXISTS '{val}'"))
+        # SPARE — a spare unit held in reserve, not in active service (the sheets
+        # mark these 'spare'); added so their import doesn't fail on the status.
+        for val in ("IN_SERVICE", "UNDER_MAINTENANCE", "OUT_OF_SERVICE",
+                    "DECOMMISSIONED", "SPARE"):
+            with engine.begin() as conn:
+                conn.execute(text(
+                    f"ALTER TYPE assetstatus ADD VALUE IF NOT EXISTS '{val}'"))
 
     insp = inspect(engine)
     with engine.begin() as conn:

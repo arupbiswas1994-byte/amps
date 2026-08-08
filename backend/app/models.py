@@ -56,6 +56,7 @@ class AssetStatus(str, Enum):
     UNDER_MAINTENANCE = "under_maintenance"
     OUT_OF_SERVICE = "out_of_service"
     DECOMMISSIONED = "decommissioned"
+    SPARE = "spare"                     # held in reserve, not in active service
 
 
 class Criticality(str, Enum):

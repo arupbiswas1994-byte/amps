@@ -56,10 +56,11 @@ def schedule_all(db: Session = Depends(get_db), user=Depends(optional_user)):
     ids = set(log_by) | set(plan_freqs)
     code_by, line_by = {}, {}
     if ids:
-        # Decommissioned assets are out of service for good — they must not count
-        # as overdue/due in the schedule statistics, even with historical logs.
+        # Decommissioned (gone for good) and spare (held in reserve) assets are
+        # not in active service — they must not count as overdue/due in the
+        # schedule statistics, even with historical logs.
         for a in db.scalars(select(Asset).where(Asset.id.in_(ids))).all():
-            if a.status == AssetStatus.DECOMMISSIONED:
+            if a.status in (AssetStatus.DECOMMISSIONED, AssetStatus.SPARE):
                 continue
             code_by[a.id] = a.code
             line_by[a.id] = a.location.parent.name if a.location and a.location.parent else None
