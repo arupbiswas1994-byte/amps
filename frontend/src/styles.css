@@ -528,29 +528,66 @@ td .chip.d-none { color: var(--ink-3); }
 .cs-copies input { width: 60px; padding: 5px; border: 1px solid var(--border); border-radius: 7px; }
 .cs-hint { font-size: 12px; margin: 10px 0 0; }
 .cs-print-area { display: flex; flex-direction: column; gap: 16px; }
-.cs-sheet { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 20px; color: #111; }
-.cs-sheet-head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid var(--accent); padding-bottom: 8px; gap: 12px; }
-.cs-brand b { display: block; font-size: 15px; }
-.cs-brand span { font-size: 11px; color: var(--ink-3); letter-spacing: .04em; text-transform: uppercase; }
-.cs-title { text-align: right; font-weight: 700; font-size: 14px; max-width: 60%; }
+.cs-sheet { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 22px; color: #111; max-width: 800px; }
+.cs-sheet-head { display: flex; align-items: center; gap: 14px; border-bottom: 2px solid var(--accent); padding-bottom: 10px; }
+.cs-logo { width: 46px; height: 46px; flex: none; }
+.cs-head-mid { flex: 1; display: flex; flex-direction: column; gap: 1px; }
+.cs-head-mid b { font-size: 15px; }
+.cs-head-sub { font-size: 10px; color: var(--ink-3); letter-spacing: .05em; text-transform: uppercase; }
+.cs-title { font-weight: 700; font-size: 14px; margin-top: 2px; }
+.cs-sheet-head .qr-wrap, .cs-sheet-head svg, .cs-sheet-head canvas { flex: none; }
 .cs-meta { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 10px 0; font-size: 12px; }
 .cs-meta u { display: inline-block; min-width: 90px; border-bottom: 1px solid #999; text-decoration: none; }
-.cs-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.cs-table th, .cs-table td { border: 1px solid #bbb; padding: 5px 7px; text-align: left; vertical-align: top; }
-.cs-table th { background: #f0f4f7; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-.cs-table .cs-sn { width: 34px; text-align: center; }
-.cs-table .cs-done { width: 130px; }
+.cs-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+.cs-table th, .cs-table td { border: 1px solid #bbb; padding: 4px 7px; text-align: left; vertical-align: top; }
+.cs-table th { background: #eef4f8; font-size: 10px; text-transform: uppercase; letter-spacing: .02em; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.cs-table .cs-sn { width: 30px; text-align: center; }
+.cs-table .cs-presc { width: 26%; }
+.cs-table .cs-done { width: 22%; }
 .cs-remarks { margin-top: 10px; font-size: 12px; }
-.cs-remark-box { height: 52px; border: 1px solid #bbb; border-radius: 4px; margin-top: 4px; }
-.cs-sign { display: flex; justify-content: space-between; gap: 24px; margin-top: 16px; font-size: 12px; }
+.cs-remark-box { height: 48px; border: 1px solid #bbb; border-radius: 4px; margin-top: 4px; }
+.cs-sign { display: flex; justify-content: space-between; gap: 24px; margin-top: 14px; font-size: 12px; }
 .cs-sign > div { flex: 1; }
-.cs-sign-line { display: block; height: 34px; border-bottom: 1px solid #999; margin-top: 4px; }
+.cs-sign-line { display: block; height: 30px; border-bottom: 1px solid #999; margin-top: 4px; }
 @media screen and (max-width: 640px) { .cs-formats { grid-template-columns: 1fr; } .cs-picker { position: static; } }
+
+/* governance: badges, manage table, editor, audit modal */
+.cs-manage-head { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; flex-wrap: wrap; }
+.cs-manage-head p { margin: 0; font-size: 12px; }
+.cs-badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 99px; border: 1px solid; }
+.cs-b-draft { color: #6b6000; background: #fbf7d0; border-color: #ece08a; }
+.cs-b-pending { color: #8a5000; background: #fdeecd; border-color: #f0c98a; }
+.cs-b-published { color: #1a7a3a; background: color-mix(in srgb, var(--good) 12%, #fff); border-color: color-mix(in srgb, var(--good) 30%, transparent); }
+.cs-b-archived { color: var(--ink-3); background: #f0f0f0; border-color: #ddd; }
+.cs-acts { display: flex; gap: 5px; flex-wrap: wrap; }
+.mini-btn.ok { color: #1a7a3a; border-color: #b6e0c2; }
+.mini-btn.danger { color: var(--critical); border-color: #f2d4d4; }
+.cs-reject { font-size: 11px; color: var(--critical); margin-top: 3px; }
+.cs-editor { padding: 16px; }
+.cs-editor-h { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.cs-editor-meta { margin-bottom: 12px; }
+.cs-items-hd, .cs-item-row { display: grid; grid-template-columns: 30px 1fr 1fr 96px; gap: 8px; align-items: center; }
+.cs-items-hd { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--ink-3); padding: 0 2px 4px; }
+.cs-item-row { margin-bottom: 6px; }
+.cs-item-row input { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 7px; }
+.cs-item-n { text-align: center; color: var(--ink-3); font-size: 12px; }
+.cs-item-acts { display: flex; gap: 3px; }
+.cs-editor-actions { display: flex; justify-content: space-between; gap: 10px; margin-top: 12px; }
+.cs-modal { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 20px; }
+.cs-modal-card { max-width: 560px; width: 100%; max-height: 80vh; overflow-y: auto; padding: 16px; }
+.cs-modal-h { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.cs-audit { list-style: none; margin: 0; padding: 0; }
+.cs-audit li { padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.cs-audit-act { font-weight: 700; text-transform: capitalize; }
+.cs-audit-meta { font-size: 11px; }
+
 @media print {
-  .cs-picker, .page-head, .asset-filter { display: none !important; }
+  .cs-picker, .page-head, .asset-filter, .cs-manage-head { display: none !important; }
   .cs-formats { display: block; }
-  .cs-sheet { border: none; border-radius: 0; padding: 0; break-after: page; }
+  .cs-sheet { border: none; border-radius: 0; padding: 0; max-width: none; break-after: page; }
   .cs-sheet:last-child { break-after: auto; }
+  .cs-table { font-size: 10.5px; }
+  .cs-table tr { break-inside: avoid; }
 }
 
 .fact .fk { font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); }

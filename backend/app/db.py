@@ -8,6 +8,7 @@ Set DATABASE_URL (e.g. postgresql+psycopg2://user:pass@host/amps); without it
 the app runs on a local SQLite file so the demo works out of the box.
 """
 import os
+from datetime import datetime
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -26,6 +27,31 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False)
 def init_db():
     Base.metadata.create_all(engine)
     _migrate(engine)
+    _seed_checksheets(engine)
+
+
+def _seed_checksheets(engine):
+    """Publish the 17 HT checksheet formats as v1 on an empty library, so the
+    Printables list is populated out of the box; officers edit them thereafter."""
+    import json as _json
+    import re as _re
+
+    from app.checksheet_seed import HT_CHECKSHEET_SEED
+    from app.models import ChecksheetFormat, ChecksheetStatus
+
+    with SessionLocal() as db:
+        if db.query(ChecksheetFormat).first():
+            return
+        now = datetime.utcnow()
+        for f in HT_CHECKSHEET_SEED:
+            slug = _re.sub(r"[^a-z0-9]+", "-", f["label"].lower()).strip("-")[:80]
+            db.add(ChecksheetFormat(
+                slug=slug, grp=f.get("grp", "HT"), label=f["label"][:120],
+                title=f.get("title", f["label"])[:240],
+                items_json=_json.dumps(f["items"], ensure_ascii=False),
+                version=1, status=ChecksheetStatus.PUBLISHED,
+                created_by="system", approved_by="system", approved_at=now))
+        db.commit()
 
 
 def _migrate(engine):
@@ -70,6 +96,11 @@ def _migrate(engine):
             with engine.begin() as conn:
                 conn.execute(text(
                     f"ALTER TYPE assetstatus ADD VALUE IF NOT EXISTS '{val}'"))
+        # OFFICER — approves checksheet formats (IC/officer sign-off)
+        for val in ("ADMIN", "OFFICER", "SUPERVISOR", "TECHNICIAN", "VIEWER"):
+            with engine.begin() as conn:
+                conn.execute(text(
+                    f"ALTER TYPE userrole ADD VALUE IF NOT EXISTS '{val}'"))
 
     insp = inspect(engine)
     with engine.begin() as conn:

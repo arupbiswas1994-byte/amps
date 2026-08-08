@@ -160,6 +160,13 @@ def current_writer(user=Depends(current_user)):
     return user
 
 
+def current_approver(user=Depends(current_user)):
+    """An IC/officer who may APPROVE checksheet formats — OFFICER or ADMIN."""
+    if user.role not in (UserRole.OFFICER, UserRole.ADMIN):
+        raise HTTPException(403, "checksheet approval needs an officer or admin account")
+    return user
+
+
 def scope_location_ids(db: Session, user) -> set[int] | None:
     """Location ids the user may touch. None = unrestricted (whole department)."""
     if user.line_id is None:

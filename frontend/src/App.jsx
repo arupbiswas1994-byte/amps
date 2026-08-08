@@ -2306,23 +2306,69 @@ function Printables({ initial = 'qr' }) {
   )
 }
 
-/* Blank HT maintenance checksheets, AMPS-branded and print-ready. Coordinators
-   can't keep predefined DIGITAL checksheets, so they print the right blank
-   format, fill it by hand, then scan/upload it back against the log entry. */
+/* Checksheet FORMAT library — governed create/edit with IC/officer approval,
+   plus the print-ready blank. Coordinators can't keep predefined DIGITAL
+   checksheets, so they print the right blank format, fill it by hand, then
+   scan/upload it back against the log entry. */
+const CS_STATUS_LABEL = { draft: 'Draft', pending: 'Pending approval', published: 'Published', archived: 'Archived' }
+
+function normFmt(f) {
+  // API format → the shape the printable/editor use; tolerate the bundled fallback
+  const items = (f.items || []).map((it) => typeof it === 'string' ? { activity: it, prescribed: '' } : it)
+  return { ...f, items }
+}
+
 function ChecksheetFormats() {
-  const [sel, setSel] = useState(CHECKSHEET_FORMATS[0]?.key || '')
+  const { me, canWrite } = useMe()
+  const isApprover = me && (me.role === 'officer' || me.role === 'admin')
+  const [formats, setFormats] = useState(null)
+  const [mode, setMode] = useState('print')   // print | manage
+  const [editing, setEditing] = useState(null) // format being edited/created
+  const [err, setErr] = useState('')
+  const load = () => getJSON('/api/checksheets/formats')
+    .then((r) => setFormats((r || []).map(normFmt)))
+    .catch(() => setFormats(CHECKSHEET_FORMATS.map(normFmt)))  // offline fallback
+  useEffect(() => { load() }, [])
+  if (formats === null) return <p className="dim">Loading checksheet formats…</p>
+  const published = formats.filter((f) => f.status === 'published' || !f.status)
+
+  return (
+    <div>
+      {canWrite && (
+        <div className="asset-filter no-print" role="tablist" aria-label="Checksheet mode" style={{ marginBottom: 12 }}>
+          <button type="button" className={`btn preset ${mode === 'print' ? 'active' : ''}`} onClick={() => setMode('print')}>Print blanks</button>
+          <button type="button" className={`btn preset ${mode === 'manage' ? 'active' : ''}`} onClick={() => setMode('manage')}>
+            Manage formats{formats.some((f) => f.status === 'pending') ? ` · ${formats.filter((f) => f.status === 'pending').length} pending` : ''}
+          </button>
+        </div>
+      )}
+      {err && <div className="card offline-note no-print">{err}</div>}
+      {editing ? (
+        <ChecksheetEditor initial={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load() }} setErr={setErr} />
+      ) : mode === 'manage' && canWrite ? (
+        <ChecksheetManage formats={formats} isApprover={isApprover} onEdit={setEditing} reload={load} setErr={setErr} />
+      ) : (
+        <ChecksheetPrint published={published} />
+      )}
+    </div>
+  )
+}
+
+/* the print-ready blank picker + A4 sheet */
+function ChecksheetPrint({ published }) {
+  const [sel, setSel] = useState(published[0]?.id ?? published[0]?.key ?? '')
   const [copies, setCopies] = useState(1)
-  const fmt = CHECKSHEET_FORMATS.find((f) => f.key === sel) || CHECKSHEET_FORMATS[0]
-  if (!fmt) return <div className="card"><p className="dim" style={{ margin: 0 }}>No checksheet formats loaded.</p></div>
+  const fmt = published.find((f) => (f.id ?? f.key) === sel) || published[0]
+  if (!fmt) return <div className="card"><p className="dim" style={{ margin: 0 }}>No published checksheet formats yet.</p></div>
   const sheets = Array.from({ length: Math.min(Math.max(copies, 1), 20) }, (_, i) => i)
   return (
     <div className="cs-formats">
       <aside className="cs-picker no-print card">
-        <div className="cs-picker-h">HT formats <span className="dim">· {CHECKSHEET_FORMATS.length}</span></div>
+        <div className="cs-picker-h">Formats <span className="dim">· {published.length}</span></div>
         <ul>
-          {CHECKSHEET_FORMATS.map((f) => (
-            <li key={f.key}>
-              <button type="button" className={f.key === sel ? 'active' : ''} onClick={() => setSel(f.key)}>
+          {published.map((f) => (
+            <li key={f.id ?? f.key}>
+              <button type="button" className={(f.id ?? f.key) === sel ? 'active' : ''} onClick={() => setSel(f.id ?? f.key)}>
                 <span className="cs-pick-label">{f.label}</span>
                 <span className="cs-pick-n">{f.items.length}</span>
               </button>
@@ -2331,42 +2377,204 @@ function ChecksheetFormats() {
         </ul>
         <div className="cs-picker-actions">
           <label className="cs-copies">Copies
-            <input type="number" min="1" max="20" value={copies}
-                   onChange={(e) => setCopies(Number(e.target.value) || 1)} />
+            <input type="number" min="1" max="20" value={copies} onChange={(e) => setCopies(Number(e.target.value) || 1)} />
           </label>
           <button className="btn" type="button" onClick={() => window.print()}>Print</button>
         </div>
-        <p className="dim cs-hint">Print a blank format, fill it by hand during maintenance, then upload the scan against the log entry.</p>
+        <p className="dim cs-hint">Print a blank, fill it by hand during maintenance, then upload the scan against the log entry.</p>
       </aside>
-
       <div className="cs-print-area">
-        {sheets.map((i) => (
-          <article className="cs-sheet" key={i}>
-            <header className="cs-sheet-head">
-              <div className="cs-brand"><b>{ORG}</b><span>AMPS · Maintenance Checksheet</span></div>
-              <div className="cs-title">{fmt.title || fmt.label}</div>
-            </header>
-            <div className="cs-meta">
-              <span>Location: <u>&nbsp;</u></span>
-              <span>Asset name / ID: <u>&nbsp;</u></span>
-              <span>Sheet no: <u>&nbsp;</u></span>
-              <span>Date: <u>&nbsp;</u></span>
-            </div>
-            <table className="cs-table">
-              <thead><tr><th className="cs-sn">S.N</th><th>Maintenance activity</th><th className="cs-done">Done ✓ / reading</th></tr></thead>
-              <tbody>
-                {fmt.items.map((it, j) => (
-                  <tr key={j}><td className="cs-sn">{j + 1}</td><td>{it}</td><td className="cs-done"></td></tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="cs-remarks"><span>Maintenance remarks:</span><div className="cs-remark-box"></div></div>
-            <footer className="cs-sign">
-              <div>Staff (name &amp; signature):<br /><span className="cs-sign-line"></span></div>
-              <div>Supervisor (name &amp; signature):<br /><span className="cs-sign-line"></span></div>
-            </footer>
-          </article>
-        ))}
+        {sheets.map((i) => <ChecksheetSheet key={i} fmt={fmt} />)}
+      </div>
+    </div>
+  )
+}
+
+/* one AMPS-branded A4 blank: metro logo + emblem, QR to the format, prescribed
+   value column beside the actual-reading column, signatures. */
+function ChecksheetSheet({ fmt }) {
+  const qrVal = `${location.origin}/#/printables?t=checksheets&f=${fmt.id ?? ''}`
+  return (
+    <article className="cs-sheet">
+      <header className="cs-sheet-head">
+        <img className="cs-logo" src="/metro-logo.svg" alt="" aria-hidden="true" />
+        <div className="cs-head-mid">
+          <b>{ORG}</b>
+          <span className="cs-head-sub">AMPS · Maintenance Checksheet{fmt.version ? ` · v${fmt.version}` : ''}</span>
+          <span className="cs-title">{fmt.title || fmt.label}</span>
+        </div>
+        <QR value={qrVal} size={62} />
+      </header>
+      <div className="cs-meta">
+        <span>Location: <u>&nbsp;</u></span>
+        <span>Asset name / ID: <u>&nbsp;</u></span>
+        <span>Sheet no: <u>&nbsp;</u></span>
+        <span>Date: <u>&nbsp;</u></span>
+        {fmt.frequency ? <span>Frequency: <b>{fmt.frequency}</b></span> : null}
+      </div>
+      <table className="cs-table">
+        <thead><tr>
+          <th className="cs-sn">S.N</th><th>Maintenance activity</th>
+          <th className="cs-presc">Prescribed / acceptance limit</th>
+          <th className="cs-done">Actual reading / ✓</th>
+        </tr></thead>
+        <tbody>
+          {fmt.items.map((it, j) => (
+            <tr key={j}>
+              <td className="cs-sn">{j + 1}</td>
+              <td>{it.activity}</td>
+              <td className="cs-presc">{it.prescribed || ''}</td>
+              <td className="cs-done"></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="cs-remarks"><span>Maintenance remarks:</span><div className="cs-remark-box"></div></div>
+      <footer className="cs-sign">
+        <div>Staff (name &amp; signature):<br /><span className="cs-sign-line"></span></div>
+        <div>Supervisor (name &amp; signature):<br /><span className="cs-sign-line"></span></div>
+      </footer>
+    </article>
+  )
+}
+
+/* the governance surface: list every format by status, act on it */
+function ChecksheetManage({ formats, isApprover, onEdit, reload, setErr }) {
+  const [histFor, setHistFor] = useState(null)
+  const act = async (id, path, body) => {
+    setErr('')
+    try {
+      const r = await fetch(`${import.meta.env.VITE_AMPS_API ?? ''}/api/checksheets/formats/${id}/${path}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined })
+      if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.detail || `HTTP ${r.status}`)
+      reload()
+    } catch (e) { setErr(String(e.message || e)) }
+  }
+  const del = async (id) => {
+    if (!window.confirm('Discard this draft?')) return
+    const r = await fetch(`${import.meta.env.VITE_AMPS_API ?? ''}/api/checksheets/formats/${id}`, { method: 'DELETE' })
+    if (r.ok || r.status === 204) reload(); else setErr('Could not delete')
+  }
+  const reject = (id) => { const reason = window.prompt('Reason for rejection (sent back to the author):'); if (reason && reason.trim()) act(id, 'reject', { reason: reason.trim() }) }
+  const order = { pending: 0, draft: 1, published: 2, archived: 3 }
+  const rows = [...formats].sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9) || a.label.localeCompare(b.label))
+  return (
+    <div>
+      <div className="cs-manage-head no-print">
+        <button className="btn" type="button" onClick={() => onEdit({ label: '', title: '', grp: 'HT', items: [{ activity: '', prescribed: '' }] })}>＋ New format</button>
+        <p className="dim">Author a draft, submit it, and an IC/officer approves it. Only published formats print. Every step is audit-logged.</p>
+      </div>
+      <div className="card tbl-wrap">
+        <table>
+          <thead><tr><th>Format</th><th>Group</th><th>Ver</th><th>Items</th><th>Status</th><th>By</th><th aria-label="Actions"></th></tr></thead>
+          <tbody>
+            {rows.map((f) => (
+              <tr key={f.id}>
+                <td><b>{f.label}</b>{f.reject_reason && f.status === 'draft' ? <div className="cs-reject">✗ {f.reject_reason}</div> : null}</td>
+                <td className="dim">{f.grp}</td>
+                <td className="dim">v{f.version}</td>
+                <td className="dim">{f.items.length}</td>
+                <td><span className={`cs-badge cs-b-${f.status}`}>{CS_STATUS_LABEL[f.status] || f.status}</span></td>
+                <td className="dim">{f.status === 'published' ? (f.approved_by || '—') : f.created_by}</td>
+                <td className="td-edit cs-acts">
+                  {(f.status === 'draft' || f.status === 'published' || f.status === 'archived') && <button className="mini-btn" type="button" onClick={() => onEdit(f)}>{f.status === 'draft' ? 'Edit' : 'Revise'}</button>}
+                  {f.status === 'draft' && <button className="mini-btn" type="button" onClick={() => act(f.id, 'submit')}>Submit</button>}
+                  {f.status === 'draft' && <button className="mini-btn muted" type="button" onClick={() => del(f.id)}>Delete</button>}
+                  {f.status === 'pending' && isApprover && <button className="mini-btn ok" type="button" onClick={() => act(f.id, 'approve')}>Approve</button>}
+                  {f.status === 'pending' && isApprover && <button className="mini-btn danger" type="button" onClick={() => reject(f.id)}>Reject</button>}
+                  {f.status === 'pending' && !isApprover && <button className="mini-btn muted" type="button" onClick={() => act(f.id, 'withdraw')}>Withdraw</button>}
+                  <button className="mini-btn muted" type="button" onClick={() => setHistFor(f)}>History</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {histFor && <ChecksheetHistory fmt={histFor} onClose={() => setHistFor(null)} />}
+    </div>
+  )
+}
+
+function ChecksheetHistory({ fmt, onClose }) {
+  const [rows, setRows] = useState(null)
+  useEffect(() => { getJSON(`/api/checksheets/formats/${fmt.id}/history`).then(setRows).catch(() => setRows([])) }, [fmt.id])
+  return (
+    <div className="cs-modal" onClick={onClose}>
+      <div className="cs-modal-card card" onClick={(e) => e.stopPropagation()}>
+        <div className="cs-modal-h"><b>Audit trail — {fmt.label}</b><button className="mini-btn" onClick={onClose}>Close</button></div>
+        {rows === null ? <p className="dim">Loading…</p> : rows.length === 0 ? <p className="dim">No history.</p> : (
+          <ul className="cs-audit">
+            {rows.map((r, i) => (
+              <li key={i}><span className="cs-audit-act">{r.action}</span> <span className="dim">{r.detail || ''}</span><br />
+                <span className="dim cs-audit-meta">{r.actor} · {new Date(r.at).toLocaleString()}</span></li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* create / edit a format: title, group, applicability, and the ordered item list
+   each with its activity + prescribed (acceptance-limit) value */
+function ChecksheetEditor({ initial, onClose, onSaved, setErr }) {
+  const [label, setLabel] = useState(initial.label || '')
+  const [title, setTitle] = useState(initial.title || '')
+  const [grp, setGrp] = useState(initial.grp || 'HT')
+  const [freq, setFreq] = useState(initial.frequency || '')
+  const [cls, setCls] = useState(initial.asset_class || '')
+  const [items, setItems] = useState(initial.items?.length ? initial.items.map((i) => ({ ...i })) : [{ activity: '', prescribed: '' }])
+  const [busy, setBusy] = useState(false)
+  const editingPublished = initial.status === 'published' || initial.status === 'archived'
+  const setItem = (i, k, v) => setItems((xs) => xs.map((it, j) => j === i ? { ...it, [k]: v } : it))
+  const addItem = () => setItems((xs) => [...xs, { activity: '', prescribed: '' }])
+  const rmItem = (i) => setItems((xs) => xs.filter((_, j) => j !== i))
+  const move = (i, d) => setItems((xs) => { const n = [...xs]; const j = i + d; if (j < 0 || j >= n.length) return xs;[n[i], n[j]] = [n[j], n[i]]; return n })
+  const save = async () => {
+    const clean = items.filter((it) => it.activity.trim())
+    if (!label.trim() || !clean.length) { setErr('A format needs a name and at least one activity.'); return }
+    setBusy(true); setErr('')
+    try {
+      const body = { label: label.trim(), title: title.trim(), grp: grp.trim() || 'HT', frequency: freq.trim() || null, asset_class: cls.trim() || null, items: clean }
+      const base = import.meta.env.VITE_AMPS_API ?? ''
+      // new (no id) → POST; existing → PUT (a published one forks a new draft)
+      const r = initial.id
+        ? await fetch(`${base}/api/checksheets/formats/${initial.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        : await fetch(`${base}/api/checksheets/formats`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.detail || `HTTP ${r.status}`)
+      onSaved()
+    } catch (e) { setErr(String(e.message || e)) } finally { setBusy(false) }
+  }
+  return (
+    <div className="card cs-editor no-print">
+      <div className="cs-editor-h">
+        <b>{initial.id ? (editingPublished ? `Revise: ${initial.label} (new version)` : `Edit: ${initial.label}`) : 'New checksheet format'}</b>
+        <button className="mini-btn" type="button" onClick={onClose}>Cancel</button>
+      </div>
+      {editingPublished && <p className="ef-hint">Editing a published format creates a new version — it goes back through approval before it replaces the current one.</p>}
+      <div className="fg-fields cs-editor-meta">
+        <label className="fg-span-2">Format name<input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. 33KV VCB" /></label>
+        <label>Group<input value={grp} onChange={(e) => setGrp(e.target.value)} placeholder="HT / LT / ECS" /></label>
+        <label>Frequency <span className="ef-opt">(opt)</span><input value={freq} onChange={(e) => setFreq(e.target.value)} placeholder="e.g. Yearly" /></label>
+        <label className="fg-span-2">Printed title<input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="METRO RAILWAY, KOLKATA — 33KV VCB MAINTENANCE" /></label>
+        <label className="fg-span-2">Applies to class <span className="ef-opt">(opt)</span><input value={cls} onChange={(e) => setCls(e.target.value)} placeholder="asset class this format matches" /></label>
+      </div>
+      <div className="cs-items-hd"><span>#</span><span>Maintenance activity</span><span>Prescribed / acceptance limit</span><span></span></div>
+      {items.map((it, i) => (
+        <div className="cs-item-row" key={i}>
+          <span className="cs-item-n">{i + 1}</span>
+          <input value={it.activity} onChange={(e) => setItem(i, 'activity', e.target.value)} placeholder="activity to check" />
+          <input value={it.prescribed} onChange={(e) => setItem(i, 'prescribed', e.target.value)} placeholder="e.g. ≥ 100 MΩ / firm / clean" />
+          <span className="cs-item-acts">
+            <button type="button" className="mini-btn muted" onClick={() => move(i, -1)} aria-label="Up">↑</button>
+            <button type="button" className="mini-btn muted" onClick={() => move(i, 1)} aria-label="Down">↓</button>
+            <button type="button" className="mini-btn danger" onClick={() => rmItem(i)} aria-label="Remove">×</button>
+          </span>
+        </div>
+      ))}
+      <div className="cs-editor-actions">
+        <button type="button" className="btn ghost sm" onClick={addItem}>＋ Add activity</button>
+        <button type="button" className="btn" disabled={busy} onClick={save}>{busy ? 'Saving…' : initial.id ? 'Save' : 'Create draft'}</button>
       </div>
     </div>
   )

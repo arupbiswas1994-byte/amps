@@ -217,6 +217,7 @@ class RosterEntry(Base):
 
 class UserRole(str, Enum):
     ADMIN = "admin"
+    OFFICER = "officer"            # approves checksheet formats (IC/officer sign-off)
     SUPERVISOR = "supervisor"
     TECHNICIAN = "technician"
     VIEWER = "viewer"
@@ -378,3 +379,41 @@ class AuditLog(Base):
     entity_id: Mapped[int]
     action: Mapped[str] = mapped_column(String(40))
     detail: Mapped[str | None] = mapped_column(Text)
+
+
+class ChecksheetStatus(str, Enum):
+    DRAFT = "draft"            # being authored / returned by a rejection
+    PENDING = "pending"        # submitted, awaiting IC/officer approval
+    PUBLISHED = "published"    # approved and live — the printable blank
+    ARCHIVED = "archived"      # a previous published version, superseded
+
+
+class ChecksheetFormat(Base):
+    """A maintenance-checksheet FORMAT (the blank printed and filled by hand).
+
+    Governed: a writer authors a DRAFT, submits it (PENDING), and an IC/officer
+    approves it (PUBLISHED) — only published formats appear in Printables. Editing
+    a published format creates a new pending version that supersedes the old one
+    when approved (the old stays live until then, then ARCHIVED). `slug` is the
+    stable identity across versions; every step is written to the audit trail."""
+    __tablename__ = "checksheet_formats"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    slug: Mapped[str] = mapped_column(String(80), index=True)   # stable across versions
+    grp: Mapped[str] = mapped_column(String(40), default="HT")  # HT / LT / ECS …
+    label: Mapped[str] = mapped_column(String(120))
+    title: Mapped[str] = mapped_column(String(240))
+    # applicability hints (optional) — surface the right format when logging
+    asset_class: Mapped[str | None] = mapped_column(String(120))
+    frequency: Mapped[str | None] = mapped_column(String(40))
+    items_json: Mapped[str] = mapped_column(Text, default="[]")  # JSON list of activity strings
+    version: Mapped[int] = mapped_column(default=1)
+    status: Mapped[ChecksheetStatus] = mapped_column(default=ChecksheetStatus.DRAFT)
+    supersedes_id: Mapped[int | None]      # the published format this replaces
+    reject_reason: Mapped[str | None] = mapped_column(Text)
+    line_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id"))  # NULL = org-wide
+    created_by: Mapped[str] = mapped_column(String(120), default="system")
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+    approved_by: Mapped[str | None] = mapped_column(String(120))
+    approved_at: Mapped[datetime | None]
