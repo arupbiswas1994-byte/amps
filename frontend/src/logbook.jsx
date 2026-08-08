@@ -80,8 +80,26 @@ export function AttachmentUpload({ entryId, existing = [], staged = [], onStaged
       }
     } finally { setBusy(false) }
   }
+  const addLink = async () => {
+    const raw = window.prompt('Paste the checksheet link (Google Drive / Docs URL):', '')
+    if (!raw) return
+    const url = raw.trim()
+    if (!/^https?:\/\//.test(url)) { setErr('A link must start with http:// or https://'); return }
+    setErr('')
+    if (entryId) {
+      setBusy(true)
+      try {
+        const r = await fetch(`${API}/api/logbook/${entryId}/attachments/link`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) })
+        if (!r.ok) { setErr((await r.json().catch(() => ({})))?.detail || `failed (${r.status})`); return }
+        const ref = await r.json(); setItems((xs) => [ref, ...xs])
+      } finally { setBusy(false) }
+    } else {
+      onStaged?.([...staged, { __link: true, url, name: url.replace(/^https?:\/\//, '').slice(0, 40) }])
+    }
+  }
   const removeUploaded = async (id) => {
-    if (!window.confirm('Remove this checksheet scan?')) return
+    if (!window.confirm('Remove this checksheet?')) return
     const r = await fetch(`${API}/api/logbook/attachments/${id}`, { method: 'DELETE' })
     if (r.ok || r.status === 204) setItems((xs) => xs.filter((x) => x.id !== id))
   }
@@ -93,27 +111,32 @@ export function AttachmentUpload({ entryId, existing = [], staged = [], onStaged
       <div className="att-list">
         {items.map((a) => (
           <div className="att-item" key={a.id}>
-            <a href={attUrl(a.id)} target="_blank" rel="noreferrer" className="att-thumb" title={a.filename}>
-              {isImg(a.mime)
-                ? <img src={attUrl(a.id)} alt={a.filename} />
-                : <embed className="att-pdf-prev" src={`${attUrl(a.id)}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`} type="application/pdf" />}
+            <a href={a.url || attUrl(a.id)} target="_blank" rel="noreferrer" className="att-thumb" title={a.filename}>
+              {a.url
+                ? <span className="att-link-ic">🔗</span>
+                : isImg(a.mime)
+                  ? <img src={attUrl(a.id)} alt={a.filename} />
+                  : <embed className="att-pdf-prev" src={`${attUrl(a.id)}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`} type="application/pdf" />}
             </a>
-            <span className="att-meta">{a.filename}<br /><span className="dim">{humanSize(a.size)}</span></span>
+            <span className="att-meta">{a.filename}<br /><span className="dim">{a.url ? 'linked' : humanSize(a.size)}</span></span>
             <button type="button" className="att-x" onClick={() => removeUploaded(a.id)} aria-label="Remove">×</button>
           </div>
         ))}
         {staged.map((f, i) => (
           <div className="att-item staged" key={`s${i}`}>
-            <span className="att-thumb"><span className="att-pdf">{f.type === 'application/pdf' ? 'PDF' : 'IMG'}</span></span>
-            <span className="att-meta">{f.name}<br /><span className="dim">{humanSize(f.size)} · will upload on save</span></span>
+            <span className="att-thumb"><span className="att-pdf">{f.__link ? '🔗' : f.type === 'application/pdf' ? 'PDF' : 'IMG'}</span></span>
+            <span className="att-meta">{f.name}<br /><span className="dim">{f.__link ? 'link · saved on save' : `${humanSize(f.size)} · will upload on save`}</span></span>
             <button type="button" className="att-x" onClick={() => onStaged?.(staged.filter((_, j) => j !== i))} aria-label="Remove">×</button>
           </div>
         ))}
       </div>
-      <label className="btn ghost sm att-add">
-        {busy ? 'Uploading…' : '＋ Add photo / PDF'}
-        <input ref={fileRef} type="file" accept="image/*,application/pdf" capture="environment" multiple hidden onChange={pick} disabled={busy} />
-      </label>
+      <div className="att-actions">
+        <label className="btn ghost sm att-add">
+          {busy ? 'Uploading…' : '＋ Add photo / PDF'}
+          <input ref={fileRef} type="file" accept="image/*,application/pdf" capture="environment" multiple hidden onChange={pick} disabled={busy} />
+        </label>
+        <button type="button" className="btn ghost sm" onClick={addLink} disabled={busy}>🔗 Add Drive link</button>
+      </div>
       {err && <span className="import-msg err">{err}</span>}
     </section>
   )
@@ -1008,11 +1031,17 @@ export default function LogBook({ editId = null, focusDate = null, initialResp =
           : aProgress === 'job_card' ? failOut?.job_card_by : null
         if (resp?.id) attachTarget = resp.id
       }
-      // upload any staged checksheet scans/photos to the right entry
+      // upload any staged checksheet scans/photos (or save links) to the right entry
       if (attachFiles.length && attachTarget) {
         for (const f of attachFiles) {
-          const fd = new FormData(); fd.append('file', f)
-          await fetch(`${API}/api/logbook/${attachTarget}/attachments`, { method: 'POST', body: fd }).catch(() => {})
+          if (f.__link) {
+            await fetch(`${API}/api/logbook/${attachTarget}/attachments/link`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ url: f.url }) }).catch(() => {})
+          } else {
+            const fd = new FormData(); fd.append('file', f)
+            await fetch(`${API}/api/logbook/${attachTarget}/attachments`, { method: 'POST', body: fd }).catch(() => {})
+          }
         }
       }
       setText(''); setConsumables(''); setAttachFiles([]); setAssetCode(''); setTim(''); setFaultType(''); setSystem('')

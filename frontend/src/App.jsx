@@ -651,11 +651,13 @@ function AttachmentView({ items }) {
   return (
     <div className="att-view" onClick={(e) => e.stopPropagation()}>
       {items.map((a) => (
-        <a key={a.id} href={ATT_URL(a.id)} target="_blank" rel="noreferrer" className="att-chip" title={a.filename}>
-          {(a.mime || '').startsWith('image/')
-            ? <img src={ATT_URL(a.id)} alt={a.filename} loading="lazy" />
-            : <embed className="att-chip-pdf" src={`${ATT_URL(a.id)}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`} type="application/pdf" />}
-          <span className="att-chip-name">{(a.mime || '').includes('pdf') ? '⇲ ' : '▤ '}{a.filename}</span>
+        <a key={a.id} href={a.url || ATT_URL(a.id)} target="_blank" rel="noreferrer" className="att-chip" title={a.filename}>
+          {a.url
+            ? <span className="att-chip-pdf att-chip-link">🔗</span>
+            : (a.mime || '').startsWith('image/')
+              ? <img src={ATT_URL(a.id)} alt={a.filename} loading="lazy" />
+              : <embed className="att-chip-pdf" src={`${ATT_URL(a.id)}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`} type="application/pdf" />}
+          <span className="att-chip-name">{a.url ? '🔗 ' : (a.mime || '').includes('pdf') ? '⇲ ' : '▤ '}{a.filename}</span>
         </a>
       ))}
     </div>

@@ -352,11 +352,14 @@ class Attachment(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     entry_id: Mapped[int] = mapped_column(ForeignKey("log_entries.id"), index=True)
-    filename: Mapped[str] = mapped_column(String(200))       # original name, for download
-    stored_name: Mapped[str] = mapped_column(String(80))     # <uuid>.<ext> on the media disk
+    filename: Mapped[str] = mapped_column(String(200))       # original name / link label
+    stored_name: Mapped[str] = mapped_column(String(80))     # <uuid>.<ext> on the media disk ('' for a link)
     mime: Mapped[str] = mapped_column(String(80))
-    size: Mapped[int]                                        # bytes on disk (post-compression)
+    size: Mapped[int]                                        # bytes on disk (0 for a link)
     sha256: Mapped[str] = mapped_column(String(64), index=True)
+    # a link attachment (e.g. a Google Drive checksheet) instead of an uploaded
+    # file — the coordinator keeps the sheet in Drive and just attaches its URL
+    url: Mapped[str | None] = mapped_column(String(600), default=None)
     uploaded_by: Mapped[str] = mapped_column(String(120), default="unknown")
     uploaded_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     # audit-safe removal: kept on disk + row retained, flagged out of the view

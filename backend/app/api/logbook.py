@@ -19,7 +19,7 @@ import uuid
 from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -118,6 +118,7 @@ class AttachmentRef(BaseModel):
     size: int
     uploaded_by: str
     uploaded_at: datetime
+    url: str | None = None      # set for a link attachment (Drive etc.); file otherwise
 
 
 class EntryRef(BaseModel):
@@ -149,7 +150,7 @@ def _attach_map(db: Session, entry_ids) -> dict[int, list["AttachmentRef"]]:
     for a in rows:
         out.setdefault(a.entry_id, []).append(AttachmentRef(
             id=a.id, filename=a.filename, mime=a.mime, size=a.size,
-            uploaded_by=a.uploaded_by, uploaded_at=a.uploaded_at))
+            uploaded_by=a.uploaded_by, uploaded_at=a.uploaded_at, url=a.url))
     return out
 
 
@@ -1050,10 +1051,47 @@ async def upload_attachment(entry_id: int, file: UploadFile,
                          size=att.size, uploaded_by=att.uploaded_by, uploaded_at=att.uploaded_at)
 
 
+class AttachmentLinkIn(BaseModel):
+    url: str
+    filename: str | None = None
+
+
+@router.post("/{entry_id}/attachments/link", response_model=AttachmentRef, status_code=201)
+def attach_link(entry_id: int, body: AttachmentLinkIn,
+                db: Session = Depends(get_db), user=Depends(current_writer)):
+    """Attach a LINK (e.g. a Google Drive checksheet) to a log entry instead of
+    uploading the file — the coordinator keeps the sheet in Drive and records its
+    URL. No bytes are stored; sha256 of the URL dedups the same link on an entry."""
+    entry = db.get(LogEntry, entry_id)
+    if not entry or (user.line_id is not None and entry.line_id not in (user.line_id, None)):
+        raise HTTPException(404, "entry not found")
+    url = (body.url or "").strip()
+    if not (url.startswith("http://") or url.startswith("https://")):
+        raise HTTPException(422, "a link must be a full http(s) URL")
+    url = url[:600]
+    digest = hashlib.sha256(url.encode()).hexdigest()
+    dup = db.scalar(select(Attachment).where(
+        Attachment.entry_id == entry_id, Attachment.sha256 == digest,
+        Attachment.retracted.isnot(True)))
+    if dup:
+        return AttachmentRef(id=dup.id, filename=dup.filename, mime=dup.mime, size=dup.size,
+                             uploaded_by=dup.uploaded_by, uploaded_at=dup.uploaded_at, url=dup.url)
+    name = (body.filename or "").strip()[:200] or (
+        "Drive checksheet" if "drive.google" in url or "docs.google" in url else "Linked checksheet")
+    att = Attachment(entry_id=entry_id, filename=name, stored_name="", mime="link",
+                     size=0, sha256=digest, uploaded_by=user.username, url=url)
+    db.add(att); db.flush()
+    audit(db, "attachment", att.id, "linked", detail=f"entry={entry_id} {url[:80]}", actor=user.username)
+    db.commit(); db.refresh(att)
+    return AttachmentRef(id=att.id, filename=att.filename, mime=att.mime, size=att.size,
+                         uploaded_by=att.uploaded_by, uploaded_at=att.uploaded_at, url=att.url)
+
+
 @router.get("/attachments/{att_id}")
 def get_attachment(att_id: int, db: Session = Depends(get_db), user=Depends(optional_user)):
-    """Stream an attachment's bytes. Login-gated (operational) and line-scoped;
-    a single-asset QR walk-up may still view its own asset's attachments."""
+    """Stream an attachment's bytes (or redirect to a link attachment). Login-gated
+    (operational) and line-scoped; a single-asset QR walk-up may still view its own
+    asset's attachments."""
     att = db.get(Attachment, att_id)
     if not att or att.retracted:
         raise HTTPException(404, "attachment not found")
@@ -1062,6 +1100,8 @@ def get_attachment(att_id: int, db: Session = Depends(get_db), user=Depends(opti
         raise HTTPException(401, "login required")
     if user.line_id is not None and entry and entry.line_id not in (user.line_id, None):
         raise HTTPException(404, "attachment not found")
+    if att.url:   # a link attachment — send the viewer to it
+        return RedirectResponse(att.url)
     path = os.path.join(MEDIA_DIR, att.stored_name)
     if not os.path.exists(path):
         raise HTTPException(410, "file missing from media store")
