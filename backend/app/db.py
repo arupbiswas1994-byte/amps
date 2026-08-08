@@ -36,12 +36,20 @@ def _seed_checksheets(engine):
     import json as _json
     import re as _re
 
+    from sqlalchemy import select
+
     from app.checksheet_seed import HT_CHECKSHEET_SEED
-    from app.models import ChecksheetFormat, ChecksheetStatus
+    from app.models import (ChecksheetFormat, ChecksheetStatus, Location,
+                            LocationKind)
 
     with SessionLocal() as db:
         if db.query(ChecksheetFormat).first():
             return
+        # the HT formats belong to Green Line — scope them so they never leak to
+        # other lines' coordinators (checksheets are line-specific)
+        green = db.scalar(select(Location).where(
+            Location.kind == LocationKind.SITE, Location.name == "Green Line"))
+        line_id = green.id if green else None
         now = datetime.utcnow()
         for f in HT_CHECKSHEET_SEED:
             slug = _re.sub(r"[^a-z0-9]+", "-", f["label"].lower()).strip("-")[:80]
@@ -49,7 +57,7 @@ def _seed_checksheets(engine):
                 slug=slug, grp=f.get("grp", "HT"), label=f["label"][:120],
                 title=f.get("title", f["label"])[:240],
                 items_json=_json.dumps(f["items"], ensure_ascii=False),
-                version=1, status=ChecksheetStatus.PUBLISHED,
+                version=1, status=ChecksheetStatus.PUBLISHED, line_id=line_id,
                 created_by="system", approved_by="system", approved_at=now))
         db.commit()
 

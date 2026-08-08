@@ -110,6 +110,11 @@ def list_formats(status: str | None = None, db: Session = Depends(get_db),
     a signed-in writer/approver sees drafts & pending too so they can work the
     editor and the approval queue. ?status= narrows to one state."""
     q = select(ChecksheetFormat)
+    # checksheets are LINE-specific — a line-scoped user only ever sees their own
+    # line's formats (plus any org-wide/null ones); Green's HT formats never leak
+    # to a Blue coordinator. Admins / line-less accounts see all.
+    if getattr(user, "line_id", None) is not None:
+        q = q.where((ChecksheetFormat.line_id == user.line_id) | (ChecksheetFormat.line_id.is_(None)))
     signed_in = getattr(user, "id", None) is not None and getattr(user, "role", None) != UserRole.VIEWER
     if status:
         q = q.where(ChecksheetFormat.status == ChecksheetStatus(status))
@@ -162,6 +167,7 @@ def create_format(body: FormatIn, db: Session = Depends(get_db), user=Depends(cu
         label=body.label.strip()[:120], title=body.title.strip()[:240] or body.label.strip()[:240],
         asset_class=(body.asset_class or None), frequency=(body.frequency or None),
         items_json=_dump_items(body.items), version=1, status=ChecksheetStatus.DRAFT,
+        line_id=getattr(user, "line_id", None),   # scoped to the author's line
         created_by=user.username)
     db.add(f); db.flush()
     audit(db, "checksheet_format", f.id, "created",
@@ -199,7 +205,8 @@ def edit_format(fid: int, body: FormatIn, db: Session = Depends(get_db), user=De
         title=body.title.strip()[:240] or body.label.strip()[:240],
         asset_class=body.asset_class or None, frequency=body.frequency or None,
         items_json=_dump_items(body.items), version=latest + 1,
-        status=ChecksheetStatus.DRAFT, supersedes_id=f.id, created_by=user.username)
+        status=ChecksheetStatus.DRAFT, supersedes_id=f.id, line_id=f.line_id,
+        created_by=user.username)
     db.add(nf); db.flush()
     audit(db, "checksheet_format", nf.id, "revised",
           detail=f"new draft v{nf.version} from published v{f.version}", actor=user.username)
