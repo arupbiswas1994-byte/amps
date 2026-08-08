@@ -28,7 +28,8 @@ router = APIRouter()
 
 class ChecksheetItem(BaseModel):
     activity: str = Field(min_length=1)
-    prescribed: str = ""          # prescribed / standard value (optional)
+    prescribed: str = ""          # prescribed value / acceptance limit (optional)
+    freqs: list[str] = []         # frequency columns this activity is DUE at (subset of the format's)
 
 
 class FormatIn(BaseModel):
@@ -37,6 +38,7 @@ class FormatIn(BaseModel):
     grp: str = "HT"
     asset_class: str | None = None
     frequency: str | None = None
+    frequencies: list[str] = []   # the matrix columns, e.g. ["M1","M3","M6","Y1"]
     items: list[ChecksheetItem] = []
 
 
@@ -48,6 +50,7 @@ class FormatOut(BaseModel):
     title: str
     asset_class: str | None
     frequency: str | None
+    frequencies: list[str]
     items: list[ChecksheetItem]
     version: int
     status: str
@@ -68,32 +71,54 @@ def _slugify(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")[:80] or "format"
 
 
+def _freqs(f: ChecksheetFormat) -> list[str]:
+    try:
+        raw = json.loads(getattr(f, "frequencies_json", None) or "[]")
+    except ValueError:
+        raw = []
+    return [str(x).strip() for x in raw if str(x).strip()]
+
+
 def _items(f: ChecksheetFormat) -> list[ChecksheetItem]:
     try:
         raw = json.loads(f.items_json or "[]")
     except ValueError:
         raw = []
+    cols = _freqs(f)
     out = []
     for it in raw:
         if isinstance(it, str):
-            out.append(ChecksheetItem(activity=it, prescribed=""))
+            out.append(ChecksheetItem(activity=it, prescribed="", freqs=[]))
         elif isinstance(it, dict):
+            fr = [str(x).strip() for x in (it.get("freqs") or []) if str(x).strip()]
             out.append(ChecksheetItem(activity=str(it.get("activity", "")).strip(),
-                                      prescribed=str(it.get("prescribed", "")).strip()))
+                                      prescribed=str(it.get("prescribed", "")).strip(),
+                                      freqs=[c for c in fr if not cols or c in cols]))
     return [i for i in out if i.activity]
 
 
 def _to_out(f: ChecksheetFormat) -> FormatOut:
     return FormatOut(
         id=f.id, slug=f.slug, grp=f.grp, label=f.label, title=f.title,
-        asset_class=f.asset_class, frequency=f.frequency, items=_items(f),
-        version=f.version, status=f.status.value, supersedes_id=f.supersedes_id,
+        asset_class=f.asset_class, frequency=f.frequency, frequencies=_freqs(f),
+        items=_items(f), version=f.version, status=f.status.value, supersedes_id=f.supersedes_id,
         reject_reason=f.reject_reason, created_by=f.created_by, created_at=f.created_at,
         updated_at=f.updated_at, approved_by=f.approved_by, approved_at=f.approved_at)
 
 
-def _dump_items(items: list[ChecksheetItem]) -> str:
-    return json.dumps([{"activity": i.activity.strip(), "prescribed": i.prescribed.strip()}
+def _dump_freqs(freqs: list[str]) -> str:
+    seen, out = set(), []
+    for c in freqs:
+        c = str(c).strip()[:20]
+        if c and c not in seen:
+            seen.add(c); out.append(c)
+    return json.dumps(out, ensure_ascii=False)
+
+
+def _dump_items(items: list[ChecksheetItem], cols: list[str]) -> str:
+    colset = set(cols)
+    return json.dumps([{"activity": i.activity.strip(), "prescribed": i.prescribed.strip(),
+                        "freqs": [c for c in i.freqs if c in colset]}
                        for i in items if i.activity.strip()], ensure_ascii=False)
 
 
@@ -162,11 +187,13 @@ def format_history(fid: int, db: Session = Depends(get_db), user=Depends(current
 @router.post("/formats", response_model=FormatOut, status_code=201)
 def create_format(body: FormatIn, db: Session = Depends(get_db), user=Depends(current_writer)):
     """Author a NEW format as a draft."""
+    cols = [str(c).strip() for c in body.frequencies if str(c).strip()]
     f = ChecksheetFormat(
         slug=_slugify(body.label), grp=(body.grp or "HT").strip()[:40],
         label=body.label.strip()[:120], title=body.title.strip()[:240] or body.label.strip()[:240],
         asset_class=(body.asset_class or None), frequency=(body.frequency or None),
-        items_json=_dump_items(body.items), version=1, status=ChecksheetStatus.DRAFT,
+        frequencies_json=_dump_freqs(cols), items_json=_dump_items(body.items, cols),
+        version=1, status=ChecksheetStatus.DRAFT,
         line_id=getattr(user, "line_id", None),   # scoped to the author's line
         created_by=user.username)
     db.add(f); db.flush()
@@ -183,13 +210,15 @@ def edit_format(fid: int, body: FormatIn, db: Session = Depends(get_db), user=De
     f = db.get(ChecksheetFormat, fid)
     if not f:
         raise HTTPException(404, "format not found")
+    cols = [str(c).strip() for c in body.frequencies if str(c).strip()]
     if f.status in (ChecksheetStatus.DRAFT,):
         f.label = body.label.strip()[:120]
         f.title = body.title.strip()[:240] or f.label
         f.grp = (body.grp or f.grp).strip()[:40]
         f.asset_class = body.asset_class or None
         f.frequency = body.frequency or None
-        f.items_json = _dump_items(body.items)
+        f.frequencies_json = _dump_freqs(cols)
+        f.items_json = _dump_items(body.items, cols)
         f.reject_reason = None
         audit(db, "checksheet_format", f.id, "edited",
               detail=f"{f.label} v{f.version} ({len(body.items)} items)", actor=user.username)
@@ -204,8 +233,8 @@ def edit_format(fid: int, body: FormatIn, db: Session = Depends(get_db), user=De
         slug=f.slug, grp=(body.grp or f.grp).strip()[:40], label=body.label.strip()[:120],
         title=body.title.strip()[:240] or body.label.strip()[:240],
         asset_class=body.asset_class or None, frequency=body.frequency or None,
-        items_json=_dump_items(body.items), version=latest + 1,
-        status=ChecksheetStatus.DRAFT, supersedes_id=f.id, line_id=f.line_id,
+        frequencies_json=_dump_freqs(cols), items_json=_dump_items(body.items, cols),
+        version=latest + 1, status=ChecksheetStatus.DRAFT, supersedes_id=f.id, line_id=f.line_id,
         created_by=user.username)
     db.add(nf); db.flush()
     audit(db, "checksheet_format", nf.id, "revised",

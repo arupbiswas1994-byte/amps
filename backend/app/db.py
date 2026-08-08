@@ -80,6 +80,7 @@ def _migrate(engine):
                         "via_job_card": "BOOLEAN", "checksheet": "TEXT",
                         "retracted": "BOOLEAN"},
         "attachments": {"url": "VARCHAR(600)"},
+        "checksheet_formats": {"frequencies_json": "TEXT"},
     }
     # widen columns that real-world data outgrew (no-op where already wide;
     # SQLite ignores VARCHAR lengths so this only matters on Postgres).

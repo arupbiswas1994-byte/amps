@@ -406,7 +406,10 @@ class ChecksheetFormat(Base):
     # applicability hints (optional) — surface the right format when logging
     asset_class: Mapped[str | None] = mapped_column(String(120))
     frequency: Mapped[str | None] = mapped_column(String(40))
-    items_json: Mapped[str] = mapped_column(Text, default="[]")  # JSON list of activity strings
+    # frequency-matrix columns (e.g. ["M1","M3","M6","Y1"]); each item marks which
+    # of these it is DUE at (white in the printed grid) vs not-required (grey).
+    frequencies_json: Mapped[str] = mapped_column(Text, default="[]")
+    items_json: Mapped[str] = mapped_column(Text, default="[]")  # JSON list of {activity,prescribed,freqs}
     version: Mapped[int] = mapped_column(default=1)
     status: Mapped[ChecksheetStatus] = mapped_column(default=ChecksheetStatus.DRAFT)
     supersedes_id: Mapped[int | None]      # the published format this replaces

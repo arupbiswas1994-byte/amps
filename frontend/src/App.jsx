@@ -2314,8 +2314,8 @@ const CS_STATUS_LABEL = { draft: 'Draft', pending: 'Pending approval', published
 
 function normFmt(f) {
   // API format → the shape the printable/editor use; tolerate the bundled fallback
-  const items = (f.items || []).map((it) => typeof it === 'string' ? { activity: it, prescribed: '' } : it)
-  return { ...f, items }
+  const items = (f.items || []).map((it) => typeof it === 'string' ? { activity: it, prescribed: '', freqs: [] } : { freqs: [], prescribed: '', ...it })
+  return { frequencies: [], ...f, items }
 }
 
 function ChecksheetFormats() {
@@ -2412,23 +2412,43 @@ function ChecksheetSheet({ fmt }) {
         <span>Date: <u>&nbsp;</u></span>
         {fmt.frequency ? <span>Frequency: <b>{fmt.frequency}</b></span> : null}
       </div>
-      <table className="cs-table">
-        <thead><tr>
-          <th className="cs-sn">S.N</th><th>Maintenance activity</th>
-          <th className="cs-presc">Prescribed / acceptance limit</th>
-          <th className="cs-done">Actual reading / ✓</th>
-        </tr></thead>
-        <tbody>
-          {fmt.items.map((it, j) => (
-            <tr key={j}>
-              <td className="cs-sn">{j + 1}</td>
-              <td>{it.activity}</td>
-              <td className="cs-presc">{it.prescribed || ''}</td>
-              <td className="cs-done"></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {(() => {
+        const cols = fmt.frequencies || []
+        const hasMatrix = cols.length > 0
+        return (
+          <table className="cs-table">
+            <thead>
+              {hasMatrix && (
+                <tr>
+                  <th className="cs-sn" rowSpan={2}>S.N</th>
+                  <th rowSpan={2}>Maintenance activity</th>
+                  <th className="cs-presc" rowSpan={2}>Prescribed / acceptance limit</th>
+                  <th className="cs-freqgrp" colSpan={cols.length}>Frequency</th>
+                  <th className="cs-done" rowSpan={2}>Actual reading / ✓</th>
+                </tr>
+              )}
+              <tr>
+                {!hasMatrix && <><th className="cs-sn">S.N</th><th>Maintenance activity</th><th className="cs-presc">Prescribed / acceptance limit</th></>}
+                {cols.map((c) => <th key={c} className="cs-freqcol">{c}</th>)}
+                {!hasMatrix && <th className="cs-done">Actual reading / ✓</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {fmt.items.map((it, j) => (
+                <tr key={j}>
+                  <td className="cs-sn">{j + 1}</td>
+                  <td>{it.activity}</td>
+                  <td className="cs-presc">{it.prescribed || ''}</td>
+                  {cols.map((c) => (
+                    <td key={c} className={`cs-freqcell ${(it.freqs || []).includes(c) ? 'cs-freq-on' : 'cs-freq-off'}`}></td>
+                  ))}
+                  <td className="cs-done"></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )
+      })()}
       <div className="cs-remarks"><span>Maintenance remarks:</span><div className="cs-remark-box"></div></div>
       <footer className="cs-sign">
         <div>Staff (name &amp; signature):<br /><span className="cs-sign-line"></span></div>
@@ -2523,19 +2543,24 @@ function ChecksheetEditor({ initial, onClose, onSaved, setErr }) {
   const [grp, setGrp] = useState(initial.grp || 'HT')
   const [freq, setFreq] = useState(initial.frequency || '')
   const [cls, setCls] = useState(initial.asset_class || '')
-  const [items, setItems] = useState(initial.items?.length ? initial.items.map((i) => ({ ...i })) : [{ activity: '', prescribed: '' }])
+  const [cols, setCols] = useState(initial.frequencies || [])   // frequency-matrix columns
+  const [newCol, setNewCol] = useState('')
+  const [items, setItems] = useState(initial.items?.length ? initial.items.map((i) => ({ freqs: [], prescribed: '', ...i })) : [{ activity: '', prescribed: '', freqs: [] }])
   const [busy, setBusy] = useState(false)
   const editingPublished = initial.status === 'published' || initial.status === 'archived'
   const setItem = (i, k, v) => setItems((xs) => xs.map((it, j) => j === i ? { ...it, [k]: v } : it))
-  const addItem = () => setItems((xs) => [...xs, { activity: '', prescribed: '' }])
+  const addItem = () => setItems((xs) => [...xs, { activity: '', prescribed: '', freqs: [] }])
   const rmItem = (i) => setItems((xs) => xs.filter((_, j) => j !== i))
   const move = (i, d) => setItems((xs) => { const n = [...xs]; const j = i + d; if (j < 0 || j >= n.length) return xs;[n[i], n[j]] = [n[j], n[i]]; return n })
+  const addCol = () => { const c = newCol.trim(); if (c && !cols.includes(c)) setCols([...cols, c]); setNewCol('') }
+  const rmCol = (c) => { setCols(cols.filter((x) => x !== c)); setItems((xs) => xs.map((it) => ({ ...it, freqs: (it.freqs || []).filter((f) => f !== c) }))) }
+  const toggleFreq = (i, c) => setItems((xs) => xs.map((it, j) => j === i ? { ...it, freqs: (it.freqs || []).includes(c) ? it.freqs.filter((f) => f !== c) : [...(it.freqs || []), c] } : it))
   const save = async () => {
     const clean = items.filter((it) => it.activity.trim())
     if (!label.trim() || !clean.length) { setErr('A format needs a name and at least one activity.'); return }
     setBusy(true); setErr('')
     try {
-      const body = { label: label.trim(), title: title.trim(), grp: grp.trim() || 'HT', frequency: freq.trim() || null, asset_class: cls.trim() || null, items: clean }
+      const body = { label: label.trim(), title: title.trim(), grp: grp.trim() || 'HT', frequency: freq.trim() || null, asset_class: cls.trim() || null, frequencies: cols, items: clean }
       const base = import.meta.env.VITE_AMPS_API ?? ''
       // new (no id) → POST; existing → PUT (a published one forks a new draft)
       const r = initial.id
@@ -2559,12 +2584,29 @@ function ChecksheetEditor({ initial, onClose, onSaved, setErr }) {
         <label className="fg-span-2">Printed title<input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="METRO RAILWAY, KOLKATA — 33KV VCB MAINTENANCE" /></label>
         <label className="fg-span-2">Applies to class <span className="ef-opt">(opt)</span><input value={cls} onChange={(e) => setCls(e.target.value)} placeholder="asset class this format matches" /></label>
       </div>
-      <div className="cs-items-hd"><span>#</span><span>Maintenance activity</span><span>Prescribed / acceptance limit</span><span></span></div>
+      <div className="cs-freq-manage">
+        <span className="fg-lbl">Frequency columns <span className="ef-opt">(optional — e.g. M1 M3 M6 Y1; tick each activity below where it's due)</span></span>
+        <div className="cs-freq-chips">
+          {cols.map((c) => <span className="cs-freq-chip" key={c}>{c}<button type="button" onClick={() => rmCol(c)} aria-label="Remove column">×</button></span>)}
+          <input className="cs-freq-add" value={newCol} onChange={(e) => setNewCol(e.target.value)}
+                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCol() } }} placeholder="add column…" />
+          <button type="button" className="mini-btn" onClick={addCol}>＋</button>
+        </div>
+      </div>
+      <div className="cs-items-hd" style={{ gridTemplateColumns: `30px 1fr 1fr ${cols.length ? `repeat(${cols.length}, 34px) ` : ''}96px` }}>
+        <span>#</span><span>Maintenance activity</span><span>Prescribed / acceptance limit</span>
+        {cols.map((c) => <span key={c} className="cs-freq-h">{c}</span>)}
+        <span></span>
+      </div>
       {items.map((it, i) => (
-        <div className="cs-item-row" key={i}>
+        <div className="cs-item-row" key={i} style={{ gridTemplateColumns: `30px 1fr 1fr ${cols.length ? `repeat(${cols.length}, 34px) ` : ''}96px` }}>
           <span className="cs-item-n">{i + 1}</span>
           <input value={it.activity} onChange={(e) => setItem(i, 'activity', e.target.value)} placeholder="activity to check" />
           <input value={it.prescribed} onChange={(e) => setItem(i, 'prescribed', e.target.value)} placeholder="e.g. ≥ 100 MΩ / firm / clean" />
+          {cols.map((c) => (
+            <button type="button" key={c} className={`cs-freq-tick ${(it.freqs || []).includes(c) ? 'on' : ''}`}
+                    onClick={() => toggleFreq(i, c)} title={`${c} required?`} aria-label={`${c} required`}>{(it.freqs || []).includes(c) ? '✓' : ''}</button>
+          ))}
           <span className="cs-item-acts">
             <button type="button" className="mini-btn muted" onClick={() => move(i, -1)} aria-label="Up">↑</button>
             <button type="button" className="mini-btn muted" onClick={() => move(i, 1)} aria-label="Down">↓</button>

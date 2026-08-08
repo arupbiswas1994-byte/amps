@@ -542,8 +542,14 @@ td .chip.d-none { color: var(--ink-3); }
 .cs-table th, .cs-table td { border: 1px solid #bbb; padding: 4px 7px; text-align: left; vertical-align: top; }
 .cs-table th { background: #eef4f8; font-size: 10px; text-transform: uppercase; letter-spacing: .02em; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .cs-table .cs-sn { width: 30px; text-align: center; }
-.cs-table .cs-presc { width: 26%; }
-.cs-table .cs-done { width: 22%; }
+.cs-table .cs-presc { width: 24%; }
+.cs-table .cs-done { width: 16%; }
+/* frequency matrix: white cell = required (tick here), grey = not required */
+.cs-table .cs-freqgrp { text-align: center; background: #f7dede; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.cs-table .cs-freqcol { width: 30px; text-align: center; background: #f7dede; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.cs-table .cs-freqcell { width: 30px; }
+.cs-table .cs-freq-on { background: #fff; }
+.cs-table .cs-freq-off { background: #bcbcbc; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .cs-remarks { margin-top: 10px; font-size: 12px; }
 .cs-remark-box { height: 48px; border: 1px solid #bbb; border-radius: 4px; margin-top: 4px; }
 .cs-sign { display: flex; justify-content: space-between; gap: 24px; margin-top: 14px; font-size: 12px; }
@@ -572,6 +578,14 @@ td .chip.d-none { color: var(--ink-3); }
 .cs-item-row input { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 7px; }
 .cs-item-n { text-align: center; color: var(--ink-3); font-size: 12px; }
 .cs-item-acts { display: flex; gap: 3px; }
+.cs-freq-manage { margin: 4px 0 12px; }
+.cs-freq-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
+.cs-freq-chip { display: inline-flex; align-items: center; gap: 4px; background: #eef4f8; border: 1px solid var(--border); border-radius: 99px; padding: 2px 4px 2px 10px; font-size: 12px; font-weight: 600; }
+.cs-freq-chip button { border: none; background: none; cursor: pointer; color: var(--ink-3); font-size: 14px; line-height: 1; padding: 0 2px; }
+.cs-freq-add { width: 100px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 7px; }
+.cs-freq-h { font-size: 10px; text-align: center; color: var(--ink-3); }
+.cs-freq-tick { border: 1px solid var(--border); background: #fff; border-radius: 5px; height: 30px; cursor: pointer; color: var(--good); font-weight: 800; }
+.cs-freq-tick.on { background: color-mix(in srgb, var(--good) 16%, #fff); border-color: color-mix(in srgb, var(--good) 40%, transparent); }
 .cs-editor-actions { display: flex; justify-content: space-between; gap: 10px; margin-top: 12px; }
 .cs-modal { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 20px; }
 .cs-modal-card { max-width: 560px; width: 100%; max-height: 80vh; overflow-y: auto; padding: 16px; }
