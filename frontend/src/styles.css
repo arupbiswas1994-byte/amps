@@ -596,6 +596,8 @@ td .chip.d-none { color: var(--ink-3); }
 .cs-item-n { text-align: center; color: var(--ink-3); font-size: 12px; }
 .cs-item-acts { display: flex; gap: 3px; }
 .cs-freq-manage { margin: 4px 0 12px; }
+.cs-freq-quick { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.cs-freq-quick .btn.active { background: var(--accent-soft); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, transparent); font-weight: 650; }
 .cs-freq-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
 .cs-freq-chip { display: inline-flex; align-items: center; gap: 4px; background: #eef4f8; border: 1px solid var(--border); border-radius: 99px; padding: 2px 4px 2px 10px; font-size: 12px; font-weight: 600; }
 .cs-freq-chip button { border: none; background: none; cursor: pointer; color: var(--ink-3); font-size: 14px; line-height: 1; padding: 0 2px; }

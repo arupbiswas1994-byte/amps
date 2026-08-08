@@ -2329,6 +2329,8 @@ function PrintablesNav({ active }) {
    checksheets, so they print the right blank format, fill it by hand, then
    scan/upload it back against the log entry. */
 const CS_STATUS_LABEL = { draft: 'Draft', pending: 'Pending approval', published: 'Published', archived: 'Archived' }
+// the standard maintenance cycles a checksheet groups its activities under
+const CS_CYCLES = ['Monthly', 'Quarterly', 'Half-Yearly', 'Yearly', '5-Yearly']
 
 function normFmt(f) {
   // API format → the shape the printable/editor use; tolerate the bundled fallback
@@ -2376,8 +2378,7 @@ function ChecksheetFormats() {
 function ChecksheetPrint({ published }) {
   const [sel, setSel] = useState(published[0]?.id ?? published[0]?.key ?? '')
   const [copies, setCopies] = useState(1)
-  const [printFreq, setPrintFreq] = useState('')   // '' = all; else one frequency
-  const [layout, setLayout] = useState('grouped')  // grouped by frequency | matrix grid
+  const [printFreq, setPrintFreq] = useState('')   // '' = all (grouped); else one frequency
   const fmt = published.find((f) => (f.id ?? f.key) === sel) || published[0]
   useEffect(() => { setPrintFreq('') }, [sel])     // reset the frequency when the format changes
   if (!fmt) return <div className="card"><p className="dim" style={{ margin: 0 }}>No published checksheet formats yet.</p></div>
@@ -2396,20 +2397,14 @@ function ChecksheetPrint({ published }) {
             </li>
           ))}
         </ul>
-        {(fmt.frequencies?.length > 0) && (<>
-          <label className="cs-copies cs-freq-print">Layout
-            <select value={layout} onChange={(e) => setLayout(e.target.value)}>
-              <option value="grouped">Grouped by frequency</option>
-              <option value="matrix">Frequency matrix grid</option>
-            </select>
-          </label>
+        {(fmt.frequencies?.length > 0) && (
           <label className="cs-copies cs-freq-print">Frequency
             <select value={printFreq} onChange={(e) => setPrintFreq(e.target.value)}>
-              <option value="">All frequencies</option>
+              <option value="">All (grouped)</option>
               {fmt.frequencies.map((c) => <option key={c} value={c}>{c} only</option>)}
             </select>
           </label>
-        </>)}
+        )}
         <div className="cs-picker-actions">
           <label className="cs-copies">Copies
             <input type="number" min="1" max="20" value={copies} onChange={(e) => setCopies(Number(e.target.value) || 1)} />
@@ -2419,7 +2414,7 @@ function ChecksheetPrint({ published }) {
         <p className="dim cs-hint">Print a blank, fill it by hand during maintenance, then upload the scan against the log entry.</p>
       </aside>
       <div className="cs-print-area">
-        {sheets.map((i) => <ChecksheetSheet key={i} fmt={fmt} printFreq={printFreq} layout={layout} />)}
+        {sheets.map((i) => <ChecksheetSheet key={i} fmt={fmt} printFreq={printFreq} />)}
       </div>
     </div>
   )
@@ -2444,17 +2439,16 @@ function CsFlatTable({ items }) {
   )
 }
 
-/* one AMPS-branded A4 blank: metro logo, QR to the format, then the activities —
-   either GROUPED into frequency sections (default), a flat matrix grid, or a
-   single frequency's list. Prescribed-value + actual-reading columns; signatures. */
-function ChecksheetSheet({ fmt, printFreq = '', layout = 'grouped' }) {
+/* one AMPS-branded A4 blank: metro logo, QR to the format, then the activities
+   GROUPED into frequency sections (Monthly / Quarterly / … ), or a single
+   frequency's list. Prescribed-value + actual-reading columns; signatures. */
+function ChecksheetSheet({ fmt, printFreq = '' }) {
   const qrVal = `${location.origin}/#/printables?t=checksheets&f=${fmt.id ?? ''}`
   const cols = fmt.frequencies || []
   const hasFreq = cols.length > 0
   // which frequency sections to render (all, or just the picked one)
   const sections = printFreq ? [printFreq] : cols
-  const grouped = hasFreq && layout === 'grouped'
-  const matrix = hasFreq && layout === 'matrix' && !printFreq
+  const grouped = hasFreq
   return (
     <article className="cs-sheet">
       <header className="cs-sheet-head">
@@ -2486,29 +2480,6 @@ function ChecksheetSheet({ fmt, printFreq = '', layout = 'grouped' }) {
             </div>
           )
         })
-      ) : matrix ? (
-        // flat list with the white/grey frequency grid
-        <table className="cs-table">
-          <thead>
-            <tr>
-              <th className="cs-sn" rowSpan={2}>S.N</th><th rowSpan={2}>Maintenance activity</th>
-              <th className="cs-presc" rowSpan={2}>Prescribed / acceptance limit</th>
-              <th className="cs-freqgrp" colSpan={cols.length}>Frequency</th>
-              <th className="cs-done" rowSpan={2}>Actual reading / ✓</th>
-            </tr>
-            <tr>{cols.map((c) => <th key={c} className="cs-freqcol">{c}</th>)}</tr>
-          </thead>
-          <tbody>
-            {fmt.items.map((it, j) => (
-              <tr key={j}>
-                <td className="cs-sn">{j + 1}</td><td>{it.activity}</td>
-                <td className="cs-presc">{it.prescribed || ''}</td>
-                {cols.map((c) => <td key={c} className={`cs-freqcell ${(it.freqs || []).includes(c) ? 'cs-freq-on' : 'cs-freq-off'}`}></td>)}
-                <td className="cs-done"></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       ) : (
         // no frequencies (or single-frequency print) → a plain list
         <CsFlatTable items={printFreq ? fmt.items.filter((it) => (it.freqs || []).includes(printFreq)) : fmt.items} />
@@ -2684,11 +2655,17 @@ function ChecksheetEditor({ initial, onClose, onSaved, setErr }) {
         <label className="fg-span-2">Applies to class <span className="ef-opt">(opt)</span><input value={cls} onChange={(e) => setCls(e.target.value)} placeholder="asset class this format matches" /></label>
       </div>
       <div className="cs-freq-manage">
-        <span className="fg-lbl">Frequency columns <span className="ef-opt">(optional — e.g. M1 M3 M6 Y1; tick each activity below where it's due)</span></span>
+        <span className="fg-lbl">Frequency groups <span className="ef-opt">(the maintenance cycles this checksheet covers — tick each activity below under the cycles it's due at)</span></span>
+        <div className="cs-freq-quick">
+          {CS_CYCLES.map((c) => (
+            <button type="button" key={c} className={`btn ghost sm${cols.includes(c) ? ' active' : ''}`}
+                    onClick={() => cols.includes(c) ? rmCol(c) : setCols([...cols, c])}>{cols.includes(c) ? '✓ ' : '＋ '}{c}</button>
+          ))}
+        </div>
         <div className="cs-freq-chips">
-          {cols.map((c) => <span className="cs-freq-chip" key={c}>{c}<button type="button" onClick={() => rmCol(c)} aria-label="Remove column">×</button></span>)}
+          {cols.map((c) => <span className="cs-freq-chip" key={c}>{c}<button type="button" onClick={() => rmCol(c)} aria-label="Remove">×</button></span>)}
           <input className="cs-freq-add" value={newCol} onChange={(e) => setNewCol(e.target.value)}
-                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCol() } }} placeholder="add column…" />
+                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCol() } }} placeholder="+ custom cycle…" />
           <button type="button" className="mini-btn" onClick={addCol}>＋</button>
         </div>
       </div>
