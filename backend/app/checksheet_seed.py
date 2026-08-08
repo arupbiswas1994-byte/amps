@@ -1,5 +1,5 @@
 """Seed data: the 17 HT maintenance checksheet formats (W.E.F April 2024),
-published as v1 on first boot. Officers edit them in-app thereafter (governed,
+published as v1 on first boot. ICs edit them in-app thereafter (governed,
 audited). Source: coordination sheet ht-checksheeets."""
 
 HT_CHECKSHEET_SEED = [

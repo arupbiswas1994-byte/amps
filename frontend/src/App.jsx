@@ -2306,7 +2306,7 @@ function Printables({ initial = 'qr' }) {
   )
 }
 
-/* Checksheet FORMAT library — governed create/edit with IC/officer approval,
+/* Checksheet FORMAT library — governed create/edit with IC (in-charge) approval,
    plus the print-ready blank. Coordinators can't keep predefined DIGITAL
    checksheets, so they print the right blank format, fill it by hand, then
    scan/upload it back against the log entry. */
@@ -2320,7 +2320,7 @@ function normFmt(f) {
 
 function ChecksheetFormats() {
   const { me, canWrite } = useMe()
-  const isApprover = me && (me.role === 'officer' || me.role === 'admin')
+  const isApprover = me && (me.role === 'incharge' || me.role === 'admin')
   const [formats, setFormats] = useState(null)
   const [mode, setMode] = useState('print')   // print | manage
   const [editing, setEditing] = useState(null) // format being edited/created
@@ -2462,7 +2462,7 @@ function ChecksheetManage({ formats, isApprover, onEdit, reload, setErr }) {
     <div>
       <div className="cs-manage-head no-print">
         <button className="btn" type="button" onClick={() => onEdit({ label: '', title: '', grp: 'HT', items: [{ activity: '', prescribed: '' }] })}>＋ New format</button>
-        <p className="dim">Author a draft, submit it, and an IC/officer approves it. Only published formats print. Every step is audit-logged.</p>
+        <p className="dim">Author a draft, submit it, and an IC (in-charge) approves it. Only published formats print. Every step is audit-logged.</p>
       </div>
       <div className="card tbl-wrap">
         <table>

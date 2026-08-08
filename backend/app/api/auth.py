@@ -161,9 +161,9 @@ def current_writer(user=Depends(current_user)):
 
 
 def current_approver(user=Depends(current_user)):
-    """An IC/officer who may APPROVE checksheet formats — OFFICER or ADMIN."""
-    if user.role not in (UserRole.OFFICER, UserRole.ADMIN):
-        raise HTTPException(403, "checksheet approval needs an officer or admin account")
+    """An In-charge (IC) who may APPROVE checksheet formats — INCHARGE or ADMIN."""
+    if user.role not in (UserRole.INCHARGE, UserRole.ADMIN):
+        raise HTTPException(403, "checksheet approval needs an in-charge or admin account")
     return user
 
 

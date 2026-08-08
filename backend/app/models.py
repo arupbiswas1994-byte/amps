@@ -217,7 +217,7 @@ class RosterEntry(Base):
 
 class UserRole(str, Enum):
     ADMIN = "admin"
-    OFFICER = "officer"            # approves checksheet formats (IC/officer sign-off)
+    INCHARGE = "incharge"          # In-charge (IC) — approves checksheet formats
     SUPERVISOR = "supervisor"
     TECHNICIAN = "technician"
     VIEWER = "viewer"
@@ -383,7 +383,7 @@ class AuditLog(Base):
 
 class ChecksheetStatus(str, Enum):
     DRAFT = "draft"            # being authored / returned by a rejection
-    PENDING = "pending"        # submitted, awaiting IC/officer approval
+    PENDING = "pending"        # submitted, awaiting IC approval
     PUBLISHED = "published"    # approved and live — the printable blank
     ARCHIVED = "archived"      # a previous published version, superseded
 
@@ -391,7 +391,7 @@ class ChecksheetStatus(str, Enum):
 class ChecksheetFormat(Base):
     """A maintenance-checksheet FORMAT (the blank printed and filled by hand).
 
-    Governed: a writer authors a DRAFT, submits it (PENDING), and an IC/officer
+    Governed: a writer authors a DRAFT, submits it (PENDING), and an IC (in-charge)
     approves it (PUBLISHED) — only published formats appear in Printables. Editing
     a published format creates a new pending version that supersedes the old one
     when approved (the old stays live until then, then ARCHIVED). `slug` is the

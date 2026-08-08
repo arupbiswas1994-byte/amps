@@ -32,7 +32,7 @@ def init_db():
 
 def _seed_checksheets(engine):
     """Publish the 17 HT checksheet formats as v1 on an empty library, so the
-    Printables list is populated out of the box; officers edit them thereafter."""
+    Printables list is populated out of the box; ICs edit them thereafter."""
     import json as _json
     import re as _re
 
@@ -104,8 +104,20 @@ def _migrate(engine):
             with engine.begin() as conn:
                 conn.execute(text(
                     f"ALTER TYPE assetstatus ADD VALUE IF NOT EXISTS '{val}'"))
-        # OFFICER — approves checksheet formats (IC/officer sign-off)
-        for val in ("ADMIN", "OFFICER", "SUPERVISOR", "TECHNICIAN", "VIEWER"):
+        # INCHARGE (IC) — approves checksheet formats. Rename the earlier OFFICER
+        # label to INCHARGE where present (keeps existing rows valid), then ensure
+        # the value exists on fresh databases.
+        with engine.begin() as conn:
+            conn.execute(text(
+                "DO $$ BEGIN"
+                "  IF EXISTS (SELECT 1 FROM pg_enum e JOIN pg_type t ON t.oid=e.enumtypid"
+                "             WHERE t.typname='userrole' AND e.enumlabel='OFFICER')"
+                "  AND NOT EXISTS (SELECT 1 FROM pg_enum e JOIN pg_type t ON t.oid=e.enumtypid"
+                "             WHERE t.typname='userrole' AND e.enumlabel='INCHARGE') THEN"
+                "    ALTER TYPE userrole RENAME VALUE 'OFFICER' TO 'INCHARGE';"
+                "  END IF;"
+                "END $$;"))
+        for val in ("ADMIN", "INCHARGE", "SUPERVISOR", "TECHNICIAN", "VIEWER"):
             with engine.begin() as conn:
                 conn.execute(text(
                     f"ALTER TYPE userrole ADD VALUE IF NOT EXISTS '{val}'"))

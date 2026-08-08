@@ -1,4 +1,4 @@
-"""Checksheet FORMAT library — governed create/edit with IC/officer approval.
+"""Checksheet FORMAT library — governed create/edit with IC (in-charge) approval.
 
 A format is the blank a technician prints and fills by hand. Lifecycle:
     draft → (submit) → pending → (approve) → published
@@ -98,7 +98,7 @@ def _dump_items(items: list[ChecksheetItem]) -> str:
 
 
 def _is_approver(user) -> bool:
-    return getattr(user, "role", None) in (UserRole.OFFICER, UserRole.ADMIN)
+    return getattr(user, "role", None) in (UserRole.INCHARGE, UserRole.ADMIN)
 
 
 # ---- read ------------------------------------------------------------------
@@ -216,7 +216,7 @@ def edit_format(fid: int, body: FormatIn, db: Session = Depends(get_db), user=De
 
 @router.post("/formats/{fid}/submit", response_model=FormatOut)
 def submit_format(fid: int, db: Session = Depends(get_db), user=Depends(current_writer)):
-    """Submit a draft for IC/officer approval → pending."""
+    """Submit a draft for IC approval → pending."""
     f = db.get(ChecksheetFormat, fid)
     if not f:
         raise HTTPException(404, "format not found")
@@ -244,7 +244,7 @@ def withdraw_format(fid: int, db: Session = Depends(get_db), user=Depends(curren
     return _to_out(f)
 
 
-# ---- approve / reject (IC / officer) ---------------------------------------
+# ---- approve / reject (IC / in-charge) ---------------------------------------
 
 @router.post("/formats/{fid}/approve", response_model=FormatOut)
 def approve_format(fid: int, db: Session = Depends(get_db), user=Depends(current_approver)):
