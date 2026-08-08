@@ -2401,7 +2401,7 @@ function ChecksheetPrint({ published }) {
           <label className="cs-copies cs-freq-print">Frequency
             <select value={printFreq} onChange={(e) => setPrintFreq(e.target.value)}>
               <option value="">All (grouped)</option>
-              {fmt.frequencies.map((c) => <option key={c} value={c}>{c} only</option>)}
+              {fmt.frequencies.map((c) => <option key={c} value={c}>Up to {c}</option>)}
             </select>
           </label>
         )}
@@ -2425,9 +2425,9 @@ function CsFlatTable({ items }) {
   return (
     <table className="cs-table">
       <thead><tr>
-        <th className="cs-sn">S.N</th><th>Maintenance activity</th>
-        <th className="cs-presc">Prescribed / acceptance limit</th>
-        <th className="cs-done">Actual reading / ✓</th>
+        <th className="cs-sn">#</th><th>Activity / check point</th>
+        <th className="cs-presc">Standard value</th>
+        <th className="cs-done">Observation</th>
       </tr></thead>
       <tbody>
         {items.map((it, j) => (
@@ -2442,12 +2442,18 @@ function CsFlatTable({ items }) {
 /* one AMPS-branded A4 blank: metro logo, QR to the format, then the activities
    GROUPED into frequency sections (Monthly / Quarterly / … ), or a single
    frequency's list. Prescribed-value + actual-reading columns; signatures. */
+const CYCLE_RANK = { Monthly: 1, Quarterly: 2, 'Half-Yearly': 3, Yearly: 4, '5-Yearly': 5 }
+const cycleRank = (c) => CYCLE_RANK[c] ?? 99
+
 function ChecksheetSheet({ fmt, printFreq = '' }) {
   const qrVal = `${location.origin}/#/printables?t=checksheets&f=${fmt.id ?? ''}`
-  const cols = fmt.frequencies || []
+  const cols = (fmt.frequencies || []).slice().sort((a, b) => cycleRank(a) - cycleRank(b))
   const hasFreq = cols.length > 0
-  // which frequency sections to render (all, or just the picked one)
-  const sections = printFreq ? [printFreq] : cols
+  // Cycles are CUMULATIVE: a Yearly service also performs the Monthly/Quarterly
+  // checks. So picking a cycle prints every cycle up to and including it (its
+  // lower cycles never drop out) — there is no "Yearly only".
+  const selRank = printFreq ? cycleRank(printFreq) : Infinity
+  const sections = cols.filter((c) => cycleRank(c) <= selRank)
   const grouped = hasFreq
   return (
     <article className="cs-sheet">
@@ -2465,11 +2471,11 @@ function ChecksheetSheet({ fmt, printFreq = '' }) {
         <span>Asset name / ID: <u>&nbsp;</u></span>
         <span>Sheet no: <u>&nbsp;</u></span>
         <span>Date: <u>&nbsp;</u></span>
-        {(printFreq || fmt.frequency) ? <span>Frequency: <b>{printFreq || fmt.frequency}</b></span> : null}
+        {printFreq ? <span>For: <b>up to {printFreq}</b></span> : (fmt.frequency ? <span>Frequency: <b>{fmt.frequency}</b></span> : null)}
       </div>
 
       {grouped ? (
-        // activities grouped under each frequency heading
+        // activities grouped under each frequency heading (cumulative sections)
         sections.map((c) => {
           const gi = fmt.items.filter((it) => (it.freqs || []).includes(c))
           if (!gi.length) return null
@@ -2481,8 +2487,7 @@ function ChecksheetSheet({ fmt, printFreq = '' }) {
           )
         })
       ) : (
-        // no frequencies (or single-frequency print) → a plain list
-        <CsFlatTable items={printFreq ? fmt.items.filter((it) => (it.freqs || []).includes(printFreq)) : fmt.items} />
+        <CsFlatTable items={fmt.items} />
       )}
 
       <div className="cs-remarks"><span>Maintenance remarks:</span><div className="cs-remark-box"></div></div>
