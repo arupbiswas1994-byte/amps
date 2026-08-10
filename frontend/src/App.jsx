@@ -260,6 +260,7 @@ function LiveDashboard({ go, initialLine = null }) {
   const faulty = base.filter((a) => attnOf(a) > 0)   // open OR acknowledged
   let shown = filter === 'all' ? base
     : filter === 'faulty' ? base.filter((a) => attnOf(a) > 0)
+    : filter === 'never' ? base.filter((a) => dispState(a) === 'never')
     : base.filter((a) => stateOf(a) === filter)
   if (sortKey) {
     const dir = sortDir === 'asc' ? 1 : -1
@@ -391,10 +392,11 @@ function LiveDashboard({ go, initialLine = null }) {
                 ['overdue', neverDone.length
                   ? <>Overdue <span className="cnt-never">{neverDone.length}</span><span className="cnt-sep">/</span><span className="cnt-overdue">{overdue.length}</span></>
                   : `Overdue ${overdue.length}`],
+                ['never', <>Never done <span className="cnt-never">{neverDone.length}</span></>],
                 ['due_soon', `Due soon ${dueSoon.length}`], ['long_overdue', `5-Yearly ${longOverdue.length}`]]
-                .filter(([k]) => (k !== 'faulty' || faulty.length) && (k !== 'long_overdue' || longOverdue.length))
+                .filter(([k]) => (k !== 'faulty' || faulty.length) && (k !== 'long_overdue' || longOverdue.length) && (k !== 'never' || neverDone.length))
                 .map(([k, lbl]) => (
-                <button key={k} type="button" className={`btn preset ${filter === k ? 'active' : ''}${(k === 'overdue' && overdue.length) || (k === 'faulty' && faulty.length) ? ' has-od' : ''}`}
+                <button key={k} type="button" className={`btn preset ${k === 'never' ? 'preset-never ' : ''}${filter === k ? 'active' : ''}${(k === 'overdue' && overdue.length) || (k === 'faulty' && faulty.length) ? ' has-od' : ''}`}
                         title={FILTER_TIP(k, { base: base.length, faulty: faulty.length, overdue: overdue.length, never: neverDone.length, dueSoon: dueSoon.length, longOverdue: longOverdue.length })}
                         onClick={() => setFilter(k)}>{lbl}</button>
               ))}
@@ -899,6 +901,7 @@ const FILTER_TIP = (k, c) => k === 'all' ? `All ${c.base} assets in view`
   : k === 'overdue' ? (c.never
       ? `${c.overdue} routine-overdue — ${c.never} never once maintained (violet), ${c.overdue - c.never} lapsed after service (red)`
       : `${c.overdue} routine-overdue asset(s) (serviced before, now lapsed)`)
+  : k === 'never' ? `${c.never} asset(s) never once maintained on any cycle (no history at all)`
   : k === 'due_soon' ? `${c.dueSoon} asset(s) due for maintenance within the next few days`
   : k === 'long_overdue' ? `${c.longOverdue} asset(s) with a 5-Yearly overhaul due or never started`
   : undefined
