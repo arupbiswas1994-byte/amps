@@ -70,7 +70,7 @@ def _migrate(engine):
     wanted = {
         "assets": {"system": "VARCHAR(80)", "description": "TEXT", "remarks": "TEXT",
                    "codal_life_years": "INTEGER", "depot": "VARCHAR(40)",
-                   "line_id": "INTEGER"},
+                   "line_id": "INTEGER", "location_detail": "VARCHAR(200)"},
         "users": {"password_hash": "VARCHAR(200)", "line_id": "INTEGER",
                   "depot": "VARCHAR(40)"},
         "log_entries": {"line_id": "INTEGER", "subtype": "VARCHAR(40)", "category": "VARCHAR(80)",

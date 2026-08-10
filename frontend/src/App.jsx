@@ -225,7 +225,7 @@ function LiveDashboard({ go, initialLine = null }) {
   const failId = (a) => faultOf(a)?.failure_id
   const failDate = (a) => faultOf(a)?.failure_date
   const ql = q.trim().toLowerCase()
-  const matchQ = (a) => !ql || [a.code, a.name, a.location, a.cls, a.sys].some((v) => (v || '').toLowerCase().includes(ql))
+  const matchQ = (a) => !ql || [a.code, a.name, a.location, a.locationDetail, a.cls, a.sys].some((v) => (v || '').toLowerCase().includes(ql))
   // all depots on this line, ignoring the other filters — used only to guard a
   // stale depot filter persisted from another line (below)
   const lineDepots = [...new Set(assets.map((a) => a.depot).filter(Boolean))].sort()
@@ -253,7 +253,7 @@ function LiveDashboard({ go, initialLine = null }) {
   // base = everything the search + dropdown filters allow (state chip excluded),
   // so the chip counts reflect the current view and update as you filter
   let base = assets
-  if (ql) base = base.filter((a) => [a.code, a.name, a.location, a.cls, a.sys].some((v) => (v || '').toLowerCase().includes(ql)))
+  if (ql) base = base.filter((a) => [a.code, a.name, a.location, a.locationDetail, a.cls, a.sys].some((v) => (v || '').toLowerCase().includes(ql)))
   if (fSystem.length) base = base.filter((a) => fSystem.includes(a.sys))
   if (fClass.length) base = base.filter((a) => fClass.includes(a.cls))
   if (fLocation.length) base = base.filter((a) => fLocation.includes(a.location))
@@ -303,8 +303,8 @@ function LiveDashboard({ go, initialLine = null }) {
     else { setSortKey(k); setSortDir('asc') }
   }
   const sortArrow = (k) => sortKey === k ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''
-  const COLS = [['code', 'Code'], ['name', 'Asset'], ['cls', 'Class'], ['location', 'Location'],
-    ['sys', 'System'], ['status', 'Status'], ['next_due', 'Next PM'], ['pm', 'PM state']]
+  const COLS = [['code', 'Code'], ['name', 'Asset'], ['cls', 'Class'], ['location', 'Station'],
+    ['locationDetail', 'Location'], ['sys', 'System'], ['status', 'Status'], ['next_due', 'Next PM'], ['pm', 'PM state']]
   // per-column header filters (Class/Location/System/Status), multi-select — off the ribbon
   const toggleIn = (set) => (v) => set((prev) => { const a = asArr(prev); return a.includes(v) ? a.filter((x) => x !== v) : [...a, v] })
   const colFilters = {
@@ -551,7 +551,8 @@ function LiveDashboard({ go, initialLine = null }) {
                             </span>
                           )}</td>
                         <td className="dim" data-l="Class">{a.cls}</td>
-                        <td className="dim" data-l="Location">{a.location}</td>
+                        <td className="dim" data-l="Station">{a.location}</td>
+                        <td className="dim wrap-cell" data-l="Location">{a.locationDetail || '—'}</td>
                         <td className="dim" data-l="System">{a.sys ?? '—'}</td>
                         <td data-l="Status"><StatusChip status={a.status} />
                           {codalExceeded(a) && <span className="codal-dot" title={`Past its ${a.codalLifeYears}-year codal life`} />}</td>

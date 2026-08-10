@@ -94,6 +94,9 @@ class Asset(Base):
     # the maintenance depot this asset belongs to (e.g. SHY, KHG, CPD) — a line
     # may have several depots, each with its own SSE/coordinator scope.
     depot: Mapped[str | None] = mapped_column(String(40))
+    # the fine equipment location WITHIN the station (e.g. "TVS Fan Room-01,
+    # Concourse"). location_id is the STATION; this is the spot inside it.
+    location_detail: Mapped[str | None] = mapped_column(String(200))
 
     asset_class: Mapped[AssetClass] = relationship()
     location: Mapped[Location] = relationship(

@@ -25,7 +25,8 @@ const toView = (a) => ({
   name: a.name,
   cls: a.asset_class,
   sys: a.system || null,
-  location: a.location,
+  location: a.location,            // the STATION (location tree)
+  locationDetail: a.location_detail || null,   // fine equipment location within the station
   line: a.line || null,
   makeModel: a.make_model || null,
   status: a.status,

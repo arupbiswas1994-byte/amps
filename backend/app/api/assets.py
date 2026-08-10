@@ -66,6 +66,7 @@ class AssetIn(BaseModel):
     remarks: str | None = None           # free-form remarks
     codal_life_years: int | None = None  # prescribed service life, in years
     depot: str | None = None             # maintenance depot code, e.g. SHY / KHG / CPD
+    location_detail: str | None = None   # fine equipment location within the station
 
 
 class AssetUpdate(BaseModel):
@@ -85,6 +86,7 @@ class AssetUpdate(BaseModel):
     remarks: str | None = None
     codal_life_years: int | None = None
     depot: str | None = None
+    location_detail: str | None = None
 
 
 class AssetOut(AssetIn):
@@ -101,6 +103,7 @@ def _to_out(a: Asset) -> AssetOut:
         commissioned_on=a.commissioned_on,
         description=a.description, remarks=a.remarks,
         codal_life_years=a.codal_life_years, depot=a.depot,
+        location_detail=a.location_detail,
     )
 
 
@@ -195,6 +198,7 @@ def _create_one(db: Session, asset: AssetIn, user) -> Asset:
         commissioned_on=asset.commissioned_on,
         description=asset.description, remarks=asset.remarks,
         codal_life_years=asset.codal_life_years, depot=depot,
+        location_detail=asset.location_detail,
         asset_class=_get_or_create_class(db, asset.asset_class),
         location=loc,
         line_id=(loc.parent_id if loc.parent_id else (site.id if site else None)),
@@ -239,7 +243,8 @@ AHU-M1(BARA),AHU Unit 1,ECS- AXIAL FLOW FAN,Baranagar,Blue Line,LT · ECS (AC),M
 REQUIRED_COLS = ("code", "name", "asset_class", "location")
 # columns fed straight to AssetIn
 OPTIONAL_COLS = ("line", "system", "make_model", "criticality", "status",
-                 "commissioned_on", "description", "remarks", "codal_life_years")
+                 "commissioned_on", "description", "remarks", "codal_life_years",
+                 "depot", "location_detail")
 
 # the five schedule cycles, each a checkbox column in the register sheet
 CYCLE_LABELS = ("Monthly", "Quarterly", "Half-Yearly", "Yearly", "5-Yearly")
@@ -421,6 +426,10 @@ def update_asset(code: str, patch: AssetUpdate, db: Session = Depends(get_db),
         a.description = patch.description or None
     if patch.remarks is not None and patch.remarks != (a.remarks or ""):
         note("remarks", a.remarks, patch.remarks); a.remarks = patch.remarks or None
+    if patch.location_detail is not None and patch.location_detail != (a.location_detail or ""):
+        note("location", a.location_detail, patch.location_detail); a.location_detail = patch.location_detail or None
+    if patch.depot is not None and patch.depot != (a.depot or ""):
+        note("depot", a.depot, patch.depot); a.depot = patch.depot or None
     if patch.codal_life_years is not None and patch.codal_life_years != a.codal_life_years:
         note("codal life", a.codal_life_years, patch.codal_life_years)
         a.codal_life_years = patch.codal_life_years
