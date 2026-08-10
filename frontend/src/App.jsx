@@ -392,7 +392,7 @@ function LiveDashboard({ go, initialLine = null }) {
                 ['overdue', neverDone.length
                   ? <>Overdue <span className="cnt-never">{neverDone.length}</span><span className="cnt-sep">/</span><span className="cnt-overdue">{overdue.length}</span></>
                   : `Overdue ${overdue.length}`],
-                ['never', <>Never scheduled <span className="cnt-never">{neverDone.length}</span></>],
+                ['never', <>Never done <span className="cnt-never">{neverDone.length}</span></>],
                 ['due_soon', `Due soon ${dueSoon.length}`], ['long_overdue', `5-Yearly ${longOverdue.length}`]]
                 .filter(([k]) => (k !== 'faulty' || faulty.length) && (k !== 'long_overdue' || longOverdue.length) && (k !== 'never' || neverDone.length))
                 .map(([k, lbl]) => (
@@ -886,7 +886,7 @@ function AssetLogSections({ log, staff }) {
    (a Yearly service fulfils the Quarterly under it). Applicability comes from the
    asset's plan when set, else it's inferred from what the log already holds. */
 const SCHED_FREQS = ['Monthly', 'Quarterly', 'Half-Yearly', 'Yearly', '5-Yearly']
-const SCHED_LABEL = { overdue: 'Overdue', due_soon: 'Due soon', long_overdue: '5-Yearly due', ok: 'On schedule', never: 'Never scheduled' }
+const SCHED_LABEL = { overdue: 'Overdue', due_soon: 'Due soon', long_overdue: '5-Yearly due', ok: 'On schedule', never: 'Never done' }
 // per-tag hover explanation for the PM state chips
 const SCHED_TIP = {
   overdue: 'A routine (short-cycle) maintenance is past due — the asset was serviced before but has since lapsed.',
