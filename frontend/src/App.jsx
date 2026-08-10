@@ -262,16 +262,18 @@ function LiveDashboard({ go, initialLine = null }) {
     : filter === 'faulty' ? base.filter((a) => attnOf(a) > 0)
     : filter === 'never' ? base.filter((a) => dispState(a) === 'never')
     : base.filter((a) => stateOf(a) === filter)
+  // Assets with an outstanding failure ALWAYS float to the top — open (red) above
+  // acknowledged (amber) above job-carded — regardless of the chosen sort, like
+  // the fibre console floats blocked lines. Any manual sort orders within bands.
   if (sortKey) {
     const dir = sortDir === 'asc' ? 1 : -1
     shown = [...shown].sort((x, y) => {
+      const f = attnRank(y) - attnRank(x)          // faulty first, always
+      if (f) return f
       const a = sortVal(x, sortKey), b = sortVal(y, sortKey)
       return (a < b ? -1 : a > b ? 1 : x.code.localeCompare(y.code)) * dir
     })
   } else if (faulty.length) {
-    // no manual sort: float assets that need attention to the top — genuinely
-    // open (red) above acknowledged (amber) above the rest, register order kept
-    // within each band (like the fibre console floats blocked lines)
     shown = [...shown].sort((x, y) => attnRank(y) - attnRank(x))
   }
   // page the (already filtered + sorted) rows — rendering all 3000+ at once is
