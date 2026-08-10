@@ -253,15 +253,18 @@ function LiveDashboard({ go, initialLine = null }) {
   // only apply a depot filter that actually belongs to the current line — a
   // depot picked on another line (persisted) must not blank this line's register
   if (fDepot && lineDepots.includes(fDepot)) base = base.filter((a) => a.depot === fDepot)
-  const overdue = base.filter((a) => stateOf(a) === 'overdue')
-  const neverDone = overdue.filter((a) => dispState(a) === 'never')   // subset never once maintained
-  const notScheduled = base.filter((a) => !sched[assetKey(a)])        // no PM plan at all — out of scope
+  const overdueAll = base.filter((a) => stateOf(a) === 'overdue')
+  const neverDone = overdueAll.filter((a) => dispState(a) === 'never')  // never once maintained
+  const overdue = overdueAll.filter((a) => dispState(a) !== 'never')    // lapsed only (Overdue = overdue − never-done)
+  const notScheduled = base.filter((a) => !sched[assetKey(a)])          // no PM plan at all — out of scope
   const dueSoon = base.filter((a) => stateOf(a) === 'due_soon')
   const longOverdue = base.filter((a) => stateOf(a) === 'long_overdue')  // 5-Yearly overdue / never started
   const faulty = base.filter((a) => attnOf(a) > 0)   // open OR acknowledged
   let shown = filter === 'all' ? base
     : filter === 'faulty' ? base.filter((a) => attnOf(a) > 0)
     : filter === 'not_scheduled' ? notScheduled
+    : filter === 'never' ? neverDone
+    : filter === 'overdue' ? overdue
     : base.filter((a) => stateOf(a) === filter)
   // Assets with an outstanding failure ALWAYS float to the top — open (red) above
   // acknowledged (amber) above job-carded — regardless of the chosen sort, like
@@ -391,15 +394,13 @@ function LiveDashboard({ go, initialLine = null }) {
                    placeholder="Search code, asset, class or location…" aria-label="Search assets" />
             <div className="asset-filter" role="tablist" aria-label="PM state filter">
               {[['all', `All ${base.length}`], ['faulty', `Faulty ${faulty.length}`],
-                // Overdue splits into never-done (violet) and lapsed (red): "Overdue 200/309"
-                ['overdue', neverDone.length
-                  ? <>Overdue <span className="cnt-never">{neverDone.length}</span><span className="cnt-sep">/</span><span className="cnt-overdue">{overdue.length}</span></>
-                  : `Overdue ${overdue.length}`],
+                ['overdue', `Overdue ${overdue.length}`],
+                ['never', <>Never done <span className="cnt-never">{neverDone.length}</span></>],
                 ['due_soon', `Due soon ${dueSoon.length}`], ['long_overdue', `5-Yearly ${longOverdue.length}`],
-                ['not_scheduled', `Never scheduled ${notScheduled.length}`]]
-                .filter(([k]) => (k !== 'faulty' || faulty.length) && (k !== 'long_overdue' || longOverdue.length) && (k !== 'not_scheduled' || notScheduled.length))
+                ['not_scheduled', `Unscheduled ${notScheduled.length}`]]
+                .filter(([k]) => (k !== 'faulty' || faulty.length) && (k !== 'long_overdue' || longOverdue.length) && (k !== 'not_scheduled' || notScheduled.length) && (k !== 'never' || neverDone.length))
                 .map(([k, lbl]) => (
-                <button key={k} type="button" className={`btn preset ${filter === k ? 'active' : ''}${(k === 'overdue' && overdue.length) || (k === 'faulty' && faulty.length) ? ' has-od' : ''}`}
+                <button key={k} type="button" className={`btn preset ${k === 'never' ? 'preset-never ' : ''}${filter === k ? 'active' : ''}${(k === 'overdue' && overdue.length) || (k === 'faulty' && faulty.length) ? ' has-od' : ''}`}
                         title={FILTER_TIP(k, { base: base.length, faulty: faulty.length, overdue: overdue.length, never: neverDone.length, dueSoon: dueSoon.length, longOverdue: longOverdue.length, notScheduled: notScheduled.length })}
                         onClick={() => setFilter(k)}>{lbl}</button>
               ))}
@@ -901,9 +902,8 @@ const SCHED_TIP = {
 // hover explanation for the register filter chips
 const FILTER_TIP = (k, c) => k === 'all' ? `All ${c.base} assets in view`
   : k === 'faulty' ? `${c.faulty} asset(s) with an open or acknowledged failure`
-  : k === 'overdue' ? (c.never
-      ? `${c.overdue} routine-overdue — ${c.never} never once maintained (violet), ${c.overdue - c.never} lapsed after service (red)`
-      : `${c.overdue} routine-overdue asset(s) (serviced before, now lapsed)`)
+  : k === 'overdue' ? `${c.overdue} asset(s) overdue after lapsing — serviced before but now past due (excludes never-done)`
+  : k === 'never' ? `${c.never} asset(s) that have a schedule but were never once maintained on any cycle`
   : k === 'not_scheduled' ? `${c.notScheduled} asset(s) with no maintenance schedule at all — outside the PM scope`
   : k === 'due_soon' ? `${c.dueSoon} asset(s) due for maintenance within the next few days`
   : k === 'long_overdue' ? `${c.longOverdue} asset(s) with a 5-Yearly overhaul due or never started`
