@@ -254,6 +254,7 @@ function LiveDashboard({ go, initialLine = null }) {
   // depot picked on another line (persisted) must not blank this line's register
   if (fDepot && lineDepots.includes(fDepot)) base = base.filter((a) => a.depot === fDepot)
   const overdue = base.filter((a) => stateOf(a) === 'overdue')
+  const neverDone = overdue.filter((a) => dispState(a) === 'never')   // subset never once maintained
   const dueSoon = base.filter((a) => stateOf(a) === 'due_soon')
   const longOverdue = base.filter((a) => stateOf(a) === 'long_overdue')  // 5-Yearly overdue / never started
   const faulty = base.filter((a) => attnOf(a) > 0)   // open OR acknowledged
@@ -385,7 +386,12 @@ function LiveDashboard({ go, initialLine = null }) {
             <input className="asset-search" type="search" value={q} onChange={(e) => setQ(e.target.value)}
                    placeholder="Search code, asset, class or location…" aria-label="Search assets" />
             <div className="asset-filter" role="tablist" aria-label="PM state filter">
-              {[['all', `All ${base.length}`], ['faulty', `Faulty ${faulty.length}`], ['overdue', `Overdue ${overdue.length}`], ['due_soon', `Due soon ${dueSoon.length}`], ['long_overdue', `5-Yearly ${longOverdue.length}`]]
+              {[['all', `All ${base.length}`], ['faulty', `Faulty ${faulty.length}`],
+                // Overdue splits into never-done (violet) and lapsed (red): "Overdue 200/309"
+                ['overdue', neverDone.length
+                  ? <>Overdue <span className="cnt-never">{neverDone.length}</span><span className="cnt-sep">/</span><span className="cnt-overdue">{overdue.length}</span></>
+                  : `Overdue ${overdue.length}`],
+                ['due_soon', `Due soon ${dueSoon.length}`], ['long_overdue', `5-Yearly ${longOverdue.length}`]]
                 .filter(([k]) => (k !== 'faulty' || faulty.length) && (k !== 'long_overdue' || longOverdue.length))
                 .map(([k, lbl]) => (
                 <button key={k} type="button" className={`btn preset ${filter === k ? 'active' : ''}${(k === 'overdue' && overdue.length) || (k === 'faulty' && faulty.length) ? ' has-od' : ''}`}
