@@ -547,7 +547,14 @@ td .chip.d-none { color: var(--ink-3); }
 .cs-copies input { width: 60px; padding: 5px; border: 1px solid var(--border); border-radius: 7px; }
 .cs-hint { font-size: 12px; margin: 10px 0 0; }
 .cs-print-area { display: flex; flex-direction: column; gap: 16px; }
-.cs-sheet { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 22px; color: #111; max-width: 800px; }
+.cs-sheet { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 22px; color: #111; max-width: 800px;
+  display: flex; flex-direction: column; }
+/* dynamic compression: font/padding driven per sheet by its content load, so a
+   small checksheet stays large & readable and a big one shrinks to fit one page */
+.cs-lvl-lg { --cs-fs: 13px; --cs-pad: 7px 8px; --cs-gap: 12px; --cs-rbox: 70px; }
+.cs-lvl-md { --cs-fs: 11.5px; --cs-pad: 5px 7px; --cs-gap: 9px; --cs-rbox: 52px; }
+.cs-lvl-sm { --cs-fs: 10px; --cs-pad: 3px 6px; --cs-gap: 7px; --cs-rbox: 40px; }
+.cs-lvl-xs { --cs-fs: 9px; --cs-pad: 2px 5px; --cs-gap: 5px; --cs-rbox: 34px; }
 .cs-sheet-head { display: flex; align-items: center; gap: 14px; border-bottom: 2px solid var(--accent); padding-bottom: 10px; }
 .cs-logo { width: 46px; height: 46px; flex: none; }
 .cs-head-mid { flex: 1; display: flex; flex-direction: column; gap: 1px; }
@@ -557,8 +564,8 @@ td .chip.d-none { color: var(--ink-3); }
 .cs-sheet-head .qr-wrap, .cs-sheet-head svg, .cs-sheet-head canvas { flex: none; }
 .cs-meta { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 10px 0; font-size: 12px; }
 .cs-meta u { display: inline-block; min-width: 90px; border-bottom: 1px solid #999; text-decoration: none; }
-.cs-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
-.cs-table th, .cs-table td { border: 1px solid #bbb; padding: 4px 7px; text-align: left; vertical-align: top; }
+.cs-table { width: 100%; border-collapse: collapse; font-size: var(--cs-fs, 11.5px); }
+.cs-table th, .cs-table td { border: 1px solid #bbb; padding: var(--cs-pad, 4px 7px); text-align: left; vertical-align: top; }
 .cs-table th { background: #eef4f8; font-size: 10px; text-transform: uppercase; letter-spacing: .02em; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .cs-table .cs-sn { width: 26px; text-align: center; }
 .cs-table .cs-presc { width: 20%; }        /* narrower → activity column gets the room */
@@ -575,7 +582,7 @@ td .chip.d-none { color: var(--ink-3); }
   padding: 4px 8px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .cs-group .cs-table { margin-top: 0; }
 .cs-remarks { margin-top: 10px; font-size: 12px; }
-.cs-remark-box { height: 48px; border: 1px solid #bbb; border-radius: 4px; margin-top: 4px; }
+.cs-remark-box { height: var(--cs-rbox, 48px); border: 1px solid #bbb; border-radius: 4px; margin-top: 4px; }
 .cs-sign { display: flex; justify-content: space-between; gap: 24px; margin-top: 14px; font-size: 12px; }
 .cs-sign > div { flex: 1; }
 .cs-sign-line { display: block; height: 30px; border-bottom: 1px solid #999; margin-top: 4px; }
@@ -622,24 +629,21 @@ td .chip.d-none { color: var(--ink-3); }
 .cs-audit-meta { font-size: 11px; }
 
 @media print {
+  @page { size: A4 portrait; margin: 8mm; }
   .cs-picker, .page-head, .asset-filter, .cs-manage-head { display: none !important; }
   .cs-formats { display: block; }
-  .cs-sheet { border: none; border-radius: 0; padding: 0; max-width: none; break-after: page; }
+  /* each sheet fills one full A4 page — flex column with the signatures anchored
+     to the bottom, so there is no blank space below the content. Font/padding
+     come from the per-sheet level (--cs-fs / --cs-pad / --cs-gap), so small
+     sheets stay large and only big ones compress. */
+  .cs-sheet { border: none; border-radius: 0; padding: 0; max-width: none;
+    min-height: 273mm; break-after: page; }
   .cs-sheet:last-child { break-after: auto; }
-  /* compact so a full format fits on one A4 page where possible */
-  .cs-sheet-head { padding-bottom: 6px; }
-  .cs-logo { width: 38px; height: 38px; }
-  .cs-meta { margin: 6px 0; font-size: 10.5px; gap: 3px 16px; }
-  .cs-table { font-size: 9.5px; }
-  .cs-table th, .cs-table td { padding: 2px 5px; }
   .cs-table tr { break-inside: avoid; }
-  .cs-group { margin-bottom: 6px; }
-  .cs-group-h { padding: 3px 6px; font-size: 11px; }
-  .cs-remarks { margin-top: 6px; }
-  .cs-remark-box { height: 36px; }
-  .cs-sign { margin-top: 10px; }
-  .cs-sign-line { height: 24px; }
-  @page { size: A4 portrait; margin: 8mm; }
+  .cs-group { margin-bottom: var(--cs-gap, 8px); break-inside: avoid; }
+  .cs-remarks { margin-top: var(--cs-gap, 8px); }
+  /* the signature block sinks to the page bottom, filling the sheet */
+  .cs-sign { margin-top: auto; padding-top: var(--cs-gap, 8px); }
 }
 
 .fact .fk { font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); }

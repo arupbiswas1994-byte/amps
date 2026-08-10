@@ -2487,8 +2487,16 @@ function ChecksheetSheet({ fmt, printFreq = '' }) {
   const selRank = printFreq ? cycleRank(printFreq) : Infinity
   const sections = cols.filter((c) => cycleRank(c) <= selRank)
   const grouped = hasFreq
+  // Dynamic compression: size the sheet to its own content so a small checksheet
+  // stays large/readable and a big one shrinks just enough to fit one page. Rows
+  // shown = the activities that will print + one heading per section.
+  const shownItems = grouped
+    ? sections.reduce((n, c) => n + fmt.items.filter((it) => (it.freqs || []).includes(c)).length, 0)
+    : (printFreq ? fmt.items.filter((it) => (it.freqs || []).includes(printFreq)).length : fmt.items.length)
+  const rowLoad = shownItems + (grouped ? sections.length : 0)
+  const lvl = rowLoad <= 12 ? 'lg' : rowLoad <= 20 ? 'md' : rowLoad <= 30 ? 'sm' : 'xs'
   return (
-    <article className="cs-sheet">
+    <article className={`cs-sheet cs-lvl-${lvl}`}>
       <header className="cs-sheet-head">
         <img className="cs-logo" src="/metro-logo.svg" alt="" aria-hidden="true" />
         <div className="cs-head-mid">
