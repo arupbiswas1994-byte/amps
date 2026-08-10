@@ -3,6 +3,7 @@
 // AMPS - Asset & Preventive Maintenance System (https://github.com/arupbiswas1994-byte/amps)
 
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   ASSETS, PM_SCHEDULES, JOB_CARDS, SPECS, PROCUREMENTS, PROC_STAGES,
   FAILURES, SPARES, spareStats, checksheetFor, CHECKSHEET_TEMPLATES, CHECKSHEET_RESULTS,
@@ -923,33 +924,44 @@ function ColFilter({ open, onToggle, onClose, values, toggle, clear, opts, fmt, 
   const [pos, setPos] = useState(null)
   useEffect(() => {
     if (!open) { setPos(null); return undefined }
-    const r = btnRef.current?.getBoundingClientRect()
-    if (r) setPos({ top: r.bottom + 5, left: Math.min(r.left, window.innerWidth - 210) })
+    const place = () => {
+      const r = btnRef.current?.getBoundingClientRect()
+      if (r) setPos({ top: r.bottom + 5, left: Math.min(r.left, window.innerWidth - 214) })
+    }
+    place()
     const close = () => onClose()
-    window.addEventListener('click', close)
-    window.addEventListener('scroll', close, true)
-    return () => { window.removeEventListener('click', close); window.removeEventListener('scroll', close, true) }
+    // keep the menu glued to the header if the page/table scrolls or resizes
+    window.addEventListener('resize', place)
+    window.addEventListener('scroll', place, true)
+    const t = setTimeout(() => window.addEventListener('click', close), 0)   // don't catch the opening click
+    return () => {
+      clearTimeout(t)
+      window.removeEventListener('resize', place)
+      window.removeEventListener('scroll', place, true)
+      window.removeEventListener('click', close)
+    }
   }, [open, onClose])
   const n = values.length
+  const menu = open && pos && createPortal(
+    <div className="col-filter-menu" role="menu" onClick={(e) => e.stopPropagation()}
+         style={{ position: 'fixed', top: pos.top, left: pos.left }}>
+      <button type="button" className={`cfm-all${n === 0 ? ' active' : ''}`} onClick={() => clear()}>{allLabel}</button>
+      {opts.map((o) => {
+        const sel = values.includes(o)
+        return (
+          <button type="button" key={o} className={`cfm-opt${sel ? ' active' : ''}`} onClick={() => toggle(o)}>
+            <span className="cfm-box">{sel ? '✓' : ''}</span>{fmt ? fmt(o) : o}
+          </button>
+        )
+      })}
+    </div>, document.body)
   return (
     <span className="col-filter" onClick={(e) => e.stopPropagation()}>
       <button ref={btnRef} type="button" className={`col-filter-btn${n ? ' on' : ''}`} onClick={onToggle}
               aria-label="Filter column" title={n ? `Filtered (${n})` : 'Filter'}>
         <FunnelIcon on={n > 0} />{n > 0 && <span className="col-filter-badge">{n}</span>}
       </button>
-      {open && pos && (
-        <div className="col-filter-menu" role="menu" style={{ position: 'fixed', top: pos.top, left: pos.left }}>
-          <button type="button" className={`cfm-all${n === 0 ? ' active' : ''}`} onClick={() => clear()}>{allLabel}</button>
-          {opts.map((o) => {
-            const sel = values.includes(o)
-            return (
-              <button type="button" key={o} className={`cfm-opt${sel ? ' active' : ''}`} onClick={() => toggle(o)}>
-                <span className="cfm-box">{sel ? '✓' : ''}</span>{fmt ? fmt(o) : o}
-              </button>
-            )
-          })}
-        </div>
-      )}
+      {menu}
     </span>
   )
 }
