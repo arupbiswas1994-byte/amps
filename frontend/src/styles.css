@@ -213,6 +213,9 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 /* 5-Yearly (long-cycle) overhaul due — a backlog state, slate blue not red */
 .chip.d-long { background: #eef3f7; border-color: #cbd9e4; color: #3a5a72; }
 .chip.d-long .dot { background: #6b8ca6; }
+/* never done — routine-overdue but never once maintained (distinct from lapsed overdue) */
+.chip.d-never { background: #f3eefb; border-color: #d9c9ee; color: #6a3fb0; }
+.chip.d-never .dot { background: #8b5cf6; }
 /* a failure's inline response (rectification / job card / acknowledgement) */
 .fail-resp { margin: 8px 0 2px; padding: 8px 10px; border-radius: 8px; border-left: 3px solid; }
 .fail-resp.resolved { background: color-mix(in srgb, var(--good) 7%, transparent); border-left-color: var(--good); }

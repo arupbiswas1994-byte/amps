@@ -28,6 +28,7 @@ class AssetScheduleSummary(BaseModel):
     next_due: date | None
     days_left: int | None
     state: str              # ok | due_soon | overdue | long_overdue
+    never_done: bool = False  # routine-overdue but never once maintained
     overdue_count: int      # routine (short-cycle) overdue only
     long_overdue_count: int = 0   # 5-Yearly overdue / never started
 

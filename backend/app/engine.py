@@ -115,12 +115,17 @@ def summarize_schedule(rows):
     # routine overdue dominates; then due-soon; then long-cycle backlog; then ok
     state = ("overdue" if overdue else "due_soon" if due_soon
              else "long_overdue" if long_overdue else "ok")
+    # "never done": the asset is routine-overdue AND no routine cycle was ever
+    # performed (every outstanding routine row is 'never') — a fresh asset with no
+    # maintenance history at all, distinct from one that lapsed after being done.
+    never_done = bool(overdue) and all(r["state"] == "never" for r in overdue)
     return {
         "next_frequency": nxt["frequency"] if nxt else (
             overdue[0]["frequency"] if overdue else long_overdue[0]["frequency"] if long_overdue else None),
         "next_due": nxt["next_due"] if nxt else None,
         "days_left": nxt["days_left"] if nxt else None,
         "state": state,
+        "never_done": never_done,
         "overdue_count": len(overdue),
         "long_overdue_count": len(long_overdue),
     }

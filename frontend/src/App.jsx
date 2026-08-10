@@ -526,7 +526,12 @@ function LiveDashboard({ go, initialLine = null }) {
                           {codalExceeded(a) && <span className="codal-dot" title={`Past its ${a.codalLifeYears}-year codal life`} />}</td>
                         <td className="dim dt" data-l="Next PM">{s?.next_due || '—'}</td>
                         <td data-l="PM state">{s
-                          ? <span className={schedChip(s.state)}><span className="dot" />{SCHED_LABEL[s.state]}{s.overdue_count > 1 ? ` · ${s.overdue_count}` : ''}</span>
+                          ? (() => {
+                              // a routine-overdue asset that was never once maintained shows the
+                              // "Never done" tag (like the asset-detail page) instead of "Overdue"
+                              const ds = s.never_done ? 'never' : s.state
+                              return <span className={schedChip(ds)}><span className="dot" />{SCHED_LABEL[ds]}{s.overdue_count > 1 ? ` · ${s.overdue_count}` : ''}</span>
+                            })()
                           : <span className="dim">—</span>}</td>
                       </tr>
                     )
@@ -870,7 +875,7 @@ function AssetLogSections({ log, staff }) {
    asset's plan when set, else it's inferred from what the log already holds. */
 const SCHED_FREQS = ['Monthly', 'Quarterly', 'Half-Yearly', 'Yearly', '5-Yearly']
 const SCHED_LABEL = { overdue: 'Overdue', due_soon: 'Due soon', long_overdue: '5-Yearly due', ok: 'On schedule', never: 'Never done' }
-const schedChip = (state) => `chip d-${state === 'never' ? 'overdue' : state === 'long_overdue' ? 'long' : state}`
+const schedChip = (state) => `chip d-${state === 'long_overdue' ? 'long' : state}`
 
 function useAssetSchedule(code) {
   const [schedule, setSchedule] = useState(null)
