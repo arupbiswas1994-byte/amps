@@ -1423,6 +1423,8 @@ export default function LogBook({ editId = null, focusDate = null, initialResp =
                             )}
                           </div>
                           <div className="log-text">{bodyText(en.text)}</div>
+                          {en.action_taken && <div className="le-action"><span className="lc-tag">Action taken</span> {en.action_taken}</div>}
+                          {en.station && !en.asset_code && <div className="le-station"><span className="lc-tag">Station</span> {en.station}</div>}
                           {en.consumables && <div className="le-consumables"><span className="lc-tag">Consumed</span> {en.consumables}</div>}
                           <div className="le-by">
                             <b>{en.attended_by || en.entered_by}</b>

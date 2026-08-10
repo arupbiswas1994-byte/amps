@@ -288,6 +288,13 @@ class LogEntry(Base):
     fault_type: Mapped[str | None] = mapped_column(String(120))
     # spares / materials consumed during the work (free text, e.g. "2× PT fuse")
     consumables: Mapped[str | None] = mapped_column(Text)
+    # station / location the work was at — kept as free text for entries whose
+    # asset isn't in the register (imported job cards, aux logs) so the board can
+    # still show WHERE. For asset-linked entries the asset's location is canonical.
+    station: Mapped[str | None] = mapped_column(String(160))
+    # the action taken / work done, kept apart from the report/cause so the
+    # logbook can show a distinct "Action taken" column.
+    action_taken: Mapped[str | None] = mapped_column(Text)
     # a filled structured checksheet, as a JSON string:
     #   {"template": "...", "name": "...", "results": [{"label","status","reading"}]}
     # attached to maintenance and to job-card/rectification work.

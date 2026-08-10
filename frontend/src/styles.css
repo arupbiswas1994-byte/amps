@@ -541,7 +541,9 @@ td .chip.d-none { color: var(--ink-3); }
   background: var(--warning, #e6a417); vertical-align: middle; }
 
 /* consumables / consumed line on a log entry */
-.le-consumables { font-size: 12.5px; color: var(--ink-2); margin-top: 3px; }
+.le-consumables, .le-action, .le-station { font-size: 12.5px; color: var(--ink-2); margin-top: 3px; }
+.le-action .lc-tag { color: #1a5c3a; background: #e5f4ec; border-color: #c6e6d3; }
+.le-station .lc-tag { color: #2b4a6b; background: #e9f1f8; border-color: #cfe0ee; }
 .lc-tag { display: inline-block; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
   color: #6b5121; background: #f7efdd; border: 1px solid #ecdfc7; border-radius: 99px; padding: 1px 7px; margin-right: 6px; }
 

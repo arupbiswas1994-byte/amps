@@ -78,7 +78,7 @@ def _migrate(engine):
                         "rectifies_id": "INTEGER", "attended_by": "VARCHAR(200)",
                         "system": "VARCHAR(80)", "consumables": "TEXT",
                         "via_job_card": "BOOLEAN", "checksheet": "TEXT",
-                        "retracted": "BOOLEAN"},
+                        "retracted": "BOOLEAN", "station": "VARCHAR(160)", "action_taken": "TEXT"},
         "attachments": {"url": "VARCHAR(600)"},
         "checksheet_formats": {"frequencies_json": "TEXT", "asset_code": "VARCHAR(120)"},
     }

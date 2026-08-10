@@ -3128,6 +3128,20 @@ function LineDashboard({ go }) {
 /* Job-cards board — every failure with a job card raised to an agency/dept
    that is not yet closed, so the section can chase them. Oldest (most overdue)
    first, with days-pending front and centre. Signed-in only (operational). */
+function exportJobCards(cards) {
+  const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`
+  const head = ['Raised', 'Status', 'Asset', 'Station', 'Fault', 'Issued to', 'Job card detail', 'Closed', 'Age (d)', 'Action taken']
+  const stat = { open: 'Open', closed: 'Closed by agency', penalty: 'Penalty — we fixed' }
+  const rows = cards.map(({ f, jc, rb, status, age }) => [
+    jc.log_date, stat[status] || status, f.asset_code || '', f.station || jc.station || '',
+    f.fault_type || tidyLog(f.text), jc.attended_by || '', tidyLog(jc.text),
+    rb ? rb.log_date : '', age, rb ? (rb.action_taken || tidyLog(rb.text)) : ''].map(esc).join(','))
+  const blob = new Blob([[head.map(esc).join(','), ...rows].join('\n')], { type: 'text/csv' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob); a.download = `amps-job-cards-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click(); URL.revokeObjectURL(a.href)
+}
+
 function JobCardsView({ line = '' }) {
   const { me, canWrite } = useMe()
   const [rows, setRows] = useState(null)
@@ -3192,6 +3206,15 @@ function JobCardsView({ line = '' }) {
         </div>
         {(q || fAgency.length) && <button type="button" className="btn ghost sm" onClick={() => { setQ(''); setFAgency([]) }}>Clear</button>}
         <span className="asset-count">{shown.length} shown</span>
+        <div className="asset-actions">
+          <button type="button" className="icon-btn" title="Download these job cards (CSV)" aria-label="Download job cards"
+                  onClick={() => exportJobCards(shown)}>
+            <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8 2.4v7.2M4.8 6.6 8 9.8l3.2-3.2M3 12.8h10" /></svg>
+          </button>
+          <button type="button" className="icon-btn" title="Print these job cards" aria-label="Print job cards" onClick={() => window.print()}>
+            <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M4.5 6V2.5h7V6M4.5 12H3.2V6.4h9.6V12H11.5M4.5 9.6h7V13.5h-7z" /></svg>
+          </button>
+        </div>
       </div>
 
       {shown.length === 0 ? (
@@ -3200,12 +3223,12 @@ function JobCardsView({ line = '' }) {
         <div className="card tbl-wrap">
           <table className="jc-table">
             <colgroup>
-              <col style={{ width: 68 }} /><col style={{ width: 116 }} />
-              <col style={{ width: 190 }} /><col style={{ width: 210 }} />
-              <col style={{ width: 150 }} /><col style={{ width: 96 }} />
-              <col style={{ width: 96 }} /><col />{canWrite && <col style={{ width: 120 }} />}
+              <col style={{ width: 60 }} /><col style={{ width: 110 }} />
+              <col style={{ width: 150 }} /><col style={{ width: 120 }} /><col style={{ width: 180 }} />
+              <col style={{ width: 140 }} /><col style={{ width: 88 }} />
+              <col style={{ width: 88 }} /><col />{canWrite && <col style={{ width: 118 }} />}
             </colgroup>
-            <thead><tr><th>{tab === 'open' ? 'Pending' : 'Turnaround'}</th><th>Status</th><th>Asset</th><th>Fault</th>
+            <thead><tr><th>{tab === 'open' ? 'Pending' : 'Turnaround'}</th><th>Status</th><th>Asset</th><th>Station</th><th>Fault</th>
               <th className={fAgency.length ? 'th-filtered' : ''}>Issued to
                 <ColFilter open={openCol === 'ag'} onToggle={() => setOpenCol(openCol === 'ag' ? null : 'ag')}
                            onClose={() => setOpenCol(null)} values={fAgency}
@@ -3221,6 +3244,7 @@ function JobCardsView({ line = '' }) {
                   <td data-l="Age"><span className={`jc-age${status === 'open' && age >= 30 ? ' hot' : status === 'open' && age >= 14 ? ' warm' : ''}`}>{age}d</span></td>
                   <td data-l="Status"><span className={`jc-pill ${STL[status][0]}`}>{STL[status][1]}</span></td>
                   <td className="code" data-l="Asset">{f.asset_code || '—'}</td>
+                  <td className="dim" data-l="Station">{f.station || jc.station || '—'}</td>
                   <td className="wrap-cell" data-l="Fault">{f.fault_type ? <b>{f.fault_type}</b> : tidyLog(f.text)}</td>
                   <td className="dim" data-l="Issued to">{jc.attended_by || '—'}</td>
                   <td className="dim dt" data-l="Raised">{jc.log_date}</td>

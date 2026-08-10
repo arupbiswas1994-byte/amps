@@ -103,6 +103,8 @@ class LogEntryOut(BaseModel):
     ended_at: datetime | None
     fault_type: str | None
     consumables: str | None
+    station: str | None = None      # where the work was (station/location)
+    action_taken: str | None = None  # the work done, distinct from report/cause
     # a filled structured checksheet attached to this entry, if any
     checksheet: dict | None = None
     # uploaded checksheet scans / photos / PDFs on this entry
@@ -130,6 +132,8 @@ class EntryRef(BaseModel):
     asset_code: str | None
     attended_by: str | None
     consumables: str | None
+    station: str | None = None
+    action_taken: str | None = None
     via_job_card: bool = False
     checksheet: dict | None = None
     type: str | None = None       # the response kind (acknowledgement/job_card/rectification)
@@ -284,7 +288,8 @@ def _ref(x: LogEntry | None, attach: dict | None = None) -> "EntryRef | None":
     return EntryRef(id=x.id, log_date=x.log_date, at=x.at, fault_type=x.fault_type,
                     text=x.text, asset_code=x.asset.code if x.asset else None,
                     attended_by=x.attended_by, consumables=x.consumables,
-                    via_job_card=bool(x.via_job_card),
+                    station=x.station or (x.asset.location.name if x.asset and x.asset.location else None),
+                    action_taken=x.action_taken, via_job_card=bool(x.via_job_card),
                     checksheet=_load_checksheet(x.checksheet),
                     type=x.type.value, retracted=bool(x.retracted),
                     attachments=(attach or {}).get(x.id, []))
@@ -319,6 +324,8 @@ def _to_out(e: LogEntry, resolver: LogEntry | None = None,
         # ONLY a rectification ends a failure; ack/job-card leave it open
         ended_at=e.ended_at or recovered, fault_type=e.fault_type,
         consumables=e.consumables,
+        station=e.station or (e.asset.location.name if e.asset and e.asset.location else None),
+        action_taken=e.action_taken,
         checksheet=_load_checksheet(e.checksheet),
         attachments=(attach or {}).get(e.id, []),
         depot=(e.asset.depot if e.asset else None),
@@ -1328,6 +1335,8 @@ async def import_history(request: Request, line: str | None = None,
                 attended_by=(get("attended_by")[:200] or None),
                 # a failure consumes nothing — spares go on the fix (auto-rect below)
                 consumables=(None if is_failure else (get("consumables") or None)),
+                station=(f"{get('station')} {get('location')}".strip()[:160] or None),
+                action_taken=(action[:2000] or None),
                 rectifies_id=rectifies.id if rectifies else None,
                 asset=asset, line_id=line_id)
             db.add(new)
