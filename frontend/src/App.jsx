@@ -141,7 +141,7 @@ const StageChip = ({ stage }) => (
 
 /* ---------- dashboard (live) ---------- */
 
-const SEV_RANK = { overdue: 0, due_soon: 1, long_overdue: 2, ok: 3 }
+const SEV_RANK = { overdue: 0, never: 0.5, due_soon: 1, long_overdue: 2, ok: 3 }
 
 /* filters that survive tab switches — parked in localStorage under a namespaced
    key so leaving a page and coming back keeps the view you set up. */
@@ -199,6 +199,9 @@ function LiveDashboard({ go, initialLine = null }) {
   const effLine = line ?? me?.line ?? lines[0] ?? null
   const assets = effLine ? all.filter((a) => a.line === effLine) : all
   const stateOf = (a) => sched[assetKey(a)]?.state || null
+  // never-done shares the 'overdue' state but is its own tag — give it a distinct
+  // display state so the list groups all "Never done" rows together, not mixed in
+  const dispState = (a) => (sched[assetKey(a)]?.never_done ? 'never' : stateOf(a))
   // Outstanding failures on this asset. Acknowledge and rectify are TWO
   // INDEPENDENT flags — an acknowledged (or job-carded) failure is NOT fixed and
   // still needs rectification. So a faulty asset carries both an acknowledged
@@ -237,7 +240,7 @@ function LiveDashboard({ go, initialLine = null }) {
   const depotsList = optsFor('depot', fDepot)   // maintenance depots present in the narrowed view
   // the sort accessor per column; PM columns read the derived schedule
   const sortVal = (a, k) => k === 'next_due' ? (sched[assetKey(a)]?.next_due || '9999')
-    : k === 'pm' ? (SEV_RANK[stateOf(a)] ?? 3)
+    : k === 'pm' ? (SEV_RANK[dispState(a)] ?? 3)
     : (a[k] || '')
   // base = everything the search + dropdown filters allow (state chip excluded),
   // so the chip counts reflect the current view and update as you filter
