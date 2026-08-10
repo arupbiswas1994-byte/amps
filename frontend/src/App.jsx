@@ -3133,6 +3133,9 @@ function JobCardsView({ line = '' }) {
   const [rows, setRows] = useState(null)
   const [error, setError] = useState(null)
   const [tab, setTab] = useState('open')   // open | closed | penalty | all
+  const [q, setQ] = useState('')
+  const [fAgency, setFAgency] = useState([])   // multi-select "Issued to" filter
+  const [openCol, setOpenCol] = useState(null)
   useEffect(() => {
     const lq = line ? `&line=${encodeURIComponent(line)}` : ''
     getJSON(`/api/logbook?entry_type=failure&limit=5000${lq}`)
@@ -3145,11 +3148,16 @@ function JobCardsView({ line = '' }) {
   // rectification). Two parts tracked per card: ISSUED (job_card_by) and CLOSED
   // (resolved_by, if any). Closure is by the agency (via_job_card) or by us — the
   // latter meaning the card went UNFULFILLED → a penalty against the agency.
-  const cards = rows.filter((f) => f.job_card_by).map((f) => {
+  const cardsAll = rows.filter((f) => f.job_card_by).map((f) => {
     const jc = f.job_card_by, rb = f.resolved_by
     const status = !rb ? 'open' : (rb.via_job_card ? 'closed' : 'penalty')
     return { f, jc, rb, status, age: days(jc.log_date, rb ? rb.log_date : null) }
   })
+  const agencies = [...new Set(cardsAll.map((c) => c.jc.attended_by).filter(Boolean))].sort()
+  const ql = q.trim().toLowerCase()
+  const matchQ = (c) => !ql || [c.f.asset_code, c.f.fault_type, c.f.text, c.jc.attended_by, c.jc.text].some((v) => (v || '').toLowerCase().includes(ql))
+  // search + agency filter apply first, so the tab counts reflect the current view
+  const cards = cardsAll.filter((c) => matchQ(c) && (!fAgency.length || fAgency.includes(c.jc.attended_by)))
   const open = cards.filter((c) => c.status === 'open')
   const closed = cards.filter((c) => c.status === 'closed')
   const penalty = cards.filter((c) => c.status === 'penalty')
@@ -3173,11 +3181,17 @@ function JobCardsView({ line = '' }) {
         <div className="tile"><div className="v">{avgTurn != null ? `${avgTurn}d` : '—'}</div><div className="k">Avg turnaround</div><div className="note">raised → closed</div></div>
       </div>
 
-      <div className="asset-filter" role="tablist" aria-label="Job card status" style={{ marginBottom: 10 }}>
-        {TABS.map(([k, lbl, list]) => (
-          <button key={k} type="button" className={`btn preset ${tab === k ? 'active' : ''}${k === 'open' && open.length ? ' has-od' : ''}`}
-                  onClick={() => setTab(k)}>{lbl} {list.length}</button>
-        ))}
+      <div className="asset-toolbar">
+        <input className="asset-search" type="search" value={q} onChange={(e) => setQ(e.target.value)}
+               placeholder="Search asset, fault, agency, detail…" aria-label="Search job cards" />
+        <div className="asset-filter" role="tablist" aria-label="Job card status">
+          {TABS.map(([k, lbl, list]) => (
+            <button key={k} type="button" className={`btn preset ${tab === k ? 'active' : ''}${k === 'open' && open.length ? ' has-od' : ''}`}
+                    onClick={() => setTab(k)}>{lbl} {list.length}</button>
+          ))}
+        </div>
+        {(q || fAgency.length) && <button type="button" className="btn ghost sm" onClick={() => { setQ(''); setFAgency([]) }}>Clear</button>}
+        <span className="asset-count">{shown.length} shown</span>
       </div>
 
       {shown.length === 0 ? (
@@ -3191,7 +3205,14 @@ function JobCardsView({ line = '' }) {
               <col style={{ width: 150 }} /><col style={{ width: 96 }} />
               <col style={{ width: 96 }} /><col />{canWrite && <col style={{ width: 120 }} />}
             </colgroup>
-            <thead><tr><th>{tab === 'open' ? 'Pending' : 'Turnaround'}</th><th>Status</th><th>Asset</th><th>Fault</th><th>Issued to</th><th>Raised</th><th>Closed</th><th>Job card detail</th>{canWrite && <th aria-label="Action"></th>}</tr></thead>
+            <thead><tr><th>{tab === 'open' ? 'Pending' : 'Turnaround'}</th><th>Status</th><th>Asset</th><th>Fault</th>
+              <th className={fAgency.length ? 'th-filtered' : ''}>Issued to
+                <ColFilter open={openCol === 'ag'} onToggle={() => setOpenCol(openCol === 'ag' ? null : 'ag')}
+                           onClose={() => setOpenCol(null)} values={fAgency}
+                           toggle={(v) => setFAgency((p) => p.includes(v) ? p.filter((x) => x !== v) : [...p, v])}
+                           clear={() => setFAgency([])} opts={agencies} allLabel="All agencies" />
+              </th>
+              <th>Raised</th><th>Closed</th><th>Job card detail</th>{canWrite && <th aria-label="Action"></th>}</tr></thead>
             <tbody>
               {shown.map(({ f, jc, rb, status, age }) => (
                 <tr key={f.id} tabIndex={0}
