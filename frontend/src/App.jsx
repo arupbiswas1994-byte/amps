@@ -300,6 +300,14 @@ function LiveDashboard({ go, initialLine = null }) {
   const sortArrow = (k) => sortKey === k ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''
   const COLS = [['code', 'Code'], ['name', 'Asset'], ['cls', 'Class'], ['location', 'Location'],
     ['sys', 'System'], ['status', 'Status'], ['next_due', 'Next PM'], ['pm', 'PM state']]
+  // per-column header filters (Class/Location/System/Status) — moved off the ribbon
+  const colFilters = {
+    cls: { value: fClass, set: setFClass, opts: classesList, allLabel: 'All classes' },
+    location: { value: fLocation, set: setFLocation, opts: locationsList, allLabel: 'All locations' },
+    sys: { value: fSystem, set: setFSystem, opts: systemsList, allLabel: 'All systems' },
+    status: { value: fStatus, set: setFStatus, opts: statusesList, allLabel: 'Any status', fmt: (v) => STATUS_LABEL[v] || v },
+  }
+  const [openCol, setOpenCol] = useState(null)
 
   // download the table exactly as filtered & sorted, as CSV
   const exportCsv = () => {
@@ -415,28 +423,14 @@ function LiveDashboard({ go, initialLine = null }) {
                         onClick={toggle}>{lbl}</button>
                 )})}
             </div>
+            {/* Class · Location · System · Status filters now live in the table
+                column headers (▾). Only depot stays here — it has no column. */}
             {depotsList.length > 0 && !me?.depot && (
               <select value={fDepot} onChange={(e) => setFDepot(e.target.value)} aria-label="Filter by depot">
                 <option value="">All depots</option>
                 {depotsList.map((d) => <option key={d} value={d}>{d}</option>)}
               </select>
             )}
-            <select value={fSystem} onChange={(e) => setFSystem(e.target.value)} aria-label="Filter by system">
-              <option value="">All systems</option>
-              {systemsList.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-            <select value={fClass} onChange={(e) => setFClass(e.target.value)} aria-label="Filter by class">
-              <option value="">All classes</option>
-              {classesList.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-            <select value={fLocation} onChange={(e) => setFLocation(e.target.value)} aria-label="Filter by location">
-              <option value="">All locations</option>
-              {locationsList.map((l) => <option key={l} value={l}>{l}</option>)}
-            </select>
-            <select value={fStatus} onChange={(e) => setFStatus(e.target.value)} aria-label="Filter by status">
-              <option value="">Any status</option>
-              {statusesList.map((s) => <option key={s} value={s}>{STATUS_LABEL[s] || s}</option>)}
-            </select>
             {(fSystem || fClass || fLocation || fStatus || fDepot || q || filters.length || sortKey) && (
               <button type="button" className="btn ghost sm" onClick={() => {
                 setFSystem(''); setFClass(''); setFLocation(''); setFStatus(''); setFDepot(''); setQ(''); setFilter([]); setSortKey(null)
@@ -504,10 +498,15 @@ function LiveDashboard({ go, initialLine = null }) {
               <table className="sortable">
                 <thead>
                   <tr>
-                    {COLS.map(([k, lbl]) => (
-                      <th key={k} className={`th-sort${sortKey === k ? ' active' : ''}`}
-                          onClick={() => toggleSort(k)} title={`Sort by ${lbl}`}>{lbl}{sortArrow(k)}</th>
-                    ))}
+                    {COLS.map(([k, lbl]) => {
+                      const cf = colFilters[k]
+                      return (
+                      <th key={k} className={`th-sort${sortKey === k ? ' active' : ''}${cf?.value ? ' th-filtered' : ''}`}>
+                        <span className="th-lbl" onClick={() => toggleSort(k)} title={`Sort by ${lbl}`}>{lbl}{sortArrow(k)}</span>
+                        {cf && <ColFilter open={openCol === k} onToggle={() => setOpenCol(openCol === k ? null : k)}
+                                          onClose={() => setOpenCol(null)} {...cf} />}
+                      </th>
+                    )})}
                   </tr>
                 </thead>
                 <tbody>
@@ -903,6 +902,38 @@ const SCHED_FREQS = ['Monthly', 'Quarterly', 'Half-Yearly', 'Yearly', '5-Yearly'
 const SCHED_LABEL = { overdue: 'Overdue', due_soon: 'Due soon', long_overdue: '5-Yearly due', ok: 'On schedule', never: 'Never done' }
 // short labels for the print caption when filter chips are active
 const FILTER_LABEL = { faulty: 'faulty', overdue: 'overdue (lapsed)', never: 'awaiting 1st service', due_soon: 'due soon', long_overdue: '5-Yearly', not_scheduled: 'unscheduled' }
+
+/* a compact ▾ filter control that lives in a table column header. The parent
+   owns which column's menu is open (single-open), so it closes on outside click
+   or when another header's filter opens. */
+function ColFilter({ open, onToggle, onClose, value, set, opts, fmt, allLabel }) {
+  const btnRef = useRef(null)
+  const [pos, setPos] = useState(null)   // fixed-position coords so the menu escapes the table's overflow clip
+  useEffect(() => {
+    if (!open) { setPos(null); return undefined }
+    const r = btnRef.current?.getBoundingClientRect()
+    if (r) setPos({ top: r.bottom + 4, left: Math.min(r.left, window.innerWidth - 170) })
+    const close = () => onClose()
+    window.addEventListener('click', close)
+    window.addEventListener('scroll', close, true)
+    return () => { window.removeEventListener('click', close); window.removeEventListener('scroll', close, true) }
+  }, [open, onClose])
+  return (
+    <span className="col-filter" onClick={(e) => e.stopPropagation()}>
+      <button ref={btnRef} type="button" className={`col-filter-btn${value ? ' on' : ''}`} onClick={onToggle}
+              aria-label="Filter column" title={value ? `Filtered: ${fmt ? fmt(value) : value}` : 'Filter'}>▾</button>
+      {open && pos && (
+        <div className="col-filter-menu" role="menu" style={{ position: 'fixed', top: pos.top, left: pos.left }}>
+          <button type="button" className={!value ? 'active' : ''} onClick={() => { set(''); onClose() }}>{allLabel}</button>
+          {opts.map((o) => (
+            <button type="button" key={o} className={value === o ? 'active' : ''}
+                    onClick={() => { set(o); onClose() }}>{fmt ? fmt(o) : o}</button>
+          ))}
+        </div>
+      )}
+    </span>
+  )
+}
 // per-tag hover explanation for the PM state chips
 const SCHED_TIP = {
   overdue: 'A routine (short-cycle) maintenance is past due — the asset was serviced before but has since lapsed.',
