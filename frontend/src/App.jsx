@@ -395,6 +395,7 @@ function LiveDashboard({ go, initialLine = null }) {
                 .filter(([k]) => (k !== 'faulty' || faulty.length) && (k !== 'long_overdue' || longOverdue.length))
                 .map(([k, lbl]) => (
                 <button key={k} type="button" className={`btn preset ${filter === k ? 'active' : ''}${(k === 'overdue' && overdue.length) || (k === 'faulty' && faulty.length) ? ' has-od' : ''}`}
+                        title={FILTER_TIP(k, { base: base.length, faulty: faulty.length, overdue: overdue.length, never: neverDone.length, dueSoon: dueSoon.length, longOverdue: longOverdue.length })}
                         onClick={() => setFilter(k)}>{lbl}</button>
               ))}
             </div>
@@ -539,7 +540,7 @@ function LiveDashboard({ go, initialLine = null }) {
                               // a routine-overdue asset that was never once maintained shows the
                               // "Never done" tag (like the asset-detail page) instead of "Overdue"
                               const ds = s.never_done ? 'never' : s.state
-                              return <span className={schedChip(ds)}><span className="dot" />{SCHED_LABEL[ds]}{s.overdue_count > 1 ? ` · ${s.overdue_count}` : ''}</span>
+                              return <span className={schedChip(ds)} title={SCHED_TIP[ds]}><span className="dot" />{SCHED_LABEL[ds]}{s.overdue_count > 1 ? ` · ${s.overdue_count}` : ''}</span>
                             })()
                           : <span className="dim">—</span>}</td>
                       </tr>
@@ -884,6 +885,23 @@ function AssetLogSections({ log, staff }) {
    asset's plan when set, else it's inferred from what the log already holds. */
 const SCHED_FREQS = ['Monthly', 'Quarterly', 'Half-Yearly', 'Yearly', '5-Yearly']
 const SCHED_LABEL = { overdue: 'Overdue', due_soon: 'Due soon', long_overdue: '5-Yearly due', ok: 'On schedule', never: 'Never done' }
+// per-tag hover explanation for the PM state chips
+const SCHED_TIP = {
+  overdue: 'A routine (short-cycle) maintenance is past due — the asset was serviced before but has since lapsed.',
+  never: 'Routine maintenance is due and this asset has never once been maintained on any cycle (no history at all).',
+  due_soon: 'A routine maintenance falls due within the next few days.',
+  long_overdue: 'A 5-Yearly (long-cycle) overhaul is due or was never started — tracked apart from the routine backlog.',
+  ok: 'All maintenance cycles are up to date.',
+}
+// hover explanation for the register filter chips
+const FILTER_TIP = (k, c) => k === 'all' ? `All ${c.base} assets in view`
+  : k === 'faulty' ? `${c.faulty} asset(s) with an open or acknowledged failure`
+  : k === 'overdue' ? (c.never
+      ? `${c.overdue} routine-overdue — ${c.never} never once maintained (violet), ${c.overdue - c.never} lapsed after service (red)`
+      : `${c.overdue} routine-overdue asset(s) (serviced before, now lapsed)`)
+  : k === 'due_soon' ? `${c.dueSoon} asset(s) due for maintenance within the next few days`
+  : k === 'long_overdue' ? `${c.longOverdue} asset(s) with a 5-Yearly overhaul due or never started`
+  : undefined
 const schedChip = (state) => `chip d-${state === 'long_overdue' ? 'long' : state}`
 
 function useAssetSchedule(code) {
@@ -931,7 +949,7 @@ function MaintenanceSchedule({ schedule }) {
                   <td className="dim dt" data-l="Last done">{r.last_done || '—'}{r.via && <span className="sched-via"> · via {r.via}</span>}</td>
                   <td className="dt" data-l="Next due">{r.next_due || '—'}</td>
                   <td data-l="Days left">{r.days_left == null ? '—' : r.days_left < 0 ? `${-r.days_left}d ago` : `in ${r.days_left}d`}</td>
-                  <td data-l="State"><span className={schedChip(r.state)}><span className="dot" />{SCHED_LABEL[r.state]}</span></td>
+                  <td data-l="State"><span className={schedChip(r.state)} title={SCHED_TIP[r.state]}><span className="dot" />{SCHED_LABEL[r.state]}</span></td>
                 </tr>
               ))}
             </tbody>
