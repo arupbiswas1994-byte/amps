@@ -2866,15 +2866,24 @@ function LineDashboard({ go }) {
   const total = assets.length
   const bucket = { ok: 0, due_soon: 0, overdue: 0, long_overdue: 0, none: 0 }
   assets.forEach((a) => { bucket[stateOf(a) || 'none'] += 1 })
+  // Separate the routine-overdue bucket into "never serviced" (has a plan but no
+  // first PM yet — a scheduling backlog, common on a young system) and genuinely
+  // "lapsed" (was serviced, fell behind). Reported apart so the headline reflects
+  // what actually slipped, not thousands of first-time entries.
+  const neverN = assets.filter((a) => pm(a)?.never_done).length
+  const lapsed = bucket.overdue - neverN
   const scheduled = total - bucket.none
-  const compliance = scheduled ? Math.round((bucket.ok / scheduled) * 100) : 0
+  // compliance measured over assets already in the maintenance cycle (serviced at
+  // least once) — never-serviced assets are a separate onboarding backlog
+  const inCycle = scheduled - neverN
+  const compliance = inCycle > 0 ? Math.round((bucket.ok / inCycle) * 100) : (scheduled ? 100 : 0)
   // routine overdue broken up by the overdue cycle (Monthly / Quarterly / …)
   // and by asset class — so the PCEE sees WHERE the backlog is concentrated
   const overdueByFreq = {}
   const overdueBySystem = {}
   assets.forEach((a) => {
     const s = pm(a)
-    if (s?.state === 'overdue') {
+    if (s?.state === 'overdue' && !s.never_done) {   // lapsed only — matches the headline Overdue
       if (s.next_frequency) overdueByFreq[s.next_frequency] = (overdueByFreq[s.next_frequency] || 0) + 1
       const sy = a.sys || 'Unclassified'; overdueBySystem[sy] = (overdueBySystem[sy] || 0) + 1
     }
@@ -2889,13 +2898,15 @@ function LineDashboard({ go }) {
   const failLine = me?.line || (assets[0] && assets[0].line)
   const failHref = failLine ? `#/line/${encodeURIComponent(failLine)}/failures` : '#/'
 
-  // stacked compliance bar segments (ordered best → worst)
+  // stacked compliance bar segments (ordered best → worst); never-serviced and
+  // unscheduled shown as neutral onboarding backlog, not as breakdowns
   const segs = [
     ['ok', 'On schedule', bucket.ok, 'seg-ok'],
     ['due_soon', 'Due soon', bucket.due_soon, 'seg-due'],
-    ['overdue', 'Overdue', bucket.overdue, 'seg-od'],
+    ['overdue', 'Overdue', lapsed, 'seg-od'],
+    ['never', 'Awaiting 1st service', neverN, 'seg-never'],
     ['long_overdue', '5-Yearly due', bucket.long_overdue, 'seg-long'],
-    ['none', 'Not scheduled', bucket.none, 'seg-none'],
+    ['none', 'Unscheduled', bucket.none, 'seg-none'],
   ].filter(([, , n]) => n > 0)
 
   const tile = (v, k, cls, to, sub) => (
@@ -2915,12 +2926,13 @@ function LineDashboard({ go }) {
         <div className="cc-top">
           <div className="cc-hero">
             <div className={`cc-pct ${compliance >= 90 ? 'good' : compliance >= 70 ? 'warn' : 'bad'}`}>{compliance}%</div>
-            <div className="cc-hero-k">PM compliance<span className="dim"> · {bucket.ok.toLocaleString()} of {scheduled.toLocaleString()} scheduled on schedule</span></div>
+            <div className="cc-hero-k">PM compliance<span className="dim"> · {bucket.ok.toLocaleString()} of {inCycle.toLocaleString()} in-cycle assets on schedule</span></div>
           </div>
           <div className="cc-figures">
             <div className="cc-fig"><b>{total.toLocaleString()}</b><span>Total assets</span></div>
             <div className="cc-fig"><b className="good">{bucket.ok.toLocaleString()}</b><span>On schedule</span></div>
-            <div className="cc-fig"><b className="bad">{(bucket.overdue + bucket.long_overdue).toLocaleString()}</b><span>Total overdue</span></div>
+            <div className="cc-fig"><b className={lapsed ? 'warn' : 'good'}>{lapsed.toLocaleString()}</b><span>Overdue (lapsed)</span></div>
+            <div className="cc-fig"><b className="neutral">{neverN.toLocaleString()}</b><span>Awaiting 1st service</span></div>
           </div>
         </div>
         <div className="cc-bar" role="img" aria-label="PM compliance breakdown">
@@ -2940,19 +2952,20 @@ function LineDashboard({ go }) {
         {tile(total.toLocaleString(), 'Assets', '', '#/assets', `${stations} locations · ${depots || 1} depot${depots > 1 ? 's' : ''}`)}
         {tile(bucket.ok.toLocaleString(), 'On schedule', bucket.ok ? 'ok' : '', '#/assets', `${compliance}% of scheduled`)}
         {tile(bucket.due_soon.toLocaleString(), 'Due soon', bucket.due_soon ? 'warn' : '', '#/assets', 'within 30 days')}
-        {tile(bucket.overdue.toLocaleString(), 'Overdue', bucket.overdue ? 'alert' : '', '#/assets', 'routine cycles')}
-        {tile(bucket.long_overdue.toLocaleString(), '5-Yearly overdue', bucket.long_overdue ? 'warn' : '', '#/assets', 'overhaul / never started')}
+        {tile(lapsed.toLocaleString(), 'Overdue', lapsed ? 'warn' : 'ok', '#/assets', 'lapsed routine PM')}
+        {tile(neverN.toLocaleString(), 'Awaiting 1st service', neverN ? 'neutral' : '', '#/assets', 'never yet serviced')}
+        {tile(bucket.long_overdue.toLocaleString(), '5-Yearly', bucket.long_overdue ? 'neutral' : '', '#/assets', 'overhaul / not started')}
         {tile(openF.toLocaleString(), 'Open failures', openF ? 'alert' : '', failHref, 'awaiting rectification')}
       </div>
 
       <div className="dash-grid">
         {/* overdue breakup by cycle */}
         <section className="card viz-card">
-          <h2 className="viz-h">Overdue breakup <span className="viz-note">routine cycles</span></h2>
-          {bucket.overdue === 0 ? <p className="dim">No routine PM overdue — all short-cycle maintenance is up to date. 👍</p> : (
+          <h2 className="viz-h">Overdue breakup <span className="viz-note">lapsed routine cycles</span></h2>
+          {lapsed === 0 ? <p className="dim">No lapsed routine PM — every in-cycle asset is up to date. 👍</p> : (
             <div className="breakup">
               {SCHED_FREQS.filter((f) => overdueByFreq[f]).map((f) => {
-                const n = overdueByFreq[f]; const w = Math.round((n / bucket.overdue) * 100)
+                const n = overdueByFreq[f]; const w = Math.round((n / lapsed) * 100)
                 return (
                   <div className="bk-row" key={f}>
                     <span className="bk-lbl">{f}</span>
