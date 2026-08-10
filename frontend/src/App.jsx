@@ -161,7 +161,10 @@ function LiveDashboard({ go, initialLine = null }) {
   const { assets: all, sched, openFail, loading, error } = useLiveAssets()
   const { me, canWrite } = useMe()
   const [line, setLine] = useState(initialLine)
-  const [filter, setFilter] = usePersistedState('reg.state', 'all')   // all | overdue | due_soon
+  // multi-select state filter: an array of active bucket keys; empty = All.
+  // Migrate the old single-string persisted value ('all'/'overdue'/…) to an array.
+  const [filterRaw, setFilter] = usePersistedState('reg.state', [])
+  const filters = Array.isArray(filterRaw) ? filterRaw : (filterRaw && filterRaw !== 'all' ? [filterRaw] : [])
   const [q, setQ] = useState('')
   const [fSystem, setFSystem] = usePersistedState('reg.system', '')
   const [fClass, setFClass] = usePersistedState('reg.class', '')
@@ -260,12 +263,14 @@ function LiveDashboard({ go, initialLine = null }) {
   const dueSoon = base.filter((a) => stateOf(a) === 'due_soon')
   const longOverdue = base.filter((a) => stateOf(a) === 'long_overdue')  // 5-Yearly overdue / never started
   const faulty = base.filter((a) => attnOf(a) > 0)   // open OR acknowledged
-  let shown = filter === 'all' ? base
-    : filter === 'faulty' ? base.filter((a) => attnOf(a) > 0)
-    : filter === 'not_scheduled' ? notScheduled
-    : filter === 'never' ? neverDone
-    : filter === 'overdue' ? overdue
-    : base.filter((a) => stateOf(a) === filter)
+  // one asset matches a bucket key; several selected chips OR together
+  const inBucket = (k, a) => k === 'faulty' ? attnOf(a) > 0
+    : k === 'not_scheduled' ? !sched[assetKey(a)]
+    : k === 'never' ? dispState(a) === 'never'
+    : k === 'overdue' ? (stateOf(a) === 'overdue' && dispState(a) !== 'never')
+    : stateOf(a) === k
+  let shown = filters.length === 0 ? base
+    : base.filter((a) => filters.some((k) => inBucket(k, a)))
   // Assets with an outstanding failure ALWAYS float to the top — open (red) above
   // acknowledged (amber) above job-carded — regardless of the chosen sort, like
   // the fibre console floats blocked lines. Any manual sort orders within bands.
@@ -286,7 +291,7 @@ function LiveDashboard({ go, initialLine = null }) {
   const pageCount = Math.max(1, Math.ceil(shown.length / REG_PAGE))
   const pageSafe = Math.min(page, pageCount - 1)
   const pageRows = shown.slice(pageSafe * REG_PAGE, (pageSafe + 1) * REG_PAGE)
-  useEffect(() => { setPage(0) }, [filter, q, fSystem, fClass, fLocation, fStatus, sortKey, sortDir]) // eslint-disable-line
+  useEffect(() => { setPage(0) }, [filters.join(','), q, fSystem, fClass, fLocation, fStatus, sortKey, sortDir]) // eslint-disable-line
 
   const toggleSort = (k) => {
     if (sortKey === k) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
@@ -395,15 +400,20 @@ function LiveDashboard({ go, initialLine = null }) {
             <div className="asset-filter" role="tablist" aria-label="PM state filter">
               {[['all', `All ${base.length}`], ['faulty', `Faulty ${faulty.length}`],
                 ['overdue', `Overdue ${overdue.length}`],
-                ['never', <>Never done <span className="cnt-never">{neverDone.length}</span></>],
+                ['never', <>Awaiting 1st service <span className="cnt-never">{neverDone.length}</span></>],
                 ['due_soon', `Due soon ${dueSoon.length}`], ['long_overdue', `5-Yearly ${longOverdue.length}`],
                 ['not_scheduled', `Unscheduled ${notScheduled.length}`]]
                 .filter(([k]) => (k !== 'faulty' || faulty.length) && (k !== 'long_overdue' || longOverdue.length) && (k !== 'not_scheduled' || notScheduled.length) && (k !== 'never' || neverDone.length))
-                .map(([k, lbl]) => (
-                <button key={k} type="button" className={`btn preset ${k === 'never' ? 'preset-never ' : ''}${filter === k ? 'active' : ''}${(k === 'overdue' && overdue.length) || (k === 'faulty' && faulty.length) ? ' has-od' : ''}`}
+                .map(([k, lbl]) => {
+                  const active = k === 'all' ? filters.length === 0 : filters.includes(k)
+                  const toggle = () => k === 'all' ? setFilter([])
+                    : setFilter(filters.includes(k) ? filters.filter((x) => x !== k) : [...filters, k])
+                  return (
+                <button key={k} type="button" aria-pressed={active}
+                        className={`btn preset ${k === 'never' ? 'preset-never ' : ''}${active ? 'active' : ''}${(k === 'overdue' && overdue.length) || (k === 'faulty' && faulty.length) ? ' has-od' : ''}`}
                         title={FILTER_TIP(k, { base: base.length, faulty: faulty.length, overdue: overdue.length, never: neverDone.length, dueSoon: dueSoon.length, longOverdue: longOverdue.length, notScheduled: notScheduled.length })}
-                        onClick={() => setFilter(k)}>{lbl}</button>
-              ))}
+                        onClick={toggle}>{lbl}</button>
+                )})}
             </div>
             {depotsList.length > 0 && !me?.depot && (
               <select value={fDepot} onChange={(e) => setFDepot(e.target.value)} aria-label="Filter by depot">
@@ -427,9 +437,9 @@ function LiveDashboard({ go, initialLine = null }) {
               <option value="">Any status</option>
               {statusesList.map((s) => <option key={s} value={s}>{STATUS_LABEL[s] || s}</option>)}
             </select>
-            {(fSystem || fClass || fLocation || fStatus || fDepot || q || filter !== 'all' || sortKey) && (
+            {(fSystem || fClass || fLocation || fStatus || fDepot || q || filters.length || sortKey) && (
               <button type="button" className="btn ghost sm" onClick={() => {
-                setFSystem(''); setFClass(''); setFLocation(''); setFStatus(''); setFDepot(''); setQ(''); setFilter('all'); setSortKey(null)
+                setFSystem(''); setFClass(''); setFLocation(''); setFStatus(''); setFDepot(''); setQ(''); setFilter([]); setSortKey(null)
               }}>Clear</button>
             )}
             <span className="asset-count">{shown.length} shown</span>
@@ -463,7 +473,7 @@ function LiveDashboard({ go, initialLine = null }) {
           </div>
           {/* a caption that appears only on the printout: what's being shown */}
           <div className="print-caption">
-            AMPS · {effLine || 'All lines'} — {filter === 'all' ? 'all assets' : filter === 'overdue' ? 'overdue PM' : 'PM due soon'}
+            AMPS · {effLine || 'All lines'} — {filters.length === 0 ? 'all assets' : filters.map((k) => FILTER_LABEL[k] || k).join(' + ')}
             {fSystem ? ` · ${fSystem}` : ''}{fClass ? ` · ${fClass}` : ''}{fLocation ? ` · ${fLocation}` : ''}{fStatus ? ` · ${STATUS_LABEL[fStatus] || fStatus}` : ''}
             {q ? ` · “${q}”` : ''} · {shown.length} assets · {new Date().toISOString().slice(0, 10)}
           </div>
@@ -891,6 +901,8 @@ function AssetLogSections({ log, staff }) {
    asset's plan when set, else it's inferred from what the log already holds. */
 const SCHED_FREQS = ['Monthly', 'Quarterly', 'Half-Yearly', 'Yearly', '5-Yearly']
 const SCHED_LABEL = { overdue: 'Overdue', due_soon: 'Due soon', long_overdue: '5-Yearly due', ok: 'On schedule', never: 'Never done' }
+// short labels for the print caption when filter chips are active
+const FILTER_LABEL = { faulty: 'faulty', overdue: 'overdue (lapsed)', never: 'awaiting 1st service', due_soon: 'due soon', long_overdue: '5-Yearly', not_scheduled: 'unscheduled' }
 // per-tag hover explanation for the PM state chips
 const SCHED_TIP = {
   overdue: 'A routine (short-cycle) maintenance is past due — the asset was serviced before but has since lapsed.',
@@ -903,7 +915,7 @@ const SCHED_TIP = {
 const FILTER_TIP = (k, c) => k === 'all' ? `All ${c.base} assets in view`
   : k === 'faulty' ? `${c.faulty} asset(s) with an open or acknowledged failure`
   : k === 'overdue' ? `${c.overdue} asset(s) overdue after lapsing — serviced before but now past due (excludes never-done)`
-  : k === 'never' ? `${c.never} asset(s) that have a schedule but were never once maintained on any cycle`
+  : k === 'never' ? `${c.never} asset(s) awaiting their first scheduled service — have a plan but no PM done yet (onboarding backlog, not a lapse)`
   : k === 'not_scheduled' ? `${c.notScheduled} asset(s) with no maintenance schedule at all — outside the PM scope`
   : k === 'due_soon' ? `${c.dueSoon} asset(s) due for maintenance within the next few days`
   : k === 'long_overdue' ? `${c.longOverdue} asset(s) with a 5-Yearly overhaul due or never started`
