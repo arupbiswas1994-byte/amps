@@ -3130,10 +3130,10 @@ function LineDashboard({ go }) {
    first, with days-pending front and centre. Signed-in only (operational). */
 function exportJobCards(cards) {
   const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`
-  const head = ['Raised', 'Status', 'Asset', 'Station', 'Fault', 'Issued to', 'Job card detail', 'Closed', 'Age (d)', 'Action taken']
+  const head = ['Raised', 'Status', 'Asset', 'Station', 'Location', 'Fault', 'Issued to', 'Job card detail', 'Closed', 'Age (d)', 'Action taken']
   const stat = { open: 'Open', closed: 'Closed by agency', penalty: 'Penalty — we fixed' }
   const rows = cards.map(({ f, jc, rb, status, age }) => [
-    jc.log_date, stat[status] || status, f.asset_code || '', f.station || jc.station || '',
+    jc.log_date, stat[status] || status, f.asset_code || '', f.station || jc.station || '', f.category || '',
     f.fault_type || tidyLog(f.text), jc.attended_by || '', tidyLog(jc.text),
     rb ? rb.log_date : '', age, rb ? (rb.action_taken || tidyLog(rb.text)) : ''].map(esc).join(','))
   const blob = new Blob([[head.map(esc).join(','), ...rows].join('\n')], { type: 'text/csv' })
@@ -3169,7 +3169,7 @@ function JobCardsView({ line = '' }) {
   })
   const agencies = [...new Set(cardsAll.map((c) => c.jc.attended_by).filter(Boolean))].sort()
   const ql = q.trim().toLowerCase()
-  const matchQ = (c) => !ql || [c.f.asset_code, c.f.fault_type, c.f.text, c.jc.attended_by, c.jc.text].some((v) => (v || '').toLowerCase().includes(ql))
+  const matchQ = (c) => !ql || [c.f.asset_code, c.f.fault_type, c.f.text, c.f.station, c.f.category, c.jc.attended_by, c.jc.text].some((v) => (v || '').toLowerCase().includes(ql))
   // search + agency filter apply first, so the tab counts reflect the current view
   const cards = cardsAll.filter((c) => matchQ(c) && (!fAgency.length || fAgency.includes(c.jc.attended_by)))
   const open = cards.filter((c) => c.status === 'open')
@@ -3223,12 +3223,12 @@ function JobCardsView({ line = '' }) {
         <div className="card tbl-wrap">
           <table className="jc-table">
             <colgroup>
-              <col style={{ width: 60 }} /><col style={{ width: 110 }} />
-              <col style={{ width: 150 }} /><col style={{ width: 120 }} /><col style={{ width: 180 }} />
-              <col style={{ width: 140 }} /><col style={{ width: 88 }} />
-              <col style={{ width: 88 }} /><col />{canWrite && <col style={{ width: 118 }} />}
+              <col style={{ width: 56 }} /><col style={{ width: 104 }} />
+              <col style={{ width: 130 }} /><col style={{ width: 72 }} /><col style={{ width: 110 }} /><col style={{ width: 160 }} />
+              <col style={{ width: 130 }} /><col style={{ width: 82 }} />
+              <col style={{ width: 82 }} /><col />{canWrite && <col style={{ width: 112 }} />}
             </colgroup>
-            <thead><tr><th>{tab === 'open' ? 'Pending' : 'Turnaround'}</th><th>Status</th><th>Asset</th><th>Station</th><th>Fault</th>
+            <thead><tr><th>{tab === 'open' ? 'Pending' : 'Turnaround'}</th><th>Status</th><th>Asset</th><th>Station</th><th>Location</th><th>Fault</th>
               <th className={fAgency.length ? 'th-filtered' : ''}>Issued to
                 <ColFilter open={openCol === 'ag'} onToggle={() => setOpenCol(openCol === 'ag' ? null : 'ag')}
                            onClose={() => setOpenCol(null)} values={fAgency}
@@ -3245,6 +3245,7 @@ function JobCardsView({ line = '' }) {
                   <td data-l="Status"><span className={`jc-pill ${STL[status][0]}`}>{STL[status][1]}</span></td>
                   <td className="code" data-l="Asset">{f.asset_code || '—'}</td>
                   <td className="dim" data-l="Station">{f.station || jc.station || '—'}</td>
+                  <td className="dim" data-l="Location">{f.category || '—'}</td>
                   <td className="wrap-cell" data-l="Fault">{f.fault_type ? <b>{f.fault_type}</b> : tidyLog(f.text)}</td>
                   <td className="dim" data-l="Issued to">{jc.attended_by || '—'}</td>
                   <td className="dim dt" data-l="Raised">{jc.log_date}</td>
