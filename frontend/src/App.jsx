@@ -166,10 +166,13 @@ function LiveDashboard({ go, initialLine = null }) {
   const [filterRaw, setFilter] = usePersistedState('reg.state', [])
   const filters = Array.isArray(filterRaw) ? filterRaw : (filterRaw && filterRaw !== 'all' ? [filterRaw] : [])
   const [q, setQ] = useState('')
-  const [fSystem, setFSystem] = usePersistedState('reg.system', '')
-  const [fClass, setFClass] = usePersistedState('reg.class', '')
-  const [fLocation, setFLocation] = usePersistedState('reg.location', '')
-  const [fStatus, setFStatus] = usePersistedState('reg.status', '')
+  // column filters are MULTI-SELECT (arrays). Migrate any old single-string value.
+  const asArr = (v) => Array.isArray(v) ? v : (v ? [v] : [])
+  const [fSystemR, setFSystem] = usePersistedState('reg.system', [])
+  const [fClassR, setFClass] = usePersistedState('reg.class', [])
+  const [fLocationR, setFLocation] = usePersistedState('reg.location', [])
+  const [fStatusR, setFStatus] = usePersistedState('reg.status', [])
+  const fSystem = asArr(fSystemR), fClass = asArr(fClassR), fLocation = asArr(fLocationR), fStatus = asArr(fStatusR)
   const [fDepot, setFDepot] = usePersistedState('reg.depot', '')
   const [sortKey, setSortKey] = usePersistedState('reg.sortKey', null)  // null = register order
   const [sortDir, setSortDir] = usePersistedState('reg.sortDir', 'asc')
@@ -229,13 +232,14 @@ function LiveDashboard({ go, initialLine = null }) {
   // OTHER active filters are applied — pick a depot and the class/location/system
   // lists narrow to that depot. A dropdown never constrains itself, and always
   // keeps its own current value so a selection stays visible.
-  const FILTER_FIELDS = [['sys', fSystem], ['cls', fClass], ['location', fLocation],
-                         ['status', fStatus], ['depot', fDepot]]
+  // multi-select array fields + the single depot field
+  const FILTER_FIELDS = [['sys', fSystem], ['cls', fClass], ['location', fLocation], ['status', fStatus]]
   const passesExcept = (a, exceptKey) => FILTER_FIELDS.every(
-    ([k, v]) => !v || k === exceptKey || (k === 'depot' && !lineDepots.includes(v)) || a[k] === v)
+    ([k, v]) => k === exceptKey || v.length === 0 || v.includes(a[k]))
+    && (exceptKey === 'depot' || !fDepot || !lineDepots.includes(fDepot) || a.depot === fDepot)
   const optsFor = (k, cur) => {
     const s = new Set(assets.filter((a) => matchQ(a) && passesExcept(a, k)).map((a) => a[k]).filter(Boolean))
-    if (cur) s.add(cur)
+    for (const c of (Array.isArray(cur) ? cur : cur ? [cur] : [])) s.add(c)
     return [...s].sort()
   }
   const systemsList = optsFor('sys', fSystem); const classesList = optsFor('cls', fClass)
@@ -249,10 +253,10 @@ function LiveDashboard({ go, initialLine = null }) {
   // so the chip counts reflect the current view and update as you filter
   let base = assets
   if (ql) base = base.filter((a) => [a.code, a.name, a.location, a.cls, a.sys].some((v) => (v || '').toLowerCase().includes(ql)))
-  if (fSystem) base = base.filter((a) => a.sys === fSystem)
-  if (fClass) base = base.filter((a) => a.cls === fClass)
-  if (fLocation) base = base.filter((a) => a.location === fLocation)
-  if (fStatus) base = base.filter((a) => a.status === fStatus)
+  if (fSystem.length) base = base.filter((a) => fSystem.includes(a.sys))
+  if (fClass.length) base = base.filter((a) => fClass.includes(a.cls))
+  if (fLocation.length) base = base.filter((a) => fLocation.includes(a.location))
+  if (fStatus.length) base = base.filter((a) => fStatus.includes(a.status))
   // only apply a depot filter that actually belongs to the current line — a
   // depot picked on another line (persisted) must not blank this line's register
   if (fDepot && lineDepots.includes(fDepot)) base = base.filter((a) => a.depot === fDepot)
@@ -300,12 +304,13 @@ function LiveDashboard({ go, initialLine = null }) {
   const sortArrow = (k) => sortKey === k ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''
   const COLS = [['code', 'Code'], ['name', 'Asset'], ['cls', 'Class'], ['location', 'Location'],
     ['sys', 'System'], ['status', 'Status'], ['next_due', 'Next PM'], ['pm', 'PM state']]
-  // per-column header filters (Class/Location/System/Status) — moved off the ribbon
+  // per-column header filters (Class/Location/System/Status), multi-select — off the ribbon
+  const toggleIn = (set) => (v) => set((prev) => { const a = asArr(prev); return a.includes(v) ? a.filter((x) => x !== v) : [...a, v] })
   const colFilters = {
-    cls: { value: fClass, set: setFClass, opts: classesList, allLabel: 'All classes' },
-    location: { value: fLocation, set: setFLocation, opts: locationsList, allLabel: 'All locations' },
-    sys: { value: fSystem, set: setFSystem, opts: systemsList, allLabel: 'All systems' },
-    status: { value: fStatus, set: setFStatus, opts: statusesList, allLabel: 'Any status', fmt: (v) => STATUS_LABEL[v] || v },
+    cls: { values: fClass, toggle: toggleIn(setFClass), clear: () => setFClass([]), opts: classesList, allLabel: 'All classes' },
+    location: { values: fLocation, toggle: toggleIn(setFLocation), clear: () => setFLocation([]), opts: locationsList, allLabel: 'All locations' },
+    sys: { values: fSystem, toggle: toggleIn(setFSystem), clear: () => setFSystem([]), opts: systemsList, allLabel: 'All systems' },
+    status: { values: fStatus, toggle: toggleIn(setFStatus), clear: () => setFStatus([]), opts: statusesList, allLabel: 'Any status', fmt: (v) => STATUS_LABEL[v] || v },
   }
   const [openCol, setOpenCol] = useState(null)
 
@@ -431,9 +436,9 @@ function LiveDashboard({ go, initialLine = null }) {
                 {depotsList.map((d) => <option key={d} value={d}>{d}</option>)}
               </select>
             )}
-            {(fSystem || fClass || fLocation || fStatus || fDepot || q || filters.length || sortKey) && (
+            {(fSystem.length || fClass.length || fLocation.length || fStatus.length || fDepot || q || filters.length || sortKey) && (
               <button type="button" className="btn ghost sm" onClick={() => {
-                setFSystem(''); setFClass(''); setFLocation(''); setFStatus(''); setFDepot(''); setQ(''); setFilter([]); setSortKey(null)
+                setFSystem([]); setFClass([]); setFLocation([]); setFStatus([]); setFDepot(''); setQ(''); setFilter([]); setSortKey(null)
               }}>Clear</button>
             )}
             <span className="asset-count">{shown.length} shown</span>
@@ -468,7 +473,7 @@ function LiveDashboard({ go, initialLine = null }) {
           {/* a caption that appears only on the printout: what's being shown */}
           <div className="print-caption">
             AMPS · {effLine || 'All lines'} — {filters.length === 0 ? 'all assets' : filters.map((k) => FILTER_LABEL[k] || k).join(' + ')}
-            {fSystem ? ` · ${fSystem}` : ''}{fClass ? ` · ${fClass}` : ''}{fLocation ? ` · ${fLocation}` : ''}{fStatus ? ` · ${STATUS_LABEL[fStatus] || fStatus}` : ''}
+            {fSystem.length ? ` · ${fSystem.join('/')}` : ''}{fClass.length ? ` · ${fClass.join('/')}` : ''}{fLocation.length ? ` · ${fLocation.join('/')}` : ''}{fStatus.length ? ` · ${fStatus.map((s) => STATUS_LABEL[s] || s).join('/')}` : ''}
             {q ? ` · “${q}”` : ''} · {shown.length} assets · {new Date().toISOString().slice(0, 10)}
           </div>
           {newOpen && canWrite && (
@@ -501,7 +506,7 @@ function LiveDashboard({ go, initialLine = null }) {
                     {COLS.map(([k, lbl]) => {
                       const cf = colFilters[k]
                       return (
-                      <th key={k} className={`th-sort${sortKey === k ? ' active' : ''}${cf?.value ? ' th-filtered' : ''}`}>
+                      <th key={k} className={`th-sort${sortKey === k ? ' active' : ''}${cf?.values.length ? ' th-filtered' : ''}`}>
                         <span className="th-lbl" onClick={() => toggleSort(k)} title={`Sort by ${lbl}`}>{lbl}{sortArrow(k)}</span>
                         {cf && <ColFilter open={openCol === k} onToggle={() => setOpenCol(openCol === k ? null : k)}
                                           onClose={() => setOpenCol(null)} {...cf} />}
@@ -903,32 +908,46 @@ const SCHED_LABEL = { overdue: 'Overdue', due_soon: 'Due soon', long_overdue: '5
 // short labels for the print caption when filter chips are active
 const FILTER_LABEL = { faulty: 'faulty', overdue: 'overdue (lapsed)', never: 'awaiting 1st service', due_soon: 'due soon', long_overdue: '5-Yearly', not_scheduled: 'unscheduled' }
 
-/* a compact ▾ filter control that lives in a table column header. The parent
-   owns which column's menu is open (single-open), so it closes on outside click
-   or when another header's filter opens. */
-function ColFilter({ open, onToggle, onClose, value, set, opts, fmt, allLabel }) {
+const FunnelIcon = ({ on }) => (
+  <svg viewBox="0 0 16 16" width="12" height="12" fill={on ? 'currentColor' : 'none'} stroke="currentColor"
+       strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true">
+    <path d="M2 3h12l-4.6 5.4v3.9L6.6 14V8.4z" />
+  </svg>
+)
+
+/* a MULTI-SELECT filter control in a table column header. The parent owns which
+   column's menu is open (single-open); it closes on outside click / scroll. The
+   menu is fixed-positioned so it escapes the table's overflow clip. */
+function ColFilter({ open, onToggle, onClose, values, toggle, clear, opts, fmt, allLabel }) {
   const btnRef = useRef(null)
-  const [pos, setPos] = useState(null)   // fixed-position coords so the menu escapes the table's overflow clip
+  const [pos, setPos] = useState(null)
   useEffect(() => {
     if (!open) { setPos(null); return undefined }
     const r = btnRef.current?.getBoundingClientRect()
-    if (r) setPos({ top: r.bottom + 4, left: Math.min(r.left, window.innerWidth - 170) })
+    if (r) setPos({ top: r.bottom + 5, left: Math.min(r.left, window.innerWidth - 210) })
     const close = () => onClose()
     window.addEventListener('click', close)
     window.addEventListener('scroll', close, true)
     return () => { window.removeEventListener('click', close); window.removeEventListener('scroll', close, true) }
   }, [open, onClose])
+  const n = values.length
   return (
     <span className="col-filter" onClick={(e) => e.stopPropagation()}>
-      <button ref={btnRef} type="button" className={`col-filter-btn${value ? ' on' : ''}`} onClick={onToggle}
-              aria-label="Filter column" title={value ? `Filtered: ${fmt ? fmt(value) : value}` : 'Filter'}>▾</button>
+      <button ref={btnRef} type="button" className={`col-filter-btn${n ? ' on' : ''}`} onClick={onToggle}
+              aria-label="Filter column" title={n ? `Filtered (${n})` : 'Filter'}>
+        <FunnelIcon on={n > 0} />{n > 0 && <span className="col-filter-badge">{n}</span>}
+      </button>
       {open && pos && (
         <div className="col-filter-menu" role="menu" style={{ position: 'fixed', top: pos.top, left: pos.left }}>
-          <button type="button" className={!value ? 'active' : ''} onClick={() => { set(''); onClose() }}>{allLabel}</button>
-          {opts.map((o) => (
-            <button type="button" key={o} className={value === o ? 'active' : ''}
-                    onClick={() => { set(o); onClose() }}>{fmt ? fmt(o) : o}</button>
-          ))}
+          <button type="button" className={`cfm-all${n === 0 ? ' active' : ''}`} onClick={() => clear()}>{allLabel}</button>
+          {opts.map((o) => {
+            const sel = values.includes(o)
+            return (
+              <button type="button" key={o} className={`cfm-opt${sel ? ' active' : ''}`} onClick={() => toggle(o)}>
+                <span className="cfm-box">{sel ? '✓' : ''}</span>{fmt ? fmt(o) : o}
+              </button>
+            )
+          })}
         </div>
       )}
     </span>

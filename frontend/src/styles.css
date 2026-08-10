@@ -486,19 +486,26 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 /* column-header filters (Class · Location · System · Status) */
 .th-sort .th-lbl { cursor: pointer; }
 .th-sort.th-filtered { color: var(--accent); }
-.col-filter { position: relative; display: inline-flex; margin-left: 4px; vertical-align: middle; }
-.col-filter-btn { border: none; background: none; cursor: pointer; font-size: 9px; line-height: 1; padding: 2px 3px;
-  border-radius: 5px; color: var(--ink-3); }
+.col-filter { position: relative; display: inline-flex; margin-left: 5px; vertical-align: middle; }
+.col-filter-btn { display: inline-flex; align-items: center; gap: 2px; border: none; background: none; cursor: pointer;
+  line-height: 1; padding: 3px 4px; border-radius: 5px; color: var(--ink-3); }
 .col-filter-btn:hover { background: #eef2f5; color: var(--ink); }
 .col-filter-btn.on { color: var(--accent); background: var(--accent-soft); }
+.col-filter-badge { font-size: 9px; font-weight: 700; min-width: 12px; height: 12px; padding: 0 2px; border-radius: 99px;
+  background: var(--accent); color: #fff; display: inline-flex; align-items: center; justify-content: center; }
 .col-filter-menu { z-index: 60; min-width: 150px; max-width: 240px; max-height: 340px;
   overflow-y: auto; background: #fff; border: 1px solid var(--border); border-radius: 10px;
   box-shadow: 0 10px 28px rgba(0,0,0,.14); padding: 4px; text-transform: none; }
-.col-filter-menu button { display: block; width: 100%; text-align: left; border: none; background: none; cursor: pointer;
-  font: inherit; font-size: 12.5px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--ink);
-  padding: 6px 9px; border-radius: 7px; white-space: nowrap; }
+.col-filter-menu button { display: flex; align-items: center; gap: 7px; width: 100%; text-align: left; border: none;
+  background: none; cursor: pointer; font: inherit; font-size: 12.5px; font-weight: 400; letter-spacing: 0;
+  text-transform: none; color: var(--ink); padding: 6px 9px; border-radius: 7px; white-space: nowrap; }
 .col-filter-menu button:hover { background: #f2f7fa; }
-.col-filter-menu button.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.col-filter-menu .cfm-all { font-weight: 500; border-bottom: 1px solid var(--border); border-radius: 7px 7px 0 0; margin-bottom: 2px; color: var(--ink-2); }
+.col-filter-menu .cfm-all.active { color: var(--accent); }
+.col-filter-menu .cfm-box { flex: none; width: 15px; height: 15px; border: 1px solid var(--border); border-radius: 4px;
+  display: inline-flex; align-items: center; justify-content: center; font-size: 11px; color: var(--accent); }
+.col-filter-menu .cfm-opt.active { background: var(--accent-soft); font-weight: 600; }
+.col-filter-menu .cfm-opt.active .cfm-box { border-color: var(--accent); background: var(--accent-soft); }
 /* frozen header: the card clips (overflow:hidden) and .tbl-wrap scrolls-x —
    both break a sticky thead, so this wrapper opts out and lets the header
    stick to the page just under the frozen toolbar */
