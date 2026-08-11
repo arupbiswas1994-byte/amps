@@ -173,7 +173,10 @@ function LiveDashboard({ go, initialLine = null }) {
   const [fClassR, setFClass] = usePersistedState('reg.class', [])
   const [fLocationR, setFLocation] = usePersistedState('reg.location', [])
   const [fStatusR, setFStatus] = usePersistedState('reg.status', [])
-  const fSystem = asArr(fSystemR), fClass = asArr(fClassR), fLocation = asArr(fLocationR), fStatus = asArr(fStatusR)
+  const [fLocDetR, setFLocDet] = usePersistedState('reg.locdet', [])
+  const [fCode, setFCode] = usePersistedState('reg.code', '')     // Code: contains-text filter
+  const [fName, setFName] = usePersistedState('reg.name', '')     // Asset: contains-text filter
+  const fSystem = asArr(fSystemR), fClass = asArr(fClassR), fLocation = asArr(fLocationR), fStatus = asArr(fStatusR), fLocDet = asArr(fLocDetR)
   const [fDepot, setFDepot] = usePersistedState('reg.depot', '')
   const [sortKey, setSortKey] = usePersistedState('reg.sortKey', null)  // null = register order
   const [sortDir, setSortDir] = usePersistedState('reg.sortDir', 'asc')
@@ -234,7 +237,7 @@ function LiveDashboard({ go, initialLine = null }) {
   // lists narrow to that depot. A dropdown never constrains itself, and always
   // keeps its own current value so a selection stays visible.
   // multi-select array fields + the single depot field
-  const FILTER_FIELDS = [['sys', fSystem], ['cls', fClass], ['location', fLocation], ['status', fStatus]]
+  const FILTER_FIELDS = [['sys', fSystem], ['cls', fClass], ['location', fLocation], ['status', fStatus], ['locationDetail', fLocDet]]
   const passesExcept = (a, exceptKey) => FILTER_FIELDS.every(
     ([k, v]) => k === exceptKey || v.length === 0 || v.includes(a[k]))
     && (exceptKey === 'depot' || !fDepot || !lineDepots.includes(fDepot) || a.depot === fDepot)
@@ -245,6 +248,7 @@ function LiveDashboard({ go, initialLine = null }) {
   }
   const systemsList = optsFor('sys', fSystem); const classesList = optsFor('cls', fClass)
   const locationsList = optsFor('location', fLocation); const statusesList = optsFor('status', fStatus)
+  const locDetList = optsFor('locationDetail', fLocDet)
   const depotsList = optsFor('depot', fDepot)   // maintenance depots present in the narrowed view
   // the sort accessor per column; PM columns read the derived schedule
   const sortVal = (a, k) => k === 'next_due' ? (sched[assetKey(a)]?.next_due || '9999')
@@ -258,6 +262,9 @@ function LiveDashboard({ go, initialLine = null }) {
   if (fClass.length) base = base.filter((a) => fClass.includes(a.cls))
   if (fLocation.length) base = base.filter((a) => fLocation.includes(a.location))
   if (fStatus.length) base = base.filter((a) => fStatus.includes(a.status))
+  if (fLocDet.length) base = base.filter((a) => fLocDet.includes(a.locationDetail))
+  if (fCode.trim()) base = base.filter((a) => (a.code || '').toLowerCase().includes(fCode.trim().toLowerCase()))
+  if (fName.trim()) base = base.filter((a) => (a.name || '').toLowerCase().includes(fName.trim().toLowerCase()))
   // only apply a depot filter that actually belongs to the current line — a
   // depot picked on another line (persisted) must not blank this line's register
   if (fDepot && lineDepots.includes(fDepot)) base = base.filter((a) => a.depot === fDepot)
@@ -296,7 +303,7 @@ function LiveDashboard({ go, initialLine = null }) {
   const pageCount = Math.max(1, Math.ceil(shown.length / REG_PAGE))
   const pageSafe = Math.min(page, pageCount - 1)
   const pageRows = shown.slice(pageSafe * REG_PAGE, (pageSafe + 1) * REG_PAGE)
-  useEffect(() => { setPage(0) }, [filters.join(','), q, fSystem, fClass, fLocation, fStatus, sortKey, sortDir]) // eslint-disable-line
+  useEffect(() => { setPage(0) }, [filters.join(','), q, fSystem, fClass, fLocation, fStatus, fLocDet.join(','), fCode, fName, sortKey, sortDir]) // eslint-disable-line
 
   const toggleSort = (k) => {
     if (sortKey === k) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
@@ -307,11 +314,20 @@ function LiveDashboard({ go, initialLine = null }) {
     ['locationDetail', 'Location'], ['sys', 'System'], ['status', 'Status'], ['next_due', 'Next PM'], ['pm', 'PM state']]
   // per-column header filters (Class/Location/System/Status), multi-select — off the ribbon
   const toggleIn = (set) => (v) => set((prev) => { const a = asArr(prev); return a.includes(v) ? a.filter((x) => x !== v) : [...a, v] })
+  // PM-state column filter shares the ribbon's `filters` buckets, so the header
+  // funnel and the ribbon chips stay in sync.
+  const PM_OPTS = ['overdue', 'never', 'due_soon', 'long_overdue', 'ok', 'not_scheduled']
+  const PM_LBL = { overdue: 'Overdue', never: 'Awaiting 1st service', due_soon: 'Due soon', long_overdue: '5-Yearly', ok: 'On schedule', not_scheduled: 'Unscheduled' }
   const colFilters = {
+    code: { text: fCode, setText: setFCode },
+    name: { text: fName, setText: setFName },
     cls: { values: fClass, toggle: toggleIn(setFClass), clear: () => setFClass([]), opts: classesList, allLabel: 'All classes' },
-    location: { values: fLocation, toggle: toggleIn(setFLocation), clear: () => setFLocation([]), opts: locationsList, allLabel: 'All locations' },
+    location: { values: fLocation, toggle: toggleIn(setFLocation), clear: () => setFLocation([]), opts: locationsList, allLabel: 'All stations' },
+    locationDetail: { values: fLocDet, toggle: toggleIn(setFLocDet), clear: () => setFLocDet([]), opts: locDetList, allLabel: 'All locations' },
     sys: { values: fSystem, toggle: toggleIn(setFSystem), clear: () => setFSystem([]), opts: systemsList, allLabel: 'All systems' },
     status: { values: fStatus, toggle: toggleIn(setFStatus), clear: () => setFStatus([]), opts: statusesList, allLabel: 'Any status', fmt: (v) => STATUS_LABEL[v] || v },
+    pm: { values: filters.filter((k) => PM_OPTS.includes(k)), toggle: (v) => setFilter(filters.includes(v) ? filters.filter((x) => x !== v) : [...filters, v]),
+          clear: () => setFilter(filters.filter((k) => !PM_OPTS.includes(k))), opts: PM_OPTS, allLabel: 'All states', fmt: (v) => PM_LBL[v] || v },
   }
   const [openCol, setOpenCol] = useState(null)
 
@@ -437,9 +453,9 @@ function LiveDashboard({ go, initialLine = null }) {
                 {depotsList.map((d) => <option key={d} value={d}>{d}</option>)}
               </select>
             )}
-            {(fSystem.length || fClass.length || fLocation.length || fStatus.length || fDepot || q || filters.length || sortKey) && (
+            {(fSystem.length || fClass.length || fLocation.length || fStatus.length || fLocDet.length || fCode || fName || fDepot || q || filters.length || sortKey) && (
               <button type="button" className="btn ghost sm" onClick={() => {
-                setFSystem([]); setFClass([]); setFLocation([]); setFStatus([]); setFDepot(''); setQ(''); setFilter([]); setSortKey(null)
+                setFSystem([]); setFClass([]); setFLocation([]); setFStatus([]); setFLocDet([]); setFCode(''); setFName(''); setFDepot(''); setQ(''); setFilter([]); setSortKey(null)
               }}>Clear</button>
             )}
             <span className="asset-count">{shown.length} shown</span>
@@ -506,8 +522,9 @@ function LiveDashboard({ go, initialLine = null }) {
                   <tr>
                     {COLS.map(([k, lbl]) => {
                       const cf = colFilters[k]
+                      const cfOn = cf && (cf.text !== undefined ? !!cf.text : cf.values.length)
                       return (
-                      <th key={k} className={`th-sort${sortKey === k ? ' active' : ''}${cf?.values.length ? ' th-filtered' : ''}`}>
+                      <th key={k} className={`th-sort${sortKey === k ? ' active' : ''}${cfOn ? ' th-filtered' : ''}`}>
                         <span className="th-lbl" onClick={() => toggleSort(k)} title={`Sort by ${lbl}`}>{lbl}{sortArrow(k)}</span>
                         {cf && <ColFilter open={openCol === k} onToggle={() => setOpenCol(openCol === k ? null : k)}
                                           onClose={() => setOpenCol(null)} {...cf} />}
@@ -917,21 +934,26 @@ const FunnelIcon = ({ on }) => (
   </svg>
 )
 
-/* a MULTI-SELECT filter control in a table column header. The parent owns which
-   column's menu is open (single-open); it closes on outside click / scroll. The
-   menu is fixed-positioned so it escapes the table's overflow clip. */
-function ColFilter({ open, onToggle, onClose, values, toggle, clear, opts, fmt, allLabel }) {
+/* A column-header filter. Two modes:
+   - checkbox (values/toggle/clear/opts): multi-select, with an in-menu search
+     box once the option list is long, so high-cardinality columns stay usable.
+   - text (text/setText): a "contains" box for free-text columns (Code, Asset).
+   The parent owns which column's menu is open (single-open); it closes on
+   outside click / scroll. The menu is fixed-positioned (portal) so it escapes
+   the table's overflow clip. */
+function ColFilter({ open, onToggle, onClose, values, toggle, clear, opts, fmt, allLabel, text, setText }) {
   const btnRef = useRef(null)
   const [pos, setPos] = useState(null)
+  const [find, setFind] = useState('')
+  const isText = text !== undefined
   useEffect(() => {
-    if (!open) { setPos(null); return undefined }
+    if (!open) { setPos(null); setFind(''); return undefined }
     const place = () => {
       const r = btnRef.current?.getBoundingClientRect()
-      if (r) setPos({ top: r.bottom + 5, left: Math.min(r.left, window.innerWidth - 214) })
+      if (r) setPos({ top: r.bottom + 5, left: Math.min(r.left, window.innerWidth - 234) })
     }
     place()
     const close = () => onClose()
-    // keep the menu glued to the header if the page/table scrolls or resizes
     window.addEventListener('resize', place)
     window.addEventListener('scroll', place, true)
     const t = setTimeout(() => window.addEventListener('click', close), 0)   // don't catch the opening click
@@ -942,25 +964,39 @@ function ColFilter({ open, onToggle, onClose, values, toggle, clear, opts, fmt, 
       window.removeEventListener('click', close)
     }
   }, [open, onClose])
-  const n = values.length
+  const n = isText ? (text ? 1 : 0) : values.length
+  const fl = find.trim().toLowerCase()
+  const shownOpts = isText ? [] : (fl ? opts.filter((o) => (fmt ? fmt(o) : o).toLowerCase().includes(fl)) : opts)
   const menu = open && pos && createPortal(
     <div className="col-filter-menu" role="menu" onClick={(e) => e.stopPropagation()}
          style={{ position: 'fixed', top: pos.top, left: pos.left }}>
-      <button type="button" className={`cfm-all${n === 0 ? ' active' : ''}`} onClick={() => clear()}>{allLabel}</button>
-      {opts.map((o) => {
-        const sel = values.includes(o)
-        return (
-          <button type="button" key={o} className={`cfm-opt${sel ? ' active' : ''}`} onClick={() => toggle(o)}>
-            <span className="cfm-box">{sel ? '✓' : ''}</span>{fmt ? fmt(o) : o}
-          </button>
-        )
-      })}
+      {isText ? (
+        <input className="cfm-text" autoFocus type="search" value={text} placeholder="contains…"
+               onChange={(e) => setText(e.target.value)} />
+      ) : (
+        <>
+          {opts.length > 8 && (
+            <input className="cfm-text" autoFocus type="search" value={find} placeholder="search…"
+                   onChange={(e) => setFind(e.target.value)} />
+          )}
+          <button type="button" className={`cfm-all${n === 0 ? ' active' : ''}`} onClick={() => clear()}>{allLabel}</button>
+          {shownOpts.map((o) => {
+            const sel = values.includes(o)
+            return (
+              <button type="button" key={o} className={`cfm-opt${sel ? ' active' : ''}`} onClick={() => toggle(o)}>
+                <span className="cfm-box">{sel ? '✓' : ''}</span>{fmt ? fmt(o) : o}
+              </button>
+            )
+          })}
+          {shownOpts.length === 0 && <div className="cfm-empty">no match</div>}
+        </>
+      )}
     </div>, document.body)
   return (
     <span className="col-filter" onClick={(e) => e.stopPropagation()}>
       <button ref={btnRef} type="button" className={`col-filter-btn${n ? ' on' : ''}`} onClick={onToggle}
-              aria-label="Filter column" title={n ? `Filtered (${n})` : 'Filter'}>
-        <FunnelIcon on={n > 0} />{n > 0 && <span className="col-filter-badge">{n}</span>}
+              aria-label="Filter column" title={n ? `Filtered${isText ? `: "${text}"` : ` (${n})`}` : 'Filter'}>
+        <FunnelIcon on={n > 0} />{!isText && n > 0 && <span className="col-filter-badge">{n}</span>}
       </button>
       {menu}
     </span>
