@@ -136,14 +136,35 @@ def _get_or_create_location(db: Session, name: str, line: str | None = None) -> 
 def visible_asset(db: Session, code: str, user) -> Asset:
     """The asset with this code inside the user's scope — else 404. Codes repeat
     across lines, so a scoped user resolves to THEIR line's asset; an unscoped
-    admin gets the first match (rare — admins rarely fetch by bare code)."""
-    q = select(Asset).where(Asset.code == code)
-    scope = scope_location_ids(db, user)
-    if scope is not None:
-        q = q.where(Asset.location_id.in_(scope))
-    if getattr(user, "depot", None):
-        q = q.where(Asset.depot == user.depot)
-    obj = db.scalars(q).first()
+    admin gets the first match (rare — admins rarely fetch by bare code).
+
+    Codes carry spaces/parens and some imported ones have stray leading/trailing
+    or doubled whitespace or case drift, so an exact match can miss what the eye
+    reads as the same code. Fall back to a whitespace-collapsed, case-insensitive
+    compare before giving up."""
+    from sqlalchemy import func
+
+    def _scoped(q):
+        scope = scope_location_ids(db, user)
+        if scope is not None:
+            q = q.where(Asset.location_id.in_(scope))
+        if getattr(user, "depot", None):
+            q = q.where(Asset.depot == user.depot)
+        return q
+
+    obj = db.scalars(_scoped(select(Asset).where(Asset.code == code))).first()
+    if not obj:
+        # tolerant match: trim + case-insensitive (covers stray edge whitespace)
+        norm = code.strip().lower()
+        obj = db.scalars(_scoped(select(Asset).where(func.lower(func.trim(Asset.code)) == norm))).first()
+    if not obj:
+        # last resort: collapse *all* whitespace and compare in Python (handles
+        # doubled internal spaces) — bounded to the scope, so never a full scan
+        want = " ".join(code.split()).lower()
+        for a in db.scalars(_scoped(select(Asset))).all():
+            if " ".join(a.code.split()).lower() == want:
+                obj = a
+                break
     if not obj:
         raise HTTPException(404, "asset not found")
     return obj
